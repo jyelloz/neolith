@@ -19,7 +19,7 @@ mod transaction_field;
 use transaction_field::TransactionField;
 
 pub(crate) enum Transaction {
-    Login { username: String, password: Option<String> },
+    Login(LoginRequest),
     AgreedToTerms,
     KeepAlive,
     ClientDisconnect,
@@ -48,7 +48,6 @@ struct Version(i16);
 struct SubVersion(i16);
 #[derive(Debug)]
 struct ErrorCode(i32);
-
 
 #[derive(Debug)]
 struct TransactionHeader {
@@ -230,21 +229,25 @@ enum ProtocolError {
 }
 
 #[derive(Debug)]
-struct LoginRequest {
+pub(crate) struct LoginRequest {
     pub username: Username,
+    pub nickname: Nickname,
     pub password: Option<Password>,
 }
 
 #[derive(Debug, PartialEq, Eq, PartialOrd, Ord)]
-struct Username(Vec<u8>);
+pub(crate) struct Username(Vec<u8>);
 #[derive(Debug, PartialEq, Eq, PartialOrd, Ord)]
-struct Password(Vec<u8>);
+pub(crate) struct Nickname(Vec<u8>);
+#[derive(Debug, PartialEq, Eq, PartialOrd, Ord)]
+pub(crate) struct Password(Vec<u8>);
 
 fn invert_credential(data: &[u8]) -> Vec<u8> {
     data.iter()
         .map(|b| !b)
         .collect()
 }
+
 trait Credential {
     fn deobfuscate(&self) -> Vec<u8>;
 }
@@ -261,6 +264,12 @@ impl Username {
     }
     pub fn take(self) -> Vec<u8> {
         self.0
+    }
+}
+
+impl Nickname {
+    pub fn new(nickname: Vec<u8>) -> Self {
+        Self(nickname)
     }
 }
 
@@ -304,13 +313,20 @@ impl TryFrom<TransactionBody> for LoginRequest {
             .next()
             .ok_or(ProtocolError::MissingField(TransactionField::Username))?;
 
+        let nickname = parameters.iter()
+            .filter(|p| p.field_matches(TransactionField::Nickname))
+            .map(|p| p.field_data.clone())
+            .map(Nickname::new)
+            .next()
+            .ok_or(ProtocolError::MissingField(TransactionField::Nickname))?;
+
         let password = parameters.iter()
             .filter(|p| p.field_matches(TransactionField::Password))
             .map(|p| p.field_data.clone())
             .map(Password::new)
             .next();
 
-        Ok(Self { username, password })
+        Ok(Self { username, nickname, password })
     }
 }
 
@@ -337,6 +353,17 @@ impl Into<Parameter> for Username {
     }
 }
 
+impl Into<Parameter> for Nickname {
+    fn into(self) -> Parameter {
+        let Self(nickname) = self;
+        Parameter {
+            field_id: TransactionField::Nickname.into(),
+            field_size: FieldSize::from(nickname.as_ref()),
+            field_data: nickname,
+        }
+    }
+}
+
 impl Into<Parameter> for Password {
     fn into(self) -> Parameter {
         let Self(password) = self;
@@ -351,21 +378,23 @@ impl Into<Parameter> for Password {
 impl Into<TransactionBody> for LoginRequest {
     fn into(self) -> TransactionBody {
 
-        let Self { username, password } = self;
+        let Self { username, nickname, password } = self;
 
         let username = username.into();
+        let nickname = nickname.into();
         let password = password.map(Password::into);
 
         let parameters = if let Some(password) = password {
-            vec![username, password]
+            vec![username, nickname, password]
         } else {
-            vec![username]
+            vec![username, nickname]
         };
 
         TransactionBody { parameters }
     }
 }
 
+#[cfg(test)]
 mod tests {
 
     use super::*;
@@ -380,12 +409,6 @@ mod tests {
         0x79, 0x65, 0x6c, 0x6c, 0x6f, 0x7a, 0x00, 0x68,
         0x00, 0x02, 0x00, 0x91,
     ];
-
-    fn encode_credential(data: &[u8]) -> Vec<u8> {
-        data.iter()
-            .map(|b| !b)
-            .collect()
-    }
 
     #[test]
     fn parse_authenticated_login() {
@@ -404,6 +427,11 @@ mod tests {
         assert_eq!(
             login.username,
             Username::from_cleartext(b"jyelloz"),
+        );
+
+        assert_eq!(
+            login.nickname,
+            Nickname::new(b"jyelloz".clone().into()),
         );
 
         assert_eq!(
