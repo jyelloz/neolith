@@ -230,13 +230,13 @@ enum ProtocolError {
 
 #[derive(Debug, PartialEq, Eq, PartialOrd, Ord)]
 pub(crate) struct LoginRequest {
-    pub username: Username,
+    pub login: UserLogin,
     pub nickname: Nickname,
     pub password: Option<Password>,
 }
 
 #[derive(Debug, PartialEq, Eq, PartialOrd, Ord)]
-pub(crate) struct Username(Vec<u8>);
+pub(crate) struct UserLogin(Vec<u8>);
 #[derive(Debug, PartialEq, Eq, PartialOrd, Ord)]
 pub(crate) struct Nickname(Vec<u8>);
 #[derive(Debug, PartialEq, Eq, PartialOrd, Ord)]
@@ -252,9 +252,9 @@ trait Credential {
     fn deobfuscate(&self) -> Vec<u8>;
 }
 
-impl Username {
-    pub fn new(username: Vec<u8>) -> Self {
-        Self(username)
+impl UserLogin {
+    pub fn new(login: Vec<u8>) -> Self {
+        Self(login)
     }
     pub fn from_cleartext(clear: &[u8]) -> Self {
         Self(invert_credential(clear))
@@ -273,7 +273,7 @@ impl Nickname {
     }
 }
 
-impl Credential for Username {
+impl Credential for UserLogin {
     fn deobfuscate(&self) -> Vec<u8> {
         invert_credential(&self.0)
     }
@@ -306,27 +306,27 @@ impl TryFrom<TransactionBody> for LoginRequest {
 
         let TransactionBody { parameters, .. } = body;
 
-        let username = parameters.iter()
-            .filter(|p| p.field_matches(TransactionField::Username))
+        let login = parameters.iter()
+            .filter(|p| p.field_matches(TransactionField::UserLogin))
             .map(|p| p.field_data.clone())
-            .map(Username::new)
+            .map(UserLogin::new)
             .next()
-            .ok_or(ProtocolError::MissingField(TransactionField::Username))?;
+            .ok_or(ProtocolError::MissingField(TransactionField::UserLogin))?;
 
         let nickname = parameters.iter()
-            .filter(|p| p.field_matches(TransactionField::Nickname))
+            .filter(|p| p.field_matches(TransactionField::UserName))
             .map(|p| p.field_data.clone())
             .map(Nickname::new)
             .next()
-            .ok_or(ProtocolError::MissingField(TransactionField::Nickname))?;
+            .ok_or(ProtocolError::MissingField(TransactionField::UserName))?;
 
         let password = parameters.iter()
-            .filter(|p| p.field_matches(TransactionField::Password))
+            .filter(|p| p.field_matches(TransactionField::UserPassword))
             .map(|p| p.field_data.clone())
             .map(Password::new)
             .next();
 
-        Ok(Self { username, nickname, password })
+        Ok(Self { login, nickname, password })
     }
 }
 
@@ -342,13 +342,13 @@ impl From<&[u8]> for FieldSize {
     }
 }
 
-impl Into<Parameter> for Username {
+impl Into<Parameter> for UserLogin {
     fn into(self) -> Parameter {
-        let Self(username) = self;
+        let Self(login) = self;
         Parameter {
-            field_id: TransactionField::Username.into(),
-            field_size: FieldSize::from(username.as_ref()),
-            field_data: username,
+            field_id: TransactionField::UserLogin.into(),
+            field_size: FieldSize::from(login.as_ref()),
+            field_data: login,
         }
     }
 }
@@ -357,7 +357,7 @@ impl Into<Parameter> for Nickname {
     fn into(self) -> Parameter {
         let Self(nickname) = self;
         Parameter {
-            field_id: TransactionField::Nickname.into(),
+            field_id: TransactionField::UserName.into(),
             field_size: FieldSize::from(nickname.as_ref()),
             field_data: nickname,
         }
@@ -368,7 +368,7 @@ impl Into<Parameter> for Password {
     fn into(self) -> Parameter {
         let Self(password) = self;
         Parameter {
-            field_id: TransactionField::Password.into(),
+            field_id: TransactionField::UserPassword.into(),
             field_size: FieldSize::from(password.as_ref()),
             field_data: password,
         }
@@ -378,16 +378,16 @@ impl Into<Parameter> for Password {
 impl Into<TransactionBody> for LoginRequest {
     fn into(self) -> TransactionBody {
 
-        let Self { username, nickname, password } = self;
+        let Self { login, nickname, password } = self;
 
-        let username = username.into();
+        let login = login.into();
         let nickname = nickname.into();
         let password = password.map(Password::into);
 
         let parameters = if let Some(password) = password {
-            vec![username, nickname, password]
+            vec![login, nickname, password]
         } else {
-            vec![username, nickname]
+            vec![login, nickname]
         };
 
         TransactionBody { parameters }
@@ -461,7 +461,7 @@ mod tests {
         assert_eq!(
             login,
             LoginRequest {
-                username: Username::from_cleartext(b"jyelloz"),
+                login: UserLogin::from_cleartext(b"jyelloz"),
                 nickname: Nickname::new(b"jyelloz".clone().into()),
                 password: Some(Password::from_cleartext(b"123456")),
             },
