@@ -228,7 +228,7 @@ enum ProtocolError {
     MissingField(TransactionField),
 }
 
-#[derive(Debug)]
+#[derive(Debug, PartialEq, Eq, PartialOrd, Ord)]
 pub(crate) struct LoginRequest {
     pub username: Username,
     pub nickname: Nickname,
@@ -468,18 +468,12 @@ mod tests {
             .expect("could not view transaction as login request");
 
         assert_eq!(
-            login.username,
-            Username::from_cleartext(b"jyelloz"),
-        );
-
-        assert_eq!(
-            login.nickname,
-            Nickname::new(b"jyelloz".clone().into()),
-        );
-
-        assert_eq!(
-            login.password,
-            Some(Password::from_cleartext(b"123456")),
+            login,
+            LoginRequest {
+                username: Username::from_cleartext(b"jyelloz"),
+                nickname: Nickname::new(b"jyelloz".clone().into()),
+                password: Some(Password::from_cleartext(b"123456")),
+            },
         );
 
     }
