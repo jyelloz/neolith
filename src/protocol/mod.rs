@@ -225,6 +225,7 @@ fn transaction_body(input: &[u8]) -> BIResult<TransactionBody> {
 #[derive(Debug)]
 enum ProtocolError {
     MissingField(TransactionField),
+    MalformedData(TransactionField),
 }
 
 #[derive(Debug, PartialEq, Eq, PartialOrd, Ord)]
@@ -240,6 +241,26 @@ pub(crate) struct UserLogin(Vec<u8>);
 pub(crate) struct Nickname(Vec<u8>);
 #[derive(Debug, PartialEq, Eq, PartialOrd, Ord)]
 pub(crate) struct Password(Vec<u8>);
+
+#[derive(Debug, PartialEq, Eq, PartialOrd, Ord)]
+pub(crate) struct ShowAgreement {
+    agreement: Option<ServerAgreement>,
+    banner: Option<ServerBanner>,
+}
+
+#[derive(Debug, PartialEq, Eq, PartialOrd, Ord)]
+pub(crate) struct ServerAgreement(Vec<u8>);
+
+enum ServerBannerType {
+    URL,
+    Data,
+}
+
+#[derive(Debug, PartialEq, Eq, PartialOrd, Ord)]
+pub(crate) enum ServerBanner {
+    URL(Vec<u8>),
+    Data(Vec<u8>),
+}
 
 fn invert_credential(data: &[u8]) -> Vec<u8> {
     data.iter()
@@ -326,6 +347,55 @@ impl TryFrom<TransactionBody> for LoginRequest {
             .next();
 
         Ok(Self { login, nickname, password })
+    }
+}
+
+impl TryFrom<TransactionBody> for ShowAgreement {
+    type Error = ProtocolError;
+    fn try_from(body: TransactionBody) -> Result<Self, Self::Error> {
+
+        let TransactionBody { parameters, .. } = body;
+
+        dbg!(&parameters);
+
+        let agreement = parameters.iter()
+            .filter(|p| p.field_matches(TransactionField::Data))
+            .map(|p| p.field_data.clone())
+            .map(|data| ServerAgreement(data))
+            .next();
+
+        let no_agreement = parameters.iter()
+            .filter(|p| p.field_matches(TransactionField::NoServerAgreement))
+            .next()
+            .is_some();
+
+        let agreement = if no_agreement {
+            None
+        } else {
+            agreement
+        };
+
+        let banner = None;
+
+        Ok(Self { agreement, banner })
+    }
+}
+
+impl TryFrom<&Parameter> for ServerBannerType {
+    type Error = ProtocolError;
+    fn try_from(parameter: &Parameter) -> Result<Self, Self::Error> {
+        let Parameter { field_data, .. } = parameter;
+        match &field_data[..] {
+            &[1] => {
+                Ok(ServerBannerType::URL)
+            },
+            &[0] => {
+                Ok(ServerBannerType::Data)
+            },
+            _ => {
+                Err(ProtocolError::MalformedData(TransactionField::ServerBannerType))
+            }
+        }
     }
 }
 
@@ -418,6 +488,14 @@ mod tests {
         0x54, 0x52, 0x54, 0x50, 0x00, 0x00, 0x00, 0x00,
     ];
 
+    static SHOW_AGREEMENT: &'static [u8] = &[
+        0x00, 0x00, 0x00, 0x6d, 0x00, 0x00, 0x00, 0x02,
+        0x00, 0x00, 0x00, 0x00, 0x00, 0x00, 0x00, 0xf8,
+        0x00, 0x00, 0x00, 0xf8, 0x00, 0x01, 0x00, 0x65,
+        0x00, 0x09, 0x61, 0x67, 0x72, 0x65, 0x65, 0x6d,
+        0x65, 0x6e, 0x74,
+    ];
+
     #[test]
     fn parse_client_handshake() {
 
@@ -463,6 +541,29 @@ mod tests {
                 login: UserLogin::from_cleartext(b"jyelloz"),
                 nickname: Nickname::new(b"jyelloz".clone().into()),
                 password: Some(Password::from_cleartext(b"123456")),
+            },
+        );
+
+    }
+
+    #[test]
+    fn parse_show_agreement() {
+
+        let (tail, _header) = transaction_header(SHOW_AGREEMENT)
+            .expect("could not parse transaction header");
+        let (tail, show_agreement) = transaction_body(tail)
+            .expect("could not parse valid agreement packet");
+
+        assert!(tail.is_empty());
+
+        let show_agreement = ShowAgreement::try_from(show_agreement)
+            .expect("could not view transaction as show agreement");
+
+        assert_eq!(
+            show_agreement,
+            ShowAgreement {
+                agreement: Some(ServerAgreement(Vec::from(*b"agreement"))),
+                banner: None,
             },
         );
 
