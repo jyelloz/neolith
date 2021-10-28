@@ -114,7 +114,7 @@ fn sub_version(input: &[u8]) -> BIResult<SubVersion> {
 }
 
 fn client_handshake_request(input: &[u8]) -> BIResult<ClientHandshakeRequest> {
-    let (input, _) = bytes::streaming::tag(r"TRTP")(input)?;
+    let (input, _) = bytes::streaming::tag(b"TRTP")(input)?;
     let (input, sub_protocol_id) = sub_protocol_id(input)?;
     let (input, version) = version(input)?;
     let (input, sub_version) = sub_version(input)?;
@@ -135,7 +135,7 @@ fn error_code(input: &[u8]) -> BIResult<ErrorCode> {
 }
 
 fn server_handshake_reply(input: &[u8]) -> BIResult<ServerHandshakeReply> {
-    let (input, _) = bytes::streaming::tag(r"TRTP")(input)?;
+    let (input, _) = bytes::streaming::tag(b"TRTP")(input)?;
     let (input, error_code) = error_code(input)?;
     Ok((input, ServerHandshakeReply { error_code }))
 }
