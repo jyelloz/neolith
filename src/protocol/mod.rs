@@ -197,7 +197,6 @@ fn field_size(input: &[u8]) -> BIResult<FieldSize> {
 
 fn field_data(input: &[u8], size: usize) -> BIResult<Vec<u8>> {
     let (input, data) = take(size)(input)?;
-    dbg!(data);
     Ok((input, data.to_vec()))
 }
 
