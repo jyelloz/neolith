@@ -76,7 +76,6 @@ struct DataSize(i32);
 #[derive(Debug)]
 struct Parameter {
     field_id: FieldId,
-    field_size: FieldSize,
     field_data: Vec<u8>,
 }
 
@@ -206,7 +205,6 @@ fn parameter(input: &[u8]) -> BIResult<Parameter> {
     let (input, field_data) = field_data(input, field_size.0 as usize)?;
     let parameter = Parameter {
         field_id,
-        field_size,
         field_data,
     };
     Ok((input, parameter))
@@ -416,7 +414,6 @@ impl Into<Parameter> for UserLogin {
         let Self(login) = self;
         Parameter {
             field_id: TransactionField::UserLogin.into(),
-            field_size: FieldSize::from(login.as_ref()),
             field_data: login,
         }
     }
@@ -427,7 +424,6 @@ impl Into<Parameter> for Nickname {
         let Self(nickname) = self;
         Parameter {
             field_id: TransactionField::UserName.into(),
-            field_size: FieldSize::from(nickname.as_ref()),
             field_data: nickname,
         }
     }
@@ -438,7 +434,6 @@ impl Into<Parameter> for Password {
         let Self(password) = self;
         Parameter {
             field_id: TransactionField::UserPassword.into(),
-            field_size: FieldSize::from(password.as_ref()),
             field_data: password,
         }
     }
