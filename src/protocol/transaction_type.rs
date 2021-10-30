@@ -1,6 +1,11 @@
-use num_enum::TryFromPrimitive;
+use num_enum::{
+    IntoPrimitive,
+    TryFromPrimitive,
+};
 
-#[derive(Debug, Eq, PartialEq, Ord, PartialOrd, TryFromPrimitive)]
+#[derive(
+    Debug, Eq, PartialEq, Ord, PartialOrd, IntoPrimitive, TryFromPrimitive
+)]
 #[repr(i16)]
 pub enum TransactionType {
     Error = 100,
