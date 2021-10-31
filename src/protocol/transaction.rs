@@ -8,6 +8,7 @@ use super::{
     be_i8,
     be_i16,
     be_i32,
+    take,
 };
 
 #[derive(Debug, Clone, Copy)]
@@ -156,10 +157,46 @@ impl HotlineProtocol for TransactionHeader {
 
 #[derive(Debug, Clone, Copy)]
 struct FieldId(i16);
+
+impl HotlineProtocol for FieldId {
+    fn into_bytes(self) -> Vec<u8> {
+        let Self(value) = self;
+        value.to_be_bytes().into()
+    }
+    fn from_bytes(bytes: &[u8]) -> BIResult<Self> {
+        let (bytes, value) = be_i16(bytes)?;
+        Ok((bytes, Self(value)))
+    }
+}
+
 #[derive(Debug, Clone, Copy)]
 struct FieldSize(i16);
+
+impl HotlineProtocol for FieldSize {
+    fn into_bytes(self) -> Vec<u8> {
+        let Self(value) = self;
+        value.to_be_bytes().into()
+    }
+    fn from_bytes(bytes: &[u8]) -> BIResult<Self> {
+        let (bytes, value) = be_i16(bytes)?;
+        Ok((bytes, Self(value)))
+    }
+}
+
 #[derive(Debug, Clone, Copy)]
 struct ParameterCount(i16);
+
+impl HotlineProtocol for ParameterCount {
+    fn into_bytes(self) -> Vec<u8> {
+        let Self(value) = self;
+        value.to_be_bytes().into()
+    }
+    fn from_bytes(bytes: &[u8]) -> BIResult<Self> {
+        let (bytes, value) = be_i16(bytes)?;
+        Ok((bytes, Self(value)))
+    }
+}
+
 
 #[derive(Debug, Clone)]
 struct Parameter {
@@ -170,6 +207,10 @@ struct Parameter {
 impl Parameter {
     pub fn field_matches(&self, field: TransactionField) -> bool {
         self.field_id.0 == field as i16
+    }
+    fn field_data(input: &[u8], size: usize) -> BIResult<Vec<u8>> {
+        let (input, data) = take(size)(input)?;
+        Ok((input, data.to_vec()))
     }
 }
 
@@ -186,6 +227,14 @@ impl HotlineProtocol for Parameter {
             .flat_map(|bytes| bytes.iter())
             .map(|b| *b)
             .collect()
+    }
+    fn from_bytes(bytes: &[u8]) -> BIResult<Self> {
+        let (bytes, field_id) = FieldId::from_bytes(bytes)?;
+        let (bytes, field_size) = FieldSize::from_bytes(bytes)?;
+        let field_size = field_size.0 as usize;
+        let (bytes, field_data) = Self::field_data(bytes, field_size)?;
+        let parameter = Parameter { field_id, field_data };
+        Ok((bytes, parameter))
     }
 }
 
