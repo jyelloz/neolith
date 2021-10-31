@@ -4,6 +4,7 @@ use super::{
     BIResult,
     be_i16,
     be_i32,
+    bytes,
 };
 
 #[derive(Debug, PartialEq, Eq, PartialOrd, Ord)]
@@ -91,6 +92,18 @@ impl HotlineProtocol for ClientHandshakeRequest {
             .map(|b| *b)
             .collect()
     }
+    fn from_bytes(bytes: &[u8]) -> BIResult<Self> {
+        let (bytes, _) = bytes::streaming::tag(b"TRTP")(bytes)?;
+        let (bytes, sub_protocol_id) = SubProtocolId::from_bytes(bytes)?;
+        let (bytes, version) = Version::from_bytes(bytes)?;
+        let (bytes, sub_version) = SubVersion::from_bytes(bytes)?;
+        let handshake = Self {
+            sub_protocol_id,
+            version,
+            sub_version,
+        };
+        Ok((bytes, handshake))
+    }
 }
 
 #[derive(Debug)]
@@ -112,5 +125,10 @@ impl HotlineProtocol for ServerHandshakeReply {
             .flat_map(|bytes| bytes.iter())
             .map(|b| *b)
             .collect()
+    }
+    fn from_bytes(bytes: &[u8]) -> BIResult<Self> {
+        let (bytes, _) = bytes::streaming::tag(b"TRTP")(bytes)?;
+        let (bytes, error_code) = ErrorCode::from_bytes(bytes)?;
+        Ok((bytes, ServerHandshakeReply { error_code }))
     }
 }
