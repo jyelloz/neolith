@@ -29,7 +29,7 @@ pub(crate) enum Transaction {
 
 type BIResult<'a, T> = IResult<&'a [u8], T>;
 
-pub trait HotlineProtocol {
+pub trait HotlineProtocol: Sized {
     fn into_bytes(self) -> Vec<u8>;
 }
 
