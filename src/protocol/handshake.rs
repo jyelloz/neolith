@@ -132,3 +132,42 @@ impl HotlineProtocol for ServerHandshakeReply {
         Ok((bytes, ServerHandshakeReply { error_code }))
     }
 }
+
+#[cfg(test)]
+mod tests {
+    use super::*;
+
+    static CLIENT_HANDSHAKE: &'static [u8] = &[
+        0x54, 0x52, 0x54, 0x50, 0x48, 0x4f, 0x54, 0x4c,
+        0x00, 0x01, 0x00, 0x02,
+    ];
+
+    static SERVER_HANDSHAKE: &'static [u8] = &[
+        0x54, 0x52, 0x54, 0x50, 0x00, 0x00, 0x00, 0x00,
+    ];
+
+    #[test]
+    fn parse_client_handshake() {
+
+        let (tail, _handshake) = ClientHandshakeRequest::from_bytes(CLIENT_HANDSHAKE)
+            .expect("could not parse client handshake");
+
+        assert!(tail.is_empty());
+
+    }
+
+    #[test]
+    fn parse_server_handshake() {
+
+        let (tail, handshake) = ServerHandshakeReply::from_bytes(SERVER_HANDSHAKE)
+            .expect("could not parse server handshake");
+
+        assert!(tail.is_empty());
+
+        assert_eq!(
+            handshake.error_code,
+            ErrorCode(0),
+        );
+
+    }
+}
