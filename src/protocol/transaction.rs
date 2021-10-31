@@ -265,14 +265,17 @@ impl HotlineProtocol for ParameterCount {
 }
 
 #[derive(Debug, Clone)]
-struct Parameter {
-    field_id: FieldId,
+pub struct Parameter {
+    pub field_id: FieldId,
     field_data: Vec<u8>,
 }
 
 impl Parameter {
     pub fn field_matches(&self, field: TransactionField) -> bool {
         self.field_id.0 == field as i16
+    }
+    pub fn take(self) -> Vec<u8> {
+        self.field_data
     }
     fn field_data(bytes: &[u8], size: usize) -> BIResult<Vec<u8>> {
         let (bytes, data) = take(size)(bytes)?;
