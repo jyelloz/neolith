@@ -4,20 +4,95 @@ use super::{
     TransactionType,
     TransactionField,
     HotlineProtocol,
+    BIResult,
+    be_i8,
+    be_i16,
+    be_i32,
 };
 
 #[derive(Debug, Clone, Copy)]
 pub struct Flags(i8);
+
+impl HotlineProtocol for Flags {
+    fn into_bytes(self) -> Vec<u8> {
+        let Self(value) = self;
+        value.to_be_bytes().into()
+    }
+    fn from_bytes(bytes: &[u8]) -> BIResult<Self> {
+        let (bytes, value) = be_i8(bytes)?;
+        Ok((bytes, Self(value)))
+    }
+}
+
 #[derive(Debug, Clone, Copy)]
 pub struct IsReply(i8);
+
+impl HotlineProtocol for IsReply {
+    fn into_bytes(self) -> Vec<u8> {
+        let Self(value) = self;
+        value.to_be_bytes().into()
+    }
+    fn from_bytes(bytes: &[u8]) -> BIResult<Self> {
+        let (bytes, value) = be_i8(bytes)?;
+        Ok((bytes, Self(value)))
+    }
+}
+
 #[derive(Debug, Clone, Copy)]
 pub struct Type(i16);
+
+impl HotlineProtocol for Type {
+    fn into_bytes(self) -> Vec<u8> {
+        let Self(value) = self;
+        value.to_be_bytes().into()
+    }
+    fn from_bytes(bytes: &[u8]) -> BIResult<Self> {
+        let (bytes, value) = be_i16(bytes)?;
+        Ok((bytes, Self(value)))
+    }
+}
+
 #[derive(Debug, Clone, Copy)]
 pub struct Id(i32);
+
+impl HotlineProtocol for Id {
+    fn into_bytes(self) -> Vec<u8> {
+        let Self(value) = self;
+        value.to_be_bytes().into()
+    }
+    fn from_bytes(bytes: &[u8]) -> BIResult<Self> {
+        let (bytes, value) = be_i32(bytes)?;
+        Ok((bytes, Self(value)))
+    }
+}
+
 #[derive(Debug, Clone, Copy)]
 pub struct TotalSize(i32);
+
+impl HotlineProtocol for TotalSize {
+    fn into_bytes(self) -> Vec<u8> {
+        let Self(value) = self;
+        value.to_be_bytes().into()
+    }
+    fn from_bytes(bytes: &[u8]) -> BIResult<Self> {
+        let (bytes, value) = be_i32(bytes)?;
+        Ok((bytes, Self(value)))
+    }
+}
+
 #[derive(Debug, Clone, Copy)]
 pub struct DataSize(i32);
+
+impl HotlineProtocol for DataSize {
+    fn into_bytes(self) -> Vec<u8> {
+        let Self(value) = self;
+        value.to_be_bytes().into()
+    }
+    fn from_bytes(bytes: &[u8]) -> BIResult<Self> {
+        let (bytes, value) = be_i32(bytes)?;
+        Ok((bytes, Self(value)))
+    }
+}
 
 #[derive(Debug, Clone, Copy)]
 pub struct TransactionHeader {
