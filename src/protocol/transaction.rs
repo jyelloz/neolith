@@ -233,6 +233,12 @@ impl HotlineProtocol for FieldId {
 #[derive(Debug, Clone, Copy)]
 struct FieldSize(i16);
 
+impl From<&[u8]> for FieldSize {
+    fn from(data: &[u8]) -> Self {
+        Self(data.len() as i16)
+    }
+}
+
 impl HotlineProtocol for FieldSize {
     fn into_bytes(self) -> Vec<u8> {
         let Self(value) = self;
