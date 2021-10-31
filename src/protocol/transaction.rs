@@ -294,3 +294,31 @@ impl HotlineProtocol for TransactionBody {
         Ok((bytes, body))
     }
 }
+
+#[derive(Debug)]
+pub struct TransactionFrame {
+    pub header: TransactionHeader,
+    pub body: TransactionBody,
+}
+
+impl HotlineProtocol for TransactionFrame {
+    fn into_bytes(self) -> Vec<u8> {
+        let Self { header, body } = self;
+        let body = body.into_bytes();
+        let size = body.len() as i32;
+        let header = TransactionHeader {
+            total_size: TotalSize(size),
+            data_size: DataSize(size),
+            ..header
+        }.into_bytes();
+        [header, body].into_iter()
+            .flat_map(|bytes| bytes.into_iter())
+            .collect()
+    }
+    fn from_bytes(bytes: &[u8]) -> BIResult<Self> {
+        let (bytes, header) = TransactionHeader::from_bytes(bytes)?;
+        let (bytes, body) = TransactionBody::from_bytes(bytes)?;
+        let frame = Self { header, body };
+        Ok((bytes, frame))
+    }
+}
