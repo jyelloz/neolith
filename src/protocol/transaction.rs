@@ -9,6 +9,7 @@ use super::{
     be_i16,
     be_i32,
     take,
+    multi,
 };
 
 #[derive(Debug, Clone, Copy)]
@@ -243,6 +244,16 @@ pub struct TransactionBody {
     parameters: Vec<Parameter>,
 }
 
+impl TransactionBody {
+    fn parameter_count(bytes: &[u8]) -> BIResult<usize> {
+        let (bytes, count) = be_i16(bytes)?;
+        Ok((bytes, count as usize))
+    }
+    fn parameter_list(input: &[u8], count: usize) -> BIResult<Vec<Parameter>> {
+        multi::count(Parameter::from_bytes, count)(input)
+    }
+}
+
 impl HotlineProtocol for TransactionBody {
     fn into_bytes(self) -> Vec<u8> {
         let Self { parameters } = self;
@@ -258,5 +269,11 @@ impl HotlineProtocol for TransactionBody {
             .flat_map(|bytes| bytes.iter())
             .map(|b| *b)
             .collect()
+    }
+    fn from_bytes(bytes: &[u8]) -> BIResult<Self> {
+        let (input, count) = Self::parameter_count(bytes)?;
+        let (input, parameters) = Self::parameter_list(input, count)?;
+        let body = TransactionBody { parameters };
+        Ok((input, body))
     }
 }
