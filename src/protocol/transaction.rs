@@ -41,6 +41,24 @@ impl HotlineProtocol for Flags {
 #[derive(Debug, Clone, Copy)]
 pub struct IsReply(i8);
 
+impl IsReply {
+    pub fn yes() -> Self {
+        Self(1)
+    }
+    pub fn no() -> Self {
+        Self(0)
+    }
+    pub fn is_reply(&self) -> bool {
+        (*self).into()
+    }
+}
+
+impl Into<bool> for IsReply {
+    fn into(self) -> bool {
+        self.0 == 1
+    }
+}
+
 impl HotlineProtocol for IsReply {
     fn into_bytes(self) -> Vec<u8> {
         let Self(value) = self;
