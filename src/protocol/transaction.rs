@@ -198,7 +198,6 @@ impl HotlineProtocol for ParameterCount {
     }
 }
 
-
 #[derive(Debug, Clone)]
 struct Parameter {
     field_id: FieldId,
