@@ -40,8 +40,25 @@ struct ClientHandshakeRequest {
     sub_version: SubVersion,
 }
 #[derive(Debug)]
-struct ServerHandshakeReply {
+pub struct ServerHandshakeReply {
     error_code: ErrorCode,
+}
+
+impl ServerHandshakeReply {
+    pub fn ok() -> Self {
+        Self { error_code: ErrorCode(0) }
+    }
+}
+
+impl HotlineProtocol for ServerHandshakeReply {
+    fn into_bytes(self) -> Vec<u8> {
+        let head = &b"TRTP"[..];
+        let error = &self.error_code.0.to_be_bytes()[..];
+        [head, error].into_iter()
+            .flat_map(|bytes| bytes.iter())
+            .map(|b| *b)
+            .collect()
+    }
 }
 
 #[derive(Debug, PartialEq, Eq, PartialOrd, Ord)]
