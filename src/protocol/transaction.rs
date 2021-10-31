@@ -134,13 +134,13 @@ impl TransactionHeader {
 
 impl HotlineProtocol for TransactionHeader {
     fn into_bytes(self) -> Vec<u8> {
-        let flags = self.flags.0.to_be_bytes();
-        let is_reply = self.is_reply.0.to_be_bytes();
-        let _type = self._type.0.to_be_bytes();
-        let id = self.id.0.to_be_bytes();
-        let error_code = self.error_code.0.to_be_bytes();
-        let total_size = self.total_size.0.to_be_bytes();
-        let data_size = self.data_size.0.to_be_bytes();
+        let flags = self.flags.into_bytes();
+        let is_reply = self.is_reply.into_bytes();
+        let _type = self._type.into_bytes();
+        let id = self.id.into_bytes();
+        let error_code = self.error_code.into_bytes();
+        let total_size = self.total_size.into_bytes();
+        let data_size = self.data_size.into_bytes();
         [
             &flags[..],
             &is_reply[..],
@@ -153,6 +153,25 @@ impl HotlineProtocol for TransactionHeader {
             .flat_map(|bytes| bytes.iter())
             .map(|b| *b)
             .collect()
+    }
+    fn from_bytes(bytes: &[u8]) -> BIResult<Self> {
+        let (bytes, flags) = Flags::from_bytes(bytes)?;
+        let (bytes, is_reply) = IsReply::from_bytes(bytes)?;
+        let (bytes, _type) = Type::from_bytes(bytes)?;
+        let (bytes, id) = Id::from_bytes(bytes)?;
+        let (bytes, error_code) = ErrorCode::from_bytes(bytes)?;
+        let (bytes, total_size) = TotalSize::from_bytes(bytes)?;
+        let (bytes, data_size) = DataSize::from_bytes(bytes)?;
+        let header = Self {
+            flags,
+            is_reply,
+            _type,
+            id,
+            error_code,
+            total_size,
+            data_size,
+        };
+        Ok((bytes, header))
     }
 }
 
