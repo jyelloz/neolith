@@ -271,9 +271,9 @@ impl HotlineProtocol for TransactionBody {
             .collect()
     }
     fn from_bytes(bytes: &[u8]) -> BIResult<Self> {
-        let (input, count) = Self::parameter_count(bytes)?;
-        let (input, parameters) = Self::parameter_list(input, count)?;
+        let (bytes, count) = Self::parameter_count(bytes)?;
+        let (bytes, parameters) = Self::parameter_list(bytes, count)?;
         let body = TransactionBody { parameters };
-        Ok((input, body))
+        Ok((bytes, body))
     }
 }
