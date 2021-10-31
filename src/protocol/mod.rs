@@ -13,6 +13,8 @@ use nom::{
     },
 };
 
+use thiserror::Error;
+
 mod transaction_type;
 mod transaction_field;
 
@@ -220,10 +222,16 @@ fn transaction_body(input: &[u8]) -> BIResult<TransactionBody> {
     Ok((input, body))
 }
 
-#[derive(Debug)]
-enum ProtocolError {
+#[derive(Debug, Error)]
+pub enum ProtocolError {
+    #[error("the transaction body is missing field {0:?}")]
     MissingField(TransactionField),
+    #[error("the transaction body has malformed data in field {0:?}")]
     MalformedData(TransactionField),
+    #[error("expected transaction {expected:?}, got {encountered:?}")]
+    UnexpectedTransaction { expected: Type, encountered: Type },
+    #[error("the transaction header refers to unsupported type {0:?}")]
+    UnsupportedTransaction(Type),
 }
 
 #[derive(Debug, PartialEq, Eq, PartialOrd, Ord)]
