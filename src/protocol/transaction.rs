@@ -109,19 +109,18 @@ pub struct TransactionHeader {
 
 impl TransactionHeader {
     pub fn transaction_type(&self) -> Result<TransactionType, ProtocolError> {
-        let Self { _type, ..  } = self;
-        let Type(type_id) = *_type;
+        let Type(type_id) = self._type;
         TransactionType::try_from(type_id)
-            .map_err(|_| ProtocolError::UnsupportedTransaction(*_type))
+            .map_err(|_| ProtocolError::UnsupportedTransaction(type_id))
     }
     pub fn require_transaction_type(self, expected: TransactionType) -> Result<Self, ProtocolError> {
         let _type = self.transaction_type()?;
         if _type == expected {
             Ok(self)
         } else {
-            let expected = Type(expected.into());
-            let _type = Type(_type.into());
-            Err(ProtocolError::UnexpectedTransaction{
+            let expected = expected.into();
+            let _type = _type.into();
+            Err(ProtocolError::UnexpectedTransaction {
                 expected,
                 encountered: _type,
             })
