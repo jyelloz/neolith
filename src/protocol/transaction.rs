@@ -208,9 +208,9 @@ impl Parameter {
     pub fn field_matches(&self, field: TransactionField) -> bool {
         self.field_id.0 == field as i16
     }
-    fn field_data(input: &[u8], size: usize) -> BIResult<Vec<u8>> {
-        let (input, data) = take(size)(input)?;
-        Ok((input, data.to_vec()))
+    fn field_data(bytes: &[u8], size: usize) -> BIResult<Vec<u8>> {
+        let (bytes, data) = take(size)(bytes)?;
+        Ok((bytes, data.to_vec()))
     }
 }
 
