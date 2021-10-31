@@ -205,7 +205,19 @@ impl HotlineProtocol for TransactionHeader {
 }
 
 #[derive(Debug, Clone, Copy)]
-struct FieldId(i16);
+pub struct FieldId(i16);
+
+impl From<i16> for FieldId {
+    fn from(int: i16) -> Self {
+        Self(int)
+    }
+}
+
+impl Into<i16> for FieldId {
+    fn into(self) -> i16 {
+        self.0
+    }
+}
 
 impl HotlineProtocol for FieldId {
     fn into_bytes(self) -> Vec<u8> {
