@@ -15,6 +15,18 @@ use super::{
 #[derive(Debug, Clone, Copy)]
 pub struct Flags(i8);
 
+impl Flags {
+    pub fn zero() -> Self {
+        Self(0)
+    }
+}
+
+impl Default for Flags {
+    fn default() -> Self {
+        Self::zero()
+    }
+}
+
 impl HotlineProtocol for Flags {
     fn into_bytes(self) -> Vec<u8> {
         let Self(value) = self;
