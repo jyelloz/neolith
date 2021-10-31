@@ -2,6 +2,7 @@ use super::{
     ErrorCode,
     ProtocolError,
     TransactionType,
+    TransactionField,
     HotlineProtocol,
 };
 
@@ -71,6 +72,41 @@ impl HotlineProtocol for TransactionHeader {
             &error_code[..],
             &total_size[..],
             &data_size[..],
+        ].into_iter()
+            .flat_map(|bytes| bytes.iter())
+            .map(|b| *b)
+            .collect()
+    }
+}
+
+#[derive(Debug, Clone, Copy)]
+struct FieldId(i16);
+#[derive(Debug, Clone, Copy)]
+struct FieldSize(i16);
+#[derive(Debug, Clone, Copy)]
+struct ParameterCount(i16);
+
+#[derive(Debug, Clone)]
+struct Parameter {
+    field_id: FieldId,
+    field_data: Vec<u8>,
+}
+
+impl Parameter {
+    pub fn field_matches(&self, field: TransactionField) -> bool {
+        self.field_id.0 == field as i16
+    }
+}
+
+impl HotlineProtocol for Parameter {
+    fn into_bytes(self) -> Vec<u8> {
+        let field_id = self.field_id.0.to_be_bytes();
+        let field_size = (self.field_data.len() as i16).to_be_bytes();
+        let field_data = self.field_data;
+        [
+            &field_id[..],
+            &field_size[..],
+            &field_data[..],
         ].into_iter()
             .flat_map(|bytes| bytes.iter())
             .map(|b| *b)
