@@ -113,3 +113,26 @@ impl HotlineProtocol for Parameter {
             .collect()
     }
 }
+
+#[derive(Debug, Clone)]
+pub struct TransactionBody {
+    parameters: Vec<Parameter>,
+}
+
+impl HotlineProtocol for TransactionBody {
+    fn into_bytes(self) -> Vec<u8> {
+        let Self { parameters } = self;
+        let parameter_count = (parameters.len() as i16).to_be_bytes();
+        let parameters: Vec<u8> = parameters.into_iter()
+            .map(HotlineProtocol::into_bytes)
+            .flat_map(|bytes| bytes.into_iter())
+            .collect();
+        [
+            &parameter_count[..],
+            &parameters.as_slice()[..],
+        ].into_iter()
+            .flat_map(|bytes| bytes.iter())
+            .map(|b| *b)
+            .collect()
+    }
+}
