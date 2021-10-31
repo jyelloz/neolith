@@ -73,6 +73,17 @@ impl HotlineProtocol for IsReply {
 #[derive(Debug, Clone, Copy)]
 pub struct Type(i16);
 
+impl From<i16> for Type {
+    fn from(int: i16) -> Self {
+        Self(int)
+    }
+}
+impl Into<i16> for Type {
+    fn into(self) -> i16 {
+        self.0
+    }
+}
+
 impl HotlineProtocol for Type {
     fn into_bytes(self) -> Vec<u8> {
         let Self(value) = self;
