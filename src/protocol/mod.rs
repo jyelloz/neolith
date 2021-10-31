@@ -29,6 +29,10 @@ pub(crate) enum Transaction {
 
 type BIResult<'a, T> = IResult<&'a [u8], T>;
 
+pub trait HotlineProtocol {
+    fn into_bytes(self) -> Vec<u8>;
+}
+
 #[derive(Debug)]
 struct ClientHandshakeRequest {
     sub_protocol_id: SubProtocolId,
