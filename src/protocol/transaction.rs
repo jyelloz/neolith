@@ -16,14 +16,14 @@ use super::{
 pub struct Flags(i8);
 
 impl Flags {
-    pub fn zero() -> Self {
+    pub fn none() -> Self {
         Self(0)
     }
 }
 
 impl Default for Flags {
     fn default() -> Self {
-        Self::zero()
+        Self::none()
     }
 }
 
