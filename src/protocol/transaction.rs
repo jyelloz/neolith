@@ -249,8 +249,8 @@ impl TransactionBody {
         let (bytes, count) = be_i16(bytes)?;
         Ok((bytes, count as usize))
     }
-    fn parameter_list(input: &[u8], count: usize) -> BIResult<Vec<Parameter>> {
-        multi::count(Parameter::from_bytes, count)(input)
+    fn parameter_list(bytes: &[u8], count: usize) -> BIResult<Vec<Parameter>> {
+        multi::count(Parameter::from_bytes, count)(bytes)
     }
 }
 
