@@ -669,6 +669,162 @@ impl Into<Parameter> for Message {
     }
 }
 
+#[derive(Debug)]
+pub struct GetFileNameList(FilePath);
+
+impl TryFrom<TransactionFrame> for GetFileNameList {
+    type Error = ProtocolError;
+    fn try_from(frame: TransactionFrame) -> Result<Self, Self::Error> {
+        let TransactionFrame { header, body, .. } = frame;
+        header.require_transaction_type(TransactionType::GetFileNameList)?;
+
+        let TransactionBody { parameters, .. } = body;
+
+        let path = parameters.iter()
+            .find_map(|p| FilePath::try_from(p).ok())
+            .unwrap_or_default();
+
+        Ok(Self(path))
+    }
+}
+
+impl Into<TransactionFrame> for GetFileNameList {
+    fn into(self) -> TransactionFrame {
+        let header = TransactionHeader {
+            _type: TransactionType::GetFileNameList.into(),
+            error_code: ErrorCode::ok(),
+            is_reply: IsReply::request(),
+            flags: Flags::none(),
+            id: 0.into(),
+            data_size: 0.into(),
+            total_size: 0.into(),
+        };
+        let body = TransactionBody { parameters: vec![] };
+        TransactionFrame { header, body }
+    }
+}
+
+#[derive(Debug)]
+pub enum FilePath {
+    Root,
+    Directory(Vec<u8>),
+}
+
+impl Default for FilePath {
+    fn default() -> Self {
+        Self::Root
+    }
+}
+
+impl TryFrom<&Parameter> for FilePath {
+    type Error = ProtocolError;
+    fn try_from(parameter: &Parameter) -> Result<Self, Self::Error> {
+        take_if_matches(parameter.clone(), TransactionField::FilePath)
+            .map(Self::Directory)
+    }
+}
+
+#[derive(Debug)]
+pub struct GetFileNameListReply(Vec<FileNameWithInfo>);
+
+impl GetFileNameListReply {
+    pub fn empty() -> Self {
+        Self(vec![])
+    }
+    pub fn single(file: FileNameWithInfo) -> Self {
+        Self::with_files(vec![file])
+    }
+    pub fn with_files(files: Vec<FileNameWithInfo>) -> Self {
+        Self(files)
+    }
+}
+
+impl Into<TransactionFrame> for GetFileNameListReply {
+    fn into(self) -> TransactionFrame {
+        let header = TransactionHeader {
+            _type: TransactionType::GetFileNameList.into(),
+            error_code: ErrorCode::ok(),
+            is_reply: IsReply::reply(),
+            flags: Flags::none(),
+            id: 0.into(),
+            data_size: 0.into(),
+            total_size: 0.into(),
+        };
+        let parameters = self.0.into_iter()
+            .map(|file| file.into())
+            .collect();
+        let body = TransactionBody { parameters };
+        TransactionFrame { header, body }
+    }
+}
+
+#[derive(Debug)]
+pub struct FileNameWithInfo {
+    pub file_type: FileType,
+    pub creator: Creator,
+    pub file_size: FileSize,
+    pub name_script: NameScript,
+    pub file_name: Vec<u8>,
+}
+
+impl Into<Parameter> for FileNameWithInfo {
+    fn into(self) -> Parameter {
+        let filename_size = self.file_name.len() as i16;
+        let data = [
+            &self.file_type.0[..],
+            &self.creator.0[..],
+            &self.file_size.0.to_be_bytes()[..],
+            &[0u8; 4][..],
+            &self.name_script.0.to_be_bytes()[..],
+            &filename_size.to_be_bytes()[..],
+            &self.file_name[..],
+        ].into_iter()
+            .flat_map(|bytes| bytes.into_iter())
+            .map(|b| *b)
+            .collect();
+        Parameter::new(
+            TransactionField::FileNameWithInfo.into(),
+            data,
+        )
+    }
+}
+
+#[derive(Debug)]
+pub struct FileType([u8; 4]);
+
+impl From<&[u8; 4]> for FileType {
+    fn from(bytes: &[u8; 4]) -> Self {
+        Self(*bytes)
+    }
+}
+
+#[derive(Debug)]
+pub struct Creator([u8; 4]);
+
+impl From<&[u8; 4]> for Creator {
+    fn from(bytes: &[u8; 4]) -> Self {
+        Self(*bytes)
+    }
+}
+
+#[derive(Debug)]
+pub struct FileSize(i32);
+
+impl From<i32> for FileSize {
+    fn from(int: i32) -> Self {
+        Self(int)
+    }
+}
+
+#[derive(Debug)]
+pub struct NameScript(i16);
+
+impl From<i16> for NameScript {
+    fn from(int: i16) -> Self {
+        Self(int)
+    }
+}
+
 fn take_if_matches(
     parameter: Parameter,
     field: TransactionField,
