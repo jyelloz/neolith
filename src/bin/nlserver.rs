@@ -20,7 +20,6 @@ use neolith::protocol::{
     GetMessagesReply,
     GetUserNameList,
     GetUserNameListReply,
-    IconId,
     LoginReply,
     LoginRequest,
     Message,
@@ -150,18 +149,12 @@ impl <S: AsyncRead + AsyncWrite + Unpin> Unauthenticated<S> {
 
 struct Established<S>{
     conn: S,
-    user: Option<Nickname>,
-    icon: Option<IconId>,
 }
 
 impl <S: AsyncRead + AsyncWrite + Unpin> Established<S> {
 
     pub fn new(conn: S) -> Self {
-        Self {
-            conn,
-            user: None,
-            icon: None,
-        }
+        Self { conn }
     }
 
     pub async fn process_transaction(&mut self) -> Result<()> {
@@ -207,8 +200,6 @@ impl <S: AsyncRead + AsyncWrite + Unpin> Established<S> {
 
         if let Ok(req) = SetClientUserInfo::try_from(frame.clone()) {
             eprintln!("setting user info to {:?}", &req);
-            self.user = Some(req.username);
-            self.icon = Some(req.icon_id);
             return Ok(())
         }
 
