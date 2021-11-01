@@ -15,233 +15,17 @@ use nom::{
 
 use thiserror::Error;
 
+mod handshake;
+mod transaction;
 mod transaction_type;
 mod transaction_field;
 
-use transaction_field::TransactionField;
-
-pub(crate) enum Transaction {
-    Login(LoginRequest),
-    AgreedToTerms,
-    KeepAlive,
-    ClientDisconnect,
+pub trait HotlineProtocol: Sized {
+    fn into_bytes(self) -> Vec<u8>;
+    fn from_bytes(bytes: &[u8]) -> BIResult<Self>;
 }
 
 type BIResult<'a, T> = IResult<&'a [u8], T>;
-
-pub trait HotlineProtocol: Sized {
-    fn into_bytes(self) -> Vec<u8>;
-}
-
-#[derive(Debug)]
-struct ClientHandshakeRequest {
-    sub_protocol_id: SubProtocolId,
-    version: Version,
-    sub_version: SubVersion,
-}
-#[derive(Debug)]
-pub struct ServerHandshakeReply {
-    error_code: ErrorCode,
-}
-
-impl ServerHandshakeReply {
-    pub fn ok() -> Self {
-        Self { error_code: ErrorCode(0) }
-    }
-}
-
-impl HotlineProtocol for ServerHandshakeReply {
-    fn into_bytes(self) -> Vec<u8> {
-        let head = &b"TRTP"[..];
-        let error = &self.error_code.0.to_be_bytes()[..];
-        [head, error].into_iter()
-            .flat_map(|bytes| bytes.iter())
-            .map(|b| *b)
-            .collect()
-    }
-}
-
-#[derive(Debug, PartialEq, Eq, PartialOrd, Ord)]
-struct ProtocolId(i32);
-#[derive(Debug, PartialEq, Eq, PartialOrd, Ord)]
-struct SubProtocolId(i32);
-#[derive(Debug, PartialEq, Eq, PartialOrd, Ord)]
-struct Version(i16);
-#[derive(Debug, PartialEq, Eq, PartialOrd, Ord)]
-struct SubVersion(i16);
-#[derive(Debug, PartialEq, Eq, PartialOrd, Ord)]
-struct ErrorCode(i32);
-
-#[derive(Debug)]
-struct TransactionHeader {
-    flags: Flags,
-    is_reply: IsReply,
-    _type: Type,
-    id: Id,
-    error_code: ErrorCode,
-    total_size: TotalSize,
-    data_size: DataSize,
-}
-
-#[derive(Debug)]
-struct Flags(i8);
-#[derive(Debug)]
-struct IsReply(i8);
-#[derive(Debug)]
-struct Type(i16);
-#[derive(Debug)]
-struct Id(i32);
-#[derive(Debug)]
-struct TotalSize(i32);
-#[derive(Debug)]
-struct DataSize(i32);
-
-#[derive(Debug)]
-struct Parameter {
-    field_id: FieldId,
-    field_data: Vec<u8>,
-}
-
-impl Parameter {
-    pub fn field_matches(&self, field: TransactionField) -> bool {
-        self.field_id.0 == field as i16
-    }
-}
-
-#[derive(Debug)]
-struct FieldId(i16);
-#[derive(Debug)]
-struct FieldSize(i16);
-#[derive(Debug)]
-struct ParameterCount(i16);
-
-#[derive(Debug)]
-struct TransactionBody {
-    parameters: Vec<Parameter>,
-}
-
-fn sub_protocol_id(input: &[u8]) -> BIResult<SubProtocolId> {
-    let (input, id) = be_i32(input)?;
-    Ok((input, SubProtocolId(id)))
-}
-
-fn version(input: &[u8]) -> BIResult<Version> {
-    let (input, version) = be_i16(input)?;
-    Ok((input, Version(version)))
-}
-
-fn sub_version(input: &[u8]) -> BIResult<SubVersion> {
-    let (input, sub_version) = be_i16(input)?;
-    Ok((input, SubVersion(sub_version)))
-}
-
-fn client_handshake_request(input: &[u8]) -> BIResult<ClientHandshakeRequest> {
-    let (input, _) = bytes::streaming::tag(b"TRTP")(input)?;
-    let (input, sub_protocol_id) = sub_protocol_id(input)?;
-    let (input, version) = version(input)?;
-    let (input, sub_version) = sub_version(input)?;
-    Ok((
-        input,
-        ClientHandshakeRequest {
-            sub_protocol_id,
-            version,
-            sub_version,
-        },
-    ))
-}
-
-fn error_code(input: &[u8]) -> BIResult<ErrorCode> {
-    be_i32(input).map(
-        |(input, code)| (input, ErrorCode(code))
-    )
-}
-
-fn server_handshake_reply(input: &[u8]) -> BIResult<ServerHandshakeReply> {
-    let (input, _) = bytes::streaming::tag(b"TRTP")(input)?;
-    let (input, error_code) = error_code(input)?;
-    Ok((input, ServerHandshakeReply { error_code }))
-}
-
-fn flags(input: &[u8]) -> BIResult<Flags> {
-    be_i8(input).map(|(input, flags)| (input, Flags(flags)))
-}
-
-fn is_reply(input: &[u8]) -> BIResult<IsReply> {
-    be_i8(input).map(|(input, is_reply)| (input, IsReply(is_reply)))
-}
-
-fn id(input: &[u8]) -> BIResult<Id> {
-    be_i32(input).map(|(input, id)| (input, Id(id)))
-}
-
-fn _type(input: &[u8]) -> BIResult<Type> {
-    be_i16(input).map(|(input, _type)| (input, Type(_type)))
-}
-
-fn total_size(input: &[u8]) -> BIResult<TotalSize> {
-    be_i32(input).map(|(input, size)| (input, TotalSize(size)))
-}
-
-fn data_size(input: &[u8]) -> BIResult<DataSize> {
-    be_i32(input).map(|(input, size)| (input, DataSize(size)))
-}
-
-fn transaction_header(input: &[u8]) -> BIResult<TransactionHeader> {
-
-    let (input, flags) = flags(input)?;
-    let (input, is_reply) = is_reply(input)?;
-    let (input, _type) = _type(input)?;
-    let (input, id) = id(input)?;
-    let (input, error_code) = error_code(input)?;
-    let (input, total_size) = total_size(input)?;
-    let (input, data_size) = data_size(input)?;
-
-    let header = TransactionHeader {
-        flags,
-        is_reply,
-        _type,
-        id,
-        error_code,
-        total_size,
-        data_size,
-    };
-
-    Ok((input, header))
-}
-
-fn field_id(input: &[u8]) -> BIResult<FieldId> {
-    be_i16(input).map(|(input, id)| (input, FieldId(id)))
-}
-
-fn field_size(input: &[u8]) -> BIResult<FieldSize> {
-    be_i16(input).map(|(input, size)| (input, FieldSize(size)))
-}
-
-fn field_data(input: &[u8], size: usize) -> BIResult<Vec<u8>> {
-    let (input, data) = take(size)(input)?;
-    Ok((input, data.to_vec()))
-}
-
-fn parameter(input: &[u8]) -> BIResult<Parameter> {
-    let (input, field_id) = field_id(input)?;
-    let (input, field_size) = field_size(input)?;
-    let (input, field_data) = field_data(input, field_size.0 as usize)?;
-    let parameter = Parameter {
-        field_id,
-        field_data,
-    };
-    Ok((input, parameter))
-}
-fn parameter_list(input: &[u8], count: usize) -> BIResult<Vec<Parameter>> {
-    multi::count(parameter, count)(input)
-}
-
-fn transaction_body(input: &[u8]) -> BIResult<TransactionBody> {
-    let (input, parameter_count) = be_i16(input)?;
-    let (input, parameters) = parameter_list(input, parameter_count as usize)?;
-    let body = TransactionBody { parameters };
-    Ok((input, body))
-}
 
 #[derive(Debug, Error)]
 pub enum ProtocolError {
@@ -250,54 +34,68 @@ pub enum ProtocolError {
     #[error("the transaction body has malformed data in field {0:?}")]
     MalformedData(TransactionField),
     #[error("expected transaction {expected:?}, got {encountered:?}")]
-    UnexpectedTransaction { expected: Type, encountered: Type },
+    UnexpectedTransaction { expected: i16, encountered: i16 },
     #[error("the transaction header refers to unsupported type {0:?}")]
-    UnsupportedTransaction(Type),
+    UnsupportedTransaction(i16),
+}
+
+#[derive(Debug, PartialEq, Eq, PartialOrd, Ord, Clone, Copy)]
+pub struct ErrorCode(i32);
+
+impl ErrorCode {
+    pub fn ok() -> Self {
+        Self(0)
+    }
+}
+
+impl HotlineProtocol for ErrorCode {
+    fn into_bytes(self) -> Vec<u8> {
+        let Self(value) = self;
+        value.to_be_bytes().into()
+    }
+    fn from_bytes(bytes: &[u8]) -> BIResult<Self> {
+        let (bytes, value) = be_i32(bytes)?;
+        Ok((bytes, Self(value)))
+    }
+}
+
+pub use handshake::{
+    ClientHandshakeRequest,
+    ServerHandshakeReply,
+    SubProtocolId,
+};
+use transaction_field::TransactionField;
+pub use transaction_type::TransactionType;
+pub use transaction::{
+    FieldId,
+    Flags,
+    IsReply,
+    Parameter,
+    TransactionBody,
+    TransactionFrame,
+    TransactionHeader,
+    Type,
+    DataSize,
+    TotalSize,
+    Id,
+};
+
+pub(crate) enum Transaction {
+    Login(LoginRequest),
+    AgreedToTerms,
+    KeepAlive,
+    ClientDisconnect,
 }
 
 #[derive(Debug, PartialEq, Eq, PartialOrd, Ord)]
-pub(crate) struct LoginRequest {
-    pub login: UserLogin,
+pub struct LoginRequest {
+    pub login: Option<UserLogin>,
     pub nickname: Nickname,
     pub password: Option<Password>,
 }
 
 #[derive(Debug, PartialEq, Eq, PartialOrd, Ord)]
-pub(crate) struct UserLogin(Vec<u8>);
-#[derive(Debug, PartialEq, Eq, PartialOrd, Ord)]
-pub(crate) struct Nickname(Vec<u8>);
-#[derive(Debug, PartialEq, Eq, PartialOrd, Ord)]
-pub(crate) struct Password(Vec<u8>);
-
-#[derive(Debug, PartialEq, Eq, PartialOrd, Ord)]
-pub(crate) struct ShowAgreement {
-    agreement: Option<ServerAgreement>,
-    banner: Option<ServerBanner>,
-}
-
-#[derive(Debug, PartialEq, Eq, PartialOrd, Ord)]
-pub(crate) struct ServerAgreement(Vec<u8>);
-
-enum ServerBannerType {
-    URL,
-    Data,
-}
-
-#[derive(Debug, PartialEq, Eq, PartialOrd, Ord)]
-pub(crate) enum ServerBanner {
-    URL(Vec<u8>),
-    Data(Vec<u8>),
-}
-
-fn invert_credential(data: &[u8]) -> Vec<u8> {
-    data.iter()
-        .map(|b| !b)
-        .collect()
-}
-
-trait Credential {
-    fn deobfuscate(&self) -> Vec<u8>;
-}
+pub struct UserLogin(Vec<u8>);
 
 impl UserLogin {
     pub fn new(login: Vec<u8>) -> Self {
@@ -314,16 +112,205 @@ impl UserLogin {
     }
 }
 
-impl Nickname {
-    pub fn new(nickname: Vec<u8>) -> Self {
-        Self(nickname)
-    }
-}
-
 impl Credential for UserLogin {
     fn deobfuscate(&self) -> Vec<u8> {
         invert_credential(&self.0)
     }
+}
+
+impl TryFrom<&Parameter> for UserLogin {
+    type Error = ProtocolError;
+    fn try_from(parameter: &Parameter) -> Result<Self, Self::Error> {
+        let data = take_if_matches(
+            parameter.clone(),
+            TransactionField::UserLogin,
+        )?;
+        Ok(Self::new(data))
+    }
+}
+
+impl Into<Parameter> for UserLogin {
+    fn into(self) -> Parameter {
+        let Self(field_data) = self;
+        let field_id = FieldId::from(TransactionField::UserLogin);
+        Parameter::new(field_id, field_data)
+    }
+}
+
+#[derive(Debug, PartialEq, Eq, PartialOrd, Ord)]
+pub struct Nickname(Vec<u8>);
+
+impl Nickname {
+    pub fn new(nickname: Vec<u8>) -> Self {
+        Self(nickname)
+    }
+    pub fn take(self) -> Vec<u8> {
+        self.0
+    }
+}
+
+impl TryFrom<&Parameter> for Nickname {
+    type Error = ProtocolError;
+    fn try_from(parameter: &Parameter) -> Result<Self, Self::Error> {
+        let data = take_if_matches(
+            parameter.clone(),
+            TransactionField::UserName,
+        )?;
+        Ok(Self::new(data))
+    }
+}
+
+#[derive(Debug, PartialEq, Eq, PartialOrd, Ord)]
+pub struct Password(Vec<u8>);
+
+impl TryFrom<&Parameter> for Password {
+    type Error = ProtocolError;
+    fn try_from(parameter: &Parameter) -> Result<Self, Self::Error> {
+        let data = take_if_matches(
+            parameter.clone(),
+            TransactionField::UserPassword,
+        )?;
+        Ok(Self::new(data))
+    }
+}
+
+#[derive(Debug, PartialEq, Eq, PartialOrd, Ord)]
+pub struct LoginReply(ProtocolVersion);
+
+impl LoginReply {
+    pub fn new(version: i16) -> Self {
+        Self(ProtocolVersion(version))
+    }
+}
+
+impl Default for LoginReply {
+    fn default() -> Self {
+        Self::new(123)
+    }
+}
+
+impl Into<TransactionFrame> for LoginReply {
+    fn into(self) -> TransactionFrame {
+        let header = TransactionHeader {
+            _type: TransactionType::Login.into(),
+            error_code: ErrorCode::ok(),
+            is_reply: IsReply::reply(),
+            flags: Flags::none(),
+            id: 0.into(),
+            data_size: 0.into(),
+            total_size: 0.into(),
+        };
+        let Self(version) = self;
+        let parameters = vec![version.into()];
+        let body = TransactionBody { parameters };
+        TransactionFrame { header, body }
+    }
+}
+
+#[derive(Debug, Clone, Copy, PartialEq, Eq, PartialOrd, Ord)]
+pub struct ProtocolVersion(i16);
+
+impl From<i16> for ProtocolVersion {
+    fn from(int: i16) -> Self {
+        Self(int)
+    }
+}
+
+impl Into<i16> for ProtocolVersion {
+    fn into(self) -> i16 {
+        self.0
+    }
+}
+
+impl Into<Parameter> for ProtocolVersion {
+    fn into(self) -> Parameter {
+        Parameter::new(
+            TransactionField::Version.into(),
+            self.0.to_be_bytes().to_vec(),
+        )
+    }
+}
+
+#[derive(Debug, PartialEq, Eq, PartialOrd, Ord)]
+pub struct IconId(i16);
+
+impl From<i16> for IconId {
+    fn from(int: i16) -> Self {
+        Self(int)
+    }
+}
+
+impl Into<i16> for IconId {
+    fn into(self) -> i16 {
+        self.0
+    }
+}
+
+impl TryFrom<&Parameter> for IconId {
+    type Error = ProtocolError;
+    fn try_from(parameter: &Parameter) -> Result<Self, Self::Error> {
+        let data = take_if_matches(
+            parameter.clone(),
+            TransactionField::UserIconId,
+        )?;
+        let result: BIResult<i16> = be_i16(&data[..]);
+        match result {
+            Ok((_, data)) => Ok(data.into()),
+            Err(_) => Err(
+                ProtocolError::MalformedData(TransactionField::UserIconId)
+            ),
+        }
+    }
+}
+
+#[derive(Debug, Default, PartialEq, Eq, PartialOrd, Ord)]
+pub struct ShowAgreement {
+    pub agreement: Option<ServerAgreement>,
+    pub banner: Option<ServerBanner>,
+}
+
+#[derive(Debug, PartialEq, Eq, PartialOrd, Ord)]
+pub struct ServerAgreement(pub Vec<u8>);
+
+impl Into<Parameter> for ServerAgreement {
+    fn into(self) -> Parameter {
+        Parameter::new(
+            TransactionField::Data.into(),
+            self.0,
+        )
+    }
+}
+
+impl TryFrom<&Parameter> for ServerAgreement {
+    type Error = ProtocolError;
+    fn try_from(parameter: &Parameter) -> Result<Self, Self::Error> {
+        let data = take_if_matches(
+            parameter.clone(),
+            TransactionField::ServerAgreement,
+        )?;
+        Ok(Self(data))
+    }
+}
+
+enum ServerBannerType {
+    URL,
+    Data,
+}
+
+#[derive(Debug, PartialEq, Eq, PartialOrd, Ord)]
+pub enum ServerBanner {
+    URL(Vec<u8>),
+    Data(Vec<u8>),
+}
+
+fn invert_credential(data: &[u8]) -> Vec<u8> {
+    data.iter()
+        .map(|b| !b)
+        .collect()
+}
+
+trait Credential {
+    fn deobfuscate(&self) -> Vec<u8>;
 }
 
 impl Password {
@@ -347,31 +334,25 @@ impl Credential for Password {
     }
 }
 
-impl TryFrom<TransactionBody> for LoginRequest {
+impl TryFrom<TransactionFrame> for LoginRequest {
     type Error = ProtocolError;
-    fn try_from(body: TransactionBody) -> Result<Self, Self::Error> {
+    fn try_from(frame: TransactionFrame) -> Result<Self, Self::Error> {
+
+        let TransactionFrame { header, body } = frame;
+
+        header.require_transaction_type(TransactionType::Login)?;
 
         let TransactionBody { parameters, .. } = body;
 
         let login = parameters.iter()
-            .filter(|p| p.field_matches(TransactionField::UserLogin))
-            .map(|p| p.field_data.clone())
-            .map(UserLogin::new)
-            .next()
-            .ok_or(ProtocolError::MissingField(TransactionField::UserLogin))?;
+            .find_map(|p| UserLogin::try_from(p).ok());
 
         let nickname = parameters.iter()
-            .filter(|p| p.field_matches(TransactionField::UserName))
-            .map(|p| p.field_data.clone())
-            .map(Nickname::new)
-            .next()
+            .find_map(|p| Nickname::try_from(p).ok())
             .ok_or(ProtocolError::MissingField(TransactionField::UserName))?;
 
         let password = parameters.iter()
-            .filter(|p| p.field_matches(TransactionField::UserPassword))
-            .map(|p| p.field_data.clone())
-            .map(Password::new)
-            .next();
+            .find_map(|p| Password::try_from(p).ok());
 
         Ok(Self { login, nickname, password })
     }
@@ -383,24 +364,22 @@ impl TryFrom<TransactionBody> for ShowAgreement {
 
         let TransactionBody { parameters, .. } = body;
 
-        dbg!(&parameters);
-
         let agreement = parameters.iter()
-            .filter(|p| p.field_matches(TransactionField::Data))
-            .map(|p| p.field_data.clone())
-            .map(|data| ServerAgreement(data))
-            .next();
+            .find_map(|p| ServerAgreement::try_from(p).ok());
 
         let no_agreement = parameters.iter()
-            .filter(|p| p.field_matches(TransactionField::NoServerAgreement))
-            .next()
-            .is_some();
+            .any(|p| p.field_matches(TransactionField::NoServerAgreement));
 
         let agreement = if no_agreement {
             None
         } else {
             agreement
         };
+
+        let banner_type = parameters.iter()
+            .filter(|p| p.field_matches(TransactionField::ServerBannerType))
+            .map(ServerBannerType::try_from)
+            .next();
 
         let banner = None;
 
@@ -411,7 +390,7 @@ impl TryFrom<TransactionBody> for ShowAgreement {
 impl TryFrom<&Parameter> for ServerBannerType {
     type Error = ProtocolError;
     fn try_from(parameter: &Parameter) -> Result<Self, Self::Error> {
-        let Parameter { field_data, .. } = parameter;
+        let field_data = parameter.borrow();
         match &field_data[..] {
             &[1] => {
                 Ok(ServerBannerType::URL)
@@ -426,45 +405,35 @@ impl TryFrom<&Parameter> for ServerBannerType {
     }
 }
 
+impl From<TransactionType> for Type {
+    fn from(_type: TransactionType) -> Self {
+        Self::from(_type as i16)
+    }
+}
+
 impl From<TransactionField> for FieldId {
     fn from(field: TransactionField) -> Self {
-        Self(field as i16)
-    }
-}
-
-impl From<&[u8]> for FieldSize {
-    fn from(data: &[u8]) -> Self {
-        Self(data.len() as i16)
-    }
-}
-
-impl Into<Parameter> for UserLogin {
-    fn into(self) -> Parameter {
-        let Self(login) = self;
-        Parameter {
-            field_id: TransactionField::UserLogin.into(),
-            field_data: login,
-        }
+        Self::from(field as i16)
     }
 }
 
 impl Into<Parameter> for Nickname {
     fn into(self) -> Parameter {
         let Self(nickname) = self;
-        Parameter {
-            field_id: TransactionField::UserName.into(),
-            field_data: nickname,
-        }
+        Parameter::new(
+            TransactionField::UserName.into(),
+            nickname,
+        )
     }
 }
 
 impl Into<Parameter> for Password {
     fn into(self) -> Parameter {
         let Self(password) = self;
-        Parameter {
-            field_id: TransactionField::UserPassword.into(),
-            field_data: password,
-        }
+        Parameter::new(
+            TransactionField::UserPassword.into(),
+            password,
+        )
     }
 }
 
@@ -473,17 +442,244 @@ impl Into<TransactionBody> for LoginRequest {
 
         let Self { login, nickname, password } = self;
 
-        let login = login.into();
-        let nickname = nickname.into();
+        let login = login.map(UserLogin::into);
+        let nickname = Some(nickname.into());
         let password = password.map(Password::into);
 
-        let parameters = if let Some(password) = password {
-            vec![login, nickname, password]
-        } else {
-            vec![login, nickname]
-        };
+        let parameters = [login, nickname, password].into_iter()
+            .flat_map(Option::into_iter)
+            .collect();
 
         TransactionBody { parameters }
+    }
+}
+
+impl Into<TransactionBody> for ShowAgreement {
+    fn into(self) -> TransactionBody {
+        let parameter = if let Some(agreement) = self.agreement {
+            agreement.into()
+        } else {
+            Parameter::new(
+                TransactionField::NoServerAgreement.into(),
+                1i16.to_be_bytes().to_vec(),
+            )
+        };
+        TransactionBody { parameters: vec![parameter] }
+    }
+}
+
+#[derive(Debug, PartialEq, Eq, PartialOrd, Ord)]
+pub struct SetClientUserInfo {
+    pub username: Nickname,
+    pub icon_id: IconId,
+}
+
+impl TryFrom<TransactionFrame> for SetClientUserInfo {
+    type Error = ProtocolError;
+    fn try_from(frame: TransactionFrame) -> Result<Self, Self::Error> {
+
+        let TransactionFrame { header, body } = frame;
+
+        header.require_transaction_type(TransactionType::SetClientUserInfo)?;
+
+        let TransactionBody { parameters, .. } = body;
+
+        let username = parameters.iter()
+            .find_map(|p| Nickname::try_from(p).ok())
+            .ok_or(ProtocolError::MissingField(TransactionField::UserName))?;
+
+        let icon_id = parameters.iter()
+            .find_map(|p| IconId::try_from(p).ok())
+            .ok_or(ProtocolError::MissingField(TransactionField::UserIconId))?;
+
+        Ok(Self { username, icon_id })
+    }
+}
+
+#[derive(Debug, PartialEq, Eq)]
+pub struct GetUserNameList;
+
+impl TryFrom<TransactionFrame> for GetUserNameList {
+    type Error = ProtocolError;
+    fn try_from(frame: TransactionFrame) -> Result<Self, Self::Error> {
+        let TransactionFrame { header, .. } = frame;
+        header.require_transaction_type(TransactionType::GetUserNameList)?;
+        Ok(Self)
+    }
+}
+
+impl Into<TransactionBody> for GetUserNameList {
+    fn into(self) -> TransactionBody {
+        TransactionBody { parameters: vec![] }
+    }
+}
+
+pub struct GetUserNameListReply(Vec<UserNameWithInfo>);
+
+impl GetUserNameListReply {
+    pub fn empty() -> Self {
+        Self(vec![])
+    }
+    pub fn single(user: UserNameWithInfo) -> Self {
+        Self::with_users(vec![user])
+    }
+    pub fn with_users(users: Vec<UserNameWithInfo>) -> Self {
+        Self(users)
+    }
+}
+
+impl Into<TransactionFrame> for GetUserNameListReply {
+    fn into(self) -> TransactionFrame {
+        let header = TransactionHeader {
+            _type: TransactionType::GetUserNameList.into(),
+            error_code: ErrorCode::ok(),
+            is_reply: IsReply::reply(),
+            flags: Flags::none(),
+            id: 0.into(),
+            data_size: 0.into(),
+            total_size: 0.into(),
+        };
+        let Self(users) = self;
+        let parameters: Vec<Parameter> = users.into_iter()
+            .map(|user: UserNameWithInfo| user.into())
+            .collect();
+        let body = TransactionBody { parameters };
+        TransactionFrame { header, body }
+    }
+}
+
+pub struct UserNameWithInfo {
+    pub user_id: UserId,
+    pub icon_id: IconId,
+    pub user_flags: UserFlags,
+    pub username: Nickname,
+}
+
+impl Into<Parameter> for UserNameWithInfo {
+    fn into(self) -> Parameter {
+        let username = self.username.take();
+        let username_len = username.len() as i16;
+        let data = [
+            &self.user_id.0.to_be_bytes()[..],
+            &self.icon_id.0.to_be_bytes()[..],
+            &self.user_flags.0.to_be_bytes()[..],
+            &username_len.to_be_bytes()[..],
+            &username[..],
+        ].into_iter()
+            .flat_map(|bytes| bytes.into_iter())
+            .map(|b| *b)
+            .collect();
+        Parameter::new(
+            TransactionField::UserNameWithInfo.into(),
+            data,
+        )
+    }
+}
+
+pub struct UserId(i16);
+
+impl From<i16> for UserId {
+    fn from(int: i16) -> Self {
+        Self(int)
+    }
+}
+
+pub struct UserFlags(i16);
+
+impl From<i16> for UserFlags {
+    fn from(int: i16) -> Self {
+        Self(int)
+    }
+}
+
+pub struct GetMessages;
+
+impl TryFrom<TransactionFrame> for GetMessages {
+    type Error = ProtocolError;
+    fn try_from(frame: TransactionFrame) -> Result<Self, Self::Error> {
+        let TransactionFrame { header, .. } = frame;
+        header.require_transaction_type(TransactionType::GetMessages)?;
+        Ok(Self)
+    }
+}
+
+impl Into<TransactionFrame> for GetMessages {
+    fn into(self) -> TransactionFrame {
+        let header = TransactionHeader {
+            _type: TransactionType::GetMessages.into(),
+            error_code: ErrorCode::ok(),
+            is_reply: IsReply::request(),
+            flags: Flags::none(),
+            id: 0.into(),
+            data_size: 0.into(),
+            total_size: 0.into(),
+        };
+        let body = TransactionBody { parameters: vec![] };
+        TransactionFrame { header, body }
+    }
+}
+
+pub struct GetMessagesReply(Vec<Message>);
+
+impl GetMessagesReply {
+    pub fn empty() -> Self {
+        Self(vec![])
+    }
+    pub fn single(message: Message) -> Self {
+        Self::with_messages(vec![message])
+    }
+    pub fn with_messages(messages: Vec<Message>) -> Self {
+        Self(messages)
+    }
+}
+
+impl Into<TransactionFrame> for GetMessagesReply {
+    fn into(self) -> TransactionFrame {
+        let header = TransactionHeader {
+            _type: TransactionType::GetMessages.into(),
+            error_code: ErrorCode::ok(),
+            is_reply: IsReply::reply(),
+            flags: Flags::none(),
+            id: 0.into(),
+            data_size: 0.into(),
+            total_size: 0.into(),
+        };
+        let parameters = self.0.into_iter()
+            .map(|message| message.into())
+            .collect();
+        let body = TransactionBody { parameters };
+        TransactionFrame { header, body }
+    }
+}
+
+pub struct Message(Vec<u8>);
+
+impl Message {
+    pub fn new(message: Vec<u8>) -> Self {
+        Self(message)
+    }
+}
+
+impl Into<Parameter> for Message {
+    fn into(self) -> Parameter {
+        Parameter::new(
+            TransactionField::Data.into(),
+            self.0,
+        )
+    }
+}
+
+fn take_if_matches(
+    parameter: Parameter,
+    field: TransactionField,
+) -> Result<Vec<u8>, ProtocolError> {
+    if parameter.field_matches(field) {
+        Ok(parameter.take())
+    } else {
+        Err(ProtocolError::UnexpectedTransaction {
+            expected: field.into(),
+            encountered: parameter.field_id.into(),
+        })
     }
 }
 
@@ -503,91 +699,23 @@ mod tests {
         0x00, 0x02, 0x00, 0x91,
     ];
 
-    static CLIENT_HANDSHAKE: &'static [u8] = &[
-        0x54, 0x52, 0x54, 0x50, 0x48, 0x4f, 0x54, 0x4c,
-        0x00, 0x01, 0x00, 0x02,
-    ];
-
-    static SERVER_HANDSHAKE: &'static [u8] = &[
-        0x54, 0x52, 0x54, 0x50, 0x00, 0x00, 0x00, 0x00,
-    ];
-
-    static SHOW_AGREEMENT: &'static [u8] = &[
-        0x00, 0x00, 0x00, 0x6d, 0x00, 0x00, 0x00, 0x02,
-        0x00, 0x00, 0x00, 0x00, 0x00, 0x00, 0x00, 0xf8,
-        0x00, 0x00, 0x00, 0xf8, 0x00, 0x01, 0x00, 0x65,
-        0x00, 0x09, 0x61, 0x67, 0x72, 0x65, 0x65, 0x6d,
-        0x65, 0x6e, 0x74,
-    ];
-
-    #[test]
-    fn parse_client_handshake() {
-
-        let (tail, _handshake) = client_handshake_request(CLIENT_HANDSHAKE)
-            .expect("could not parse client handshake");
-
-        assert!(tail.is_empty());
-
-    }
-
-    #[test]
-    fn parse_server_handshake() {
-
-        let (tail, handshake) = server_handshake_reply(SERVER_HANDSHAKE)
-            .expect("could not parse server handshake");
-
-        assert!(tail.is_empty());
-
-        assert_eq!(
-            handshake.error_code,
-            ErrorCode(0),
-        );
-
-    }
-
     #[test]
     fn parse_authenticated_login() {
 
-        let (tail, _header) = transaction_header(AUTHENTICATED_LOGIN)
-            .expect("could not parse transaction header");
-
-        let (tail, login) = transaction_body(tail)
+        let (tail, frame) = TransactionFrame::from_bytes(AUTHENTICATED_LOGIN)
             .expect("could not parse valid login packet");
 
         assert!(tail.is_empty());
 
-        let login = LoginRequest::try_from(login)
+        let login = LoginRequest::try_from(frame)
             .expect("could not view transaction as login request");
 
         assert_eq!(
             login,
             LoginRequest {
-                login: UserLogin::from_cleartext(b"jyelloz"),
+                login: Some(UserLogin::from_cleartext(b"jyelloz")),
                 nickname: Nickname::new(b"jyelloz".clone().into()),
                 password: Some(Password::from_cleartext(b"123456")),
-            },
-        );
-
-    }
-
-    #[test]
-    fn parse_show_agreement() {
-
-        let (tail, _header) = transaction_header(SHOW_AGREEMENT)
-            .expect("could not parse transaction header");
-        let (tail, show_agreement) = transaction_body(tail)
-            .expect("could not parse valid agreement packet");
-
-        assert!(tail.is_empty());
-
-        let show_agreement = ShowAgreement::try_from(show_agreement)
-            .expect("could not view transaction as show agreement");
-
-        assert_eq!(
-            show_agreement,
-            ShowAgreement {
-                agreement: Some(ServerAgreement(Vec::from(*b"agreement"))),
-                banner: None,
             },
         );
 
