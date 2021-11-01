@@ -42,10 +42,10 @@ impl HotlineProtocol for Flags {
 pub struct IsReply(i8);
 
 impl IsReply {
-    pub fn yes() -> Self {
+    pub fn reply() -> Self {
         Self(1)
     }
-    pub fn no() -> Self {
+    pub fn request() -> Self {
         Self(0)
     }
     pub fn is_reply(&self) -> bool {
