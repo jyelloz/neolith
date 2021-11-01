@@ -98,6 +98,18 @@ impl HotlineProtocol for Type {
 #[derive(Debug, Clone, Copy)]
 pub struct Id(i32);
 
+impl From<i32> for Id {
+    fn from(int: i32) -> Self {
+        Self(int)
+    }
+}
+
+impl Into<i32> for Id {
+    fn into(self) -> i32 {
+        self.0
+    }
+}
+
 impl HotlineProtocol for Id {
     fn into_bytes(self) -> Vec<u8> {
         let Self(value) = self;
@@ -112,6 +124,18 @@ impl HotlineProtocol for Id {
 #[derive(Debug, Clone, Copy)]
 pub struct TotalSize(i32);
 
+impl From<i32> for TotalSize {
+    fn from(int: i32) -> Self {
+        Self(int)
+    }
+}
+
+impl Into<i32> for TotalSize {
+    fn into(self) -> i32 {
+        self.0
+    }
+}
+
 impl HotlineProtocol for TotalSize {
     fn into_bytes(self) -> Vec<u8> {
         let Self(value) = self;
@@ -125,6 +149,18 @@ impl HotlineProtocol for TotalSize {
 
 #[derive(Debug, Clone, Copy)]
 pub struct DataSize(i32);
+
+impl From<i32> for DataSize {
+    fn from(int: i32) -> Self {
+        Self(int)
+    }
+}
+
+impl Into<i32> for DataSize {
+    fn into(self) -> i32 {
+        self.0
+    }
+}
 
 impl HotlineProtocol for DataSize {
     fn into_bytes(self) -> Vec<u8> {
