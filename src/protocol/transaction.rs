@@ -175,13 +175,13 @@ impl HotlineProtocol for DataSize {
 
 #[derive(Debug, Clone, Copy)]
 pub struct TransactionHeader {
-    flags: Flags,
-    is_reply: IsReply,
-    _type: Type,
-    id: Id,
-    error_code: ErrorCode,
-    total_size: TotalSize,
-    data_size: DataSize,
+    pub flags: Flags,
+    pub is_reply: IsReply,
+    pub _type: Type,
+    pub id: Id,
+    pub error_code: ErrorCode,
+    pub total_size: TotalSize,
+    pub data_size: DataSize,
 }
 
 impl TransactionHeader {
