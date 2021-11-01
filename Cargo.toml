@@ -1,6 +1,9 @@
 [package]
 name = "neolith"
 version = "0.1.0"
+description = "Hotline protocol implementation"
+homepage = "https://github.com/jyelloz/neolith"
+repository = "https://github.com/jyelloz/neolith.git"
 authors = ["Jordan Yelloz <jordan@yelloz.me>"]
 edition = "2021"
 license = "MIT"
@@ -8,6 +11,7 @@ license = "MIT"
 # See more keys and their definitions at https://doc.rust-lang.org/cargo/reference/manifest.html
 
 [dependencies]
+thiserror = "*"
 num_enum = "0.5"
 
 [dependencies.nom]
