@@ -206,6 +206,14 @@ impl TransactionHeader {
     pub fn body_len(&self) -> usize {
         self.data_size.0 as usize
     }
+    pub fn reply_to(self, request: &TransactionHeader) -> Self {
+        Self {
+            _type: request._type,
+            id: request.id,
+            is_reply: IsReply::reply(),
+            ..self
+        }
+    }
 }
 
 impl HotlineProtocol for TransactionHeader {
@@ -399,10 +407,20 @@ impl HotlineProtocol for TransactionBody {
     }
 }
 
-#[derive(Debug)]
+#[derive(Debug, Clone)]
 pub struct TransactionFrame {
     pub header: TransactionHeader,
     pub body: TransactionBody,
+}
+
+impl TransactionFrame {
+    pub fn reply_to(self, request: &TransactionHeader) -> Self {
+        let Self { header, body } = self;
+        Self {
+            header: header.reply_to(request),
+            body,
+        }
+    }
 }
 
 impl HotlineProtocol for TransactionFrame {
