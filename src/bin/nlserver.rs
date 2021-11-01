@@ -16,6 +16,9 @@ use neolith::protocol::{
     self,
     HotlineProtocol as _,
     ClientHandshakeRequest,
+    GetFileNameList,
+    GetFileNameListReply,
+    FileNameWithInfo,
     GetMessages,
     GetMessagesReply,
     GetUserNameList,
@@ -190,6 +193,24 @@ impl <S: AsyncRead + AsyncWrite + Unpin> Established<S> {
             eprintln!("get messages");
             let reply = GetMessagesReply::single(
                 Message::new(b"news".to_vec())
+            );
+            let reply: protocol::TransactionFrame = reply.into();
+            let reply = reply.reply_to(&header);
+            let reply = reply.into_bytes();
+            self.conn.write_all(&reply).await?;
+            return Ok(())
+        }
+
+        if let Ok(get) = GetFileNameList::try_from(frame.clone()) {
+            eprintln!("get files: {:?}", &get);
+            let reply = GetFileNameListReply::single(
+                FileNameWithInfo {
+                    file_type: b"APPL".into(),
+                    creator: b"BOBO".into(),
+                    name_script: 1.into(),
+                    file_size: (1 << 20).into(),
+                    file_name: "ClarisWorks".into(),
+                },
             );
             let reply: protocol::TransactionFrame = reply.into();
             let reply = reply.reply_to(&header);
