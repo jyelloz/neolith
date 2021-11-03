@@ -707,7 +707,30 @@ impl Into<TransactionFrame> for GetFileNameList {
 #[derive(Debug)]
 pub enum FilePath {
     Root,
-    Directory(Vec<u8>),
+    Directory(Vec<Vec<u8>>),
+}
+impl FilePath {
+    pub fn path(&self) -> Option<&[Vec<u8>]> {
+        if let Self::Directory(path) = self {
+            Some(path)
+        } else {
+            None
+        }
+    }
+    fn parse_depth(bytes: &[u8]) -> BIResult<usize> {
+        let (bytes, depth) = be_i16(bytes)?;
+        Ok((bytes, depth as usize))
+    }
+    fn parse_path_component(bytes: &[u8]) -> BIResult<&[u8]> {
+        let (bytes, _) = take(2usize)(bytes)?;
+        let (bytes, length) = be_i8(bytes)?;
+        let (bytes, name) = take(length as usize)(bytes)?;
+        Ok((bytes, name))
+    }
+    fn parse_path(bytes: &[u8]) -> BIResult<Vec<&[u8]>> {
+        let (bytes, depth) = Self::parse_depth(bytes)?;
+        multi::count(Self::parse_path_component, depth)(bytes)
+    }
 }
 
 impl Default for FilePath {
@@ -716,11 +739,26 @@ impl Default for FilePath {
     }
 }
 
+impl TryFrom<&[u8]> for FilePath {
+    type Error = ProtocolError;
+    fn try_from(bytes: &[u8]) -> Result<Self, Self::Error> {
+        match Self::parse_path(bytes) {
+            Ok((_, components)) => {
+                let components = components.iter()
+                    .map(|c| c.to_vec())
+                    .collect();
+                Ok(Self::Directory(components))
+            },
+            Err(_) => Err(ProtocolError::MalformedData(TransactionField::FilePath))
+        }
+    }
+}
+
 impl TryFrom<&Parameter> for FilePath {
     type Error = ProtocolError;
     fn try_from(parameter: &Parameter) -> Result<Self, Self::Error> {
-        take_if_matches(parameter.clone(), TransactionField::FilePath)
-            .map(Self::Directory)
+        let data = take_if_matches(parameter.clone(), TransactionField::FilePath)?;
+        Self::try_from(data.as_slice())
     }
 }
 
