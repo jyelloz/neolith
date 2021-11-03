@@ -139,7 +139,6 @@ impl <S: AsyncRead + AsyncWrite + Unpin> Unauthenticated<S> {
         let frame = protocol::TransactionFrame { header, body };
         let login = LoginRequest::try_from(frame)?;
 
-        eprintln!("get user name list");
         let reply: protocol::TransactionFrame = LoginReply::default().into();
         let reply = reply.reply_to(&header).into_bytes();
         conn.write_all(&reply).await?;
@@ -161,10 +160,7 @@ impl <S: AsyncRead + AsyncWrite + Unpin> Established<S> {
     }
 
     pub async fn process_transaction(&mut self) -> Result<()> {
-        let Self {
-            conn,
-            ..
-        } = self;
+        let Self { conn, ..  } = self;
         let header = process_header(conn).await?;
         let body = process_transaction_body(conn, header.body_len()).await?;
 
@@ -185,7 +181,7 @@ impl <S: AsyncRead + AsyncWrite + Unpin> Established<S> {
             let reply: protocol::TransactionFrame = reply.into();
             let reply = reply.reply_to(&header);
             let reply = reply.into_bytes();
-            self.conn.write_all(&reply).await?;
+            conn.write_all(&reply).await?;
             return Ok(())
         }
 
@@ -197,7 +193,7 @@ impl <S: AsyncRead + AsyncWrite + Unpin> Established<S> {
             let reply: protocol::TransactionFrame = reply.into();
             let reply = reply.reply_to(&header);
             let reply = reply.into_bytes();
-            self.conn.write_all(&reply).await?;
+            conn.write_all(&reply).await?;
             return Ok(())
         }
 
@@ -215,7 +211,7 @@ impl <S: AsyncRead + AsyncWrite + Unpin> Established<S> {
             let reply: protocol::TransactionFrame = reply.into();
             let reply = reply.reply_to(&header);
             let reply = reply.into_bytes();
-            self.conn.write_all(&reply).await?;
+            conn.write_all(&reply).await?;
             return Ok(())
         }
 
@@ -224,7 +220,7 @@ impl <S: AsyncRead + AsyncWrite + Unpin> Established<S> {
             return Ok(())
         }
 
-        eprintln!("established: unhandled request {} {:?}", header.body_len(), body);
+        eprintln!("established: unhandled request {:?} {:?}", header, body);
 
         Ok(())
     }
