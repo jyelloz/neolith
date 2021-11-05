@@ -4,7 +4,7 @@ use std::{
         Metadata,
     },
     io::{Result, ErrorKind},
-    path::{Path, PathBuf},
+    path::{Path, PathBuf, Component},
     time::SystemTime,
 };
 
@@ -133,21 +133,31 @@ impl OsFiles {
         }
     }
     pub fn list(&self, path: &Path) -> Result<Vec<DirEntry>> {
-        let path = self.subpath(path);
+        let path = self.subpath(path)?;
         std::fs::read_dir(path)?
             .map(|e| e.and_then(DirEntry::try_from))
             .collect()
     }
     pub fn get_info(&self, path: &Path) -> Result<FileInfo> {
-        let path = self.subpath(path);
+        let path = self.subpath(path)?;
         let metadata = std::fs::metadata(&path)?;
-        Err(ErrorKind::NotFound.into())
+        (path, metadata).try_into()
     }
-    fn subpath(&self, path: &Path) -> PathBuf {
+    fn validate_path(path: &Path) -> Result<&Path> {
+        let complex = path.components()
+            .any(|p| p == Component::ParentDir);
+        if complex {
+            return Err(ErrorKind::InvalidInput.into());
+        }
+        Ok(path)
+    }
+    fn subpath(&self, path: &Path) -> Result<PathBuf> {
         let Self(root) = self;
-        root.components()
+        let path = Self::validate_path(path)?;
+        let subpath = root.components()
             .chain(path.components())
-            .collect()
+            .collect();
+        Ok(subpath)
     }
 }
 
