@@ -11,7 +11,7 @@ use tokio::io::{
     AsyncReadExt as _,
 };
 use futures::stream::Stream;
-use async_stream::try_stream;
+use async_stream::stream;
 
 pub type Result<T> = core::result::Result<T, ProtocolError>;
 
@@ -25,9 +25,9 @@ impl <R: AsyncRead + Unpin> Frames<R> {
         self.0
     }
     pub fn frames(mut self) -> impl Stream<Item = Result<TransactionFrame>>{
-        try_stream! {
-            while let Ok(frame) = self.next_frame().await {
-                yield frame;
+        stream! {
+            loop {
+                yield self.next_frame().await;
             }
         }
     }
