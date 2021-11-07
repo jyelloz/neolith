@@ -92,6 +92,7 @@ pub struct LoginRequest {
     pub login: Option<UserLogin>,
     pub nickname: Nickname,
     pub password: Option<Password>,
+    pub icon_id: Option<IconId>,
 }
 
 #[derive(Debug, PartialEq, Eq, PartialOrd, Ord)]
@@ -246,6 +247,15 @@ impl Into<i16> for IconId {
     }
 }
 
+impl Into<Parameter> for IconId {
+    fn into(self) -> Parameter {
+        Parameter::new(
+            TransactionField::UserIconId.into(),
+            self.0.to_be_bytes().to_vec(),
+        )
+    }
+}
+
 impl TryFrom<&Parameter> for IconId {
     type Error = ProtocolError;
     fn try_from(parameter: &Parameter) -> Result<Self, Self::Error> {
@@ -354,7 +364,10 @@ impl TryFrom<TransactionFrame> for LoginRequest {
         let password = parameters.iter()
             .find_map(|p| Password::try_from(p).ok());
 
-        Ok(Self { login, nickname, password })
+        let icon_id = parameters.iter()
+            .find_map(|p| IconId::try_from(p).ok());
+
+        Ok(Self { login, nickname, password, icon_id })
     }
 }
 
@@ -440,13 +453,14 @@ impl Into<Parameter> for Password {
 impl Into<TransactionBody> for LoginRequest {
     fn into(self) -> TransactionBody {
 
-        let Self { login, nickname, password } = self;
+        let Self { login, nickname, password, icon_id } = self;
 
         let login = login.map(UserLogin::into);
         let nickname = Some(nickname.into());
         let password = password.map(Password::into);
+        let icon_id = icon_id.map(IconId::into);
 
-        let parameters = [login, nickname, password].into_iter()
+        let parameters = [login, nickname, password, icon_id].into_iter()
             .flat_map(Option::into_iter)
             .collect();
 
@@ -910,6 +924,7 @@ mod tests {
                 login: Some(UserLogin::from_cleartext(b"jyelloz")),
                 nickname: Nickname::new(b"jyelloz".clone().into()),
                 password: Some(Password::from_cleartext(b"123456")),
+                icon_id: Some(145.into()),
             },
         );
 
