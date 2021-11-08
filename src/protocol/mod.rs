@@ -89,13 +89,6 @@ pub use transaction::{
     Id,
 };
 
-pub(crate) enum Transaction {
-    Login(LoginRequest),
-    AgreedToTerms,
-    KeepAlive,
-    ClientDisconnect,
-}
-
 #[derive(Debug, PartialEq, Eq, PartialOrd, Ord)]
 pub struct LoginRequest {
     pub login: Option<UserLogin>,
