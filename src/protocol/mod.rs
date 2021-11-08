@@ -140,7 +140,7 @@ impl Into<Parameter> for UserLogin {
     }
 }
 
-#[derive(Debug, PartialEq, Eq, PartialOrd, Ord)]
+#[derive(Debug, Clone, PartialEq, Eq, PartialOrd, Ord)]
 pub struct Nickname(Vec<u8>);
 
 impl Nickname {
@@ -149,6 +149,12 @@ impl Nickname {
     }
     pub fn take(self) -> Vec<u8> {
         self.0
+    }
+}
+
+impl Default for Nickname {
+    fn default() -> Self {
+        Self(b"unnamed".to_vec())
     }
 }
 
