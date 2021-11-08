@@ -435,6 +435,12 @@ impl TransactionBody {
     }
 }
 
+impl Default for TransactionBody {
+    fn default() -> Self {
+        Self { parameters: vec![] }
+    }
+}
+
 impl HotlineProtocol for TransactionBody {
     fn into_bytes(self) -> Vec<u8> {
         let Self { parameters } = self;
