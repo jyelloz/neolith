@@ -525,7 +525,7 @@ impl TryFrom<TransactionFrame> for GetUserNameList {
 
 impl Into<TransactionBody> for GetUserNameList {
     fn into(self) -> TransactionBody {
-        TransactionBody { parameters: vec![] }
+        Default::default()
     }
 }
 
@@ -629,8 +629,7 @@ impl Into<TransactionFrame> for GetMessages {
             data_size: 0.into(),
             total_size: 0.into(),
         };
-        let body = TransactionBody { parameters: vec![] };
-        TransactionFrame { header, body }
+        TransactionFrame::empty(header)
     }
 }
 
@@ -714,8 +713,7 @@ impl Into<TransactionFrame> for GetFileNameList {
             data_size: 0.into(),
             total_size: 0.into(),
         };
-        let body = TransactionBody { parameters: vec![] };
-        TransactionFrame { header, body }
+        TransactionFrame::empty(header)
     }
 }
 
