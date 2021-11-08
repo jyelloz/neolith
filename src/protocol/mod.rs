@@ -563,7 +563,7 @@ impl Into<TransactionFrame> for GetUserNameListReply {
         };
         let Self(users) = self;
         let parameters: Vec<Parameter> = users.into_iter()
-            .map(|user: UserNameWithInfo| user.into())
+            .map(UserNameWithInfo::into)
             .collect();
         let body = TransactionBody { parameters };
         TransactionFrame { header, body }
