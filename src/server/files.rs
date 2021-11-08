@@ -1,8 +1,5 @@
 use std::{
-    fs::{
-        DirEntry as OsDirEntry,
-        Metadata,
-    },
+    fs::{DirEntry as OsDirEntry, Metadata},
     io::{Result, ErrorKind},
     path::{Path, PathBuf, Component},
     time::SystemTime,
@@ -125,6 +122,7 @@ pub struct OsFiles(PathBuf);
 
 impl OsFiles {
     pub fn with_root(root: PathBuf) -> Result<Self> {
+        let root = root.canonicalize()?;
         let metadata = std::fs::metadata(&root)?;
         if metadata.is_dir() {
             Ok(Self(root))
