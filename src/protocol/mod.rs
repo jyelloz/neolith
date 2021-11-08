@@ -694,7 +694,7 @@ impl Into<Parameter> for Message {
 }
 
 #[derive(Debug)]
-pub struct GetFileNameList(FilePath);
+pub struct GetFileNameList(pub FilePath);
 
 impl TryFrom<TransactionFrame> for GetFileNameList {
     type Error = ProtocolError;
