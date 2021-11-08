@@ -565,8 +565,7 @@ impl Into<TransactionFrame> for GetUserNameListReply {
         let parameters: Vec<Parameter> = users.into_iter()
             .map(UserNameWithInfo::into)
             .collect();
-        let body = TransactionBody { parameters };
-        TransactionFrame { header, body }
+        TransactionFrame { header, body: parameters.into() }
     }
 }
 
@@ -668,11 +667,10 @@ impl Into<TransactionFrame> for GetMessagesReply {
             data_size: 0.into(),
             total_size: 0.into(),
         };
-        let parameters = self.0.into_iter()
+        let parameters: Vec<Parameter> = self.0.into_iter()
             .map(|message| message.into())
             .collect();
-        let body = TransactionBody { parameters };
-        TransactionFrame { header, body }
+        TransactionFrame { header, body: parameters.into() }
     }
 }
 
@@ -813,11 +811,10 @@ impl Into<TransactionFrame> for GetFileNameListReply {
             data_size: 0.into(),
             total_size: 0.into(),
         };
-        let parameters = self.0.into_iter()
-            .map(|file| file.into())
+        let parameters: Vec::<Parameter> = self.0.into_iter()
+            .map(FileNameWithInfo::into)
             .collect();
-        let body = TransactionBody { parameters };
-        TransactionFrame { header, body }
+        TransactionFrame { header, body: parameters.into() }
     }
 }
 
