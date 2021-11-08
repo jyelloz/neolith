@@ -32,6 +32,12 @@ type BIResult<'a, T> = IResult<&'a [u8], T>;
 
 #[derive(Debug, Error)]
 pub enum ProtocolError {
+    #[error("i/o error")]
+    IO(#[from] std::io::Error),
+    #[error("failed to parse transaction header")]
+    ParseHeader,
+    #[error("failed to parse transaction body")]
+    ParseBody,
     #[error("the transaction body is missing field {0:?}")]
     MissingField(TransactionField),
     #[error("the transaction body has malformed data in field {0:?}")]
