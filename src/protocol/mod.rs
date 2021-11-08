@@ -92,7 +92,7 @@ pub struct LoginRequest {
     pub login: Option<UserLogin>,
     pub nickname: Nickname,
     pub password: Option<Password>,
-    pub icon_id: Option<IconId>,
+    pub icon_id: IconId,
 }
 
 #[derive(Debug, PartialEq, Eq, PartialOrd, Ord)]
@@ -365,7 +365,8 @@ impl TryFrom<TransactionFrame> for LoginRequest {
             .find_map(|p| Password::try_from(p).ok());
 
         let icon_id = parameters.iter()
-            .find_map(|p| IconId::try_from(p).ok());
+            .find_map(|p| IconId::try_from(p).ok())
+            .ok_or(ProtocolError::MissingField(TransactionField::UserIconId))?;
 
         Ok(Self { login, nickname, password, icon_id })
     }
@@ -456,9 +457,9 @@ impl Into<TransactionBody> for LoginRequest {
         let Self { login, nickname, password, icon_id } = self;
 
         let login = login.map(UserLogin::into);
-        let nickname = Some(nickname.into());
         let password = password.map(Password::into);
-        let icon_id = icon_id.map(IconId::into);
+        let nickname = Some(nickname.into());
+        let icon_id = Some(icon_id.into());
 
         let parameters = [login, nickname, password, icon_id].into_iter()
             .flat_map(Option::into_iter)
@@ -924,7 +925,7 @@ mod tests {
                 login: Some(UserLogin::from_cleartext(b"jyelloz")),
                 nickname: Nickname::new(b"jyelloz".clone().into()),
                 password: Some(Password::from_cleartext(b"123456")),
-                icon_id: Some(145.into()),
+                icon_id: 145.into(),
             },
         );
 
