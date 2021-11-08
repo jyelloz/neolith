@@ -1,4 +1,5 @@
 pub mod files;
+pub mod users;
 
 #[derive(Debug)]
 pub struct Chat(pub User, pub Vec<u8>);
