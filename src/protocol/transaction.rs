@@ -466,6 +466,10 @@ pub struct TransactionFrame {
 }
 
 impl TransactionFrame {
+    pub fn require_transaction_type(self, expected: TransactionType) -> Result<Self, ProtocolError> {
+        self.header.require_transaction_type(expected)?;
+        Ok(self)
+    }
     pub fn reply_to(self, request: &TransactionHeader) -> Self {
         let Self { header, body } = self;
         Self {
