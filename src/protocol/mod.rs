@@ -240,7 +240,7 @@ impl Into<Parameter> for ProtocolVersion {
     }
 }
 
-#[derive(Debug, PartialEq, Eq, PartialOrd, Ord)]
+#[derive(Debug, Clone, Copy, PartialEq, Eq, PartialOrd, Ord)]
 pub struct IconId(i16);
 
 impl From<i16> for IconId {
@@ -570,6 +570,7 @@ impl Into<TransactionFrame> for GetUserNameListReply {
     }
 }
 
+#[derive(Debug, Clone)]
 pub struct UserNameWithInfo {
     pub user_id: UserId,
     pub icon_id: IconId,
@@ -598,6 +599,7 @@ impl Into<Parameter> for UserNameWithInfo {
     }
 }
 
+#[derive(Debug, Clone, Copy, PartialEq, Eq, PartialOrd, Ord)]
 pub struct UserId(i16);
 
 impl From<i16> for UserId {
@@ -606,6 +608,7 @@ impl From<i16> for UserId {
     }
 }
 
+#[derive(Debug, Clone, Copy, PartialEq, Eq, PartialOrd, Ord)]
 pub struct UserFlags(i16);
 
 impl From<i16> for UserFlags {
@@ -614,6 +617,7 @@ impl From<i16> for UserFlags {
     }
 }
 
+#[derive(Debug)]
 pub struct GetMessages;
 
 impl TryFrom<TransactionFrame> for GetMessages {
