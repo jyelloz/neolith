@@ -350,9 +350,9 @@ impl TryFrom<TransactionFrame> for LoginRequest {
     type Error = ProtocolError;
     fn try_from(frame: TransactionFrame) -> Result<Self, Self::Error> {
 
-        let TransactionFrame { header, body } = frame;
-
-        header.require_transaction_type(TransactionType::Login)?;
+        let TransactionFrame {
+            body, ..
+        } = frame.require_transaction_type(TransactionType::Login)?;
 
         let TransactionBody { parameters, .. } = body;
 
@@ -495,9 +495,9 @@ impl TryFrom<TransactionFrame> for SetClientUserInfo {
     type Error = ProtocolError;
     fn try_from(frame: TransactionFrame) -> Result<Self, Self::Error> {
 
-        let TransactionFrame { header, body } = frame;
-
-        header.require_transaction_type(TransactionType::SetClientUserInfo)?;
+        let TransactionFrame {
+            body, ..
+        } = frame.require_transaction_type(TransactionType::SetClientUserInfo)?;
 
         let TransactionBody { parameters, .. } = body;
 
@@ -519,8 +519,7 @@ pub struct GetUserNameList;
 impl TryFrom<TransactionFrame> for GetUserNameList {
     type Error = ProtocolError;
     fn try_from(frame: TransactionFrame) -> Result<Self, Self::Error> {
-        let TransactionFrame { header, .. } = frame;
-        header.require_transaction_type(TransactionType::GetUserNameList)?;
+        frame.require_transaction_type(TransactionType::GetUserNameList)?;
         Ok(Self)
     }
 }
@@ -614,8 +613,7 @@ pub struct GetMessages;
 impl TryFrom<TransactionFrame> for GetMessages {
     type Error = ProtocolError;
     fn try_from(frame: TransactionFrame) -> Result<Self, Self::Error> {
-        let TransactionFrame { header, .. } = frame;
-        header.require_transaction_type(TransactionType::GetMessages)?;
+        frame.require_transaction_type(TransactionType::GetMessages)?;
         Ok(Self)
     }
 }
@@ -691,8 +689,10 @@ pub struct GetFileNameList(FilePath);
 impl TryFrom<TransactionFrame> for GetFileNameList {
     type Error = ProtocolError;
     fn try_from(frame: TransactionFrame) -> Result<Self, Self::Error> {
-        let TransactionFrame { header, body, .. } = frame;
-        header.require_transaction_type(TransactionType::GetFileNameList)?;
+
+        let TransactionFrame {
+            body, ..
+        } = frame.require_transaction_type(TransactionType::GetFileNameList)?;
 
         let TransactionBody { parameters, .. } = body;
 
