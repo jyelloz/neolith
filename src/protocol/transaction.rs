@@ -8,6 +8,9 @@ use super::{
     be_i8,
     be_i16,
     be_i32,
+    be_u8,
+    be_u16,
+    be_u32,
     take,
     multi,
 };
@@ -342,6 +345,9 @@ impl Parameter {
         let (bytes, data) = take(size)(bytes)?;
         Ok((bytes, data.to_vec()))
     }
+    pub fn int(self) -> Option<IntParameter> {
+        (&self).into()
+    }
 }
 
 impl HotlineProtocol for Parameter {
@@ -365,6 +371,52 @@ impl HotlineProtocol for Parameter {
         let (bytes, field_data) = Self::field_data(bytes, field_size)?;
         let parameter = Parameter { field_id, field_data };
         Ok((bytes, parameter))
+    }
+}
+
+#[derive(Debug, Clone, Copy)]
+pub struct IntParameter(u32);
+
+impl IntParameter {
+    fn from_byte(data: &[u8]) -> Option<u32> {
+        if let Ok((b"", i)) = be_u8::<_, nom::error::Error<_>>(data) {
+            Some(i as u32)
+        } else {
+            None
+        }
+    }
+    fn from_ushort(data: &[u8]) -> Option<u32> {
+        if let Ok((b"", i)) = be_u16::<_, nom::error::Error<_>>(data) {
+            Some(i as u32)
+        } else {
+            None
+        }
+    }
+    fn from_uint(data: &[u8]) -> Option<u32> {
+        if let Ok((b"", i)) = be_u32::<_, nom::error::Error<_>>(data) {
+            Some(i)
+        } else {
+            None
+        }
+    }
+}
+
+impl From<&Parameter> for Option<IntParameter> {
+    fn from(p: &Parameter) -> Self {
+        let data = p.field_data.as_slice();
+        let value = match data.len() {
+            1 => IntParameter::from_byte(data),
+            2 => IntParameter::from_ushort(data),
+            4 => IntParameter::from_uint(data),
+            _ => None,
+        };
+        value.map(|v| IntParameter(v))
+    }
+}
+
+impl Into<u32> for IntParameter {
+    fn into(self) -> u32 {
+        self.0
     }
 }
 
