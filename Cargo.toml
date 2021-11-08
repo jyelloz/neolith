@@ -14,6 +14,7 @@ license = "MIT"
 anyhow = "*"
 thiserror = "*"
 num_enum = "0.5"
+derive_more = "*"
 tokio = { version = "1", features = ["full"] }
 futures = "0.3"
 async-stream = "0.3"

@@ -16,6 +16,8 @@ use nom::{
     },
 };
 
+use derive_more::{From, Into};
+
 use thiserror::Error;
 
 mod handshake;
@@ -216,20 +218,8 @@ impl Into<TransactionFrame> for LoginReply {
     }
 }
 
-#[derive(Debug, Clone, Copy, PartialEq, Eq, PartialOrd, Ord)]
+#[derive(Debug, Clone, Copy, From, Into, PartialEq, Eq, PartialOrd, Ord)]
 pub struct ProtocolVersion(i16);
-
-impl From<i16> for ProtocolVersion {
-    fn from(int: i16) -> Self {
-        Self(int)
-    }
-}
-
-impl Into<i16> for ProtocolVersion {
-    fn into(self) -> i16 {
-        self.0
-    }
-}
 
 impl Into<Parameter> for ProtocolVersion {
     fn into(self) -> Parameter {
@@ -240,20 +230,8 @@ impl Into<Parameter> for ProtocolVersion {
     }
 }
 
-#[derive(Debug, Clone, Copy, PartialEq, Eq, PartialOrd, Ord)]
+#[derive(Debug, Clone, Copy, From, Into, PartialEq, Eq, PartialOrd, Ord)]
 pub struct IconId(i16);
-
-impl From<i16> for IconId {
-    fn from(int: i16) -> Self {
-        Self(int)
-    }
-}
-
-impl Into<i16> for IconId {
-    fn into(self) -> i16 {
-        self.0
-    }
-}
 
 impl Into<Parameter> for IconId {
     fn into(self) -> Parameter {
@@ -598,23 +576,11 @@ impl Into<Parameter> for UserNameWithInfo {
     }
 }
 
-#[derive(Debug, Clone, Copy, PartialEq, Eq, PartialOrd, Ord)]
+#[derive(Debug, Clone, Copy, From, Into, PartialEq, Eq, PartialOrd, Ord)]
 pub struct UserId(i16);
 
-impl From<i16> for UserId {
-    fn from(int: i16) -> Self {
-        Self(int)
-    }
-}
-
-#[derive(Debug, Clone, Copy, PartialEq, Eq, PartialOrd, Ord)]
+#[derive(Debug, Clone, Copy, From, Into, PartialEq, Eq, PartialOrd, Ord)]
 pub struct UserFlags(i16);
-
-impl From<i16> for UserFlags {
-    fn from(int: i16) -> Self {
-        Self(int)
-    }
-}
 
 #[derive(Debug)]
 pub struct GetMessages;
@@ -691,7 +657,7 @@ impl Into<Parameter> for Message {
     }
 }
 
-#[derive(Debug)]
+#[derive(Debug, From, Into)]
 pub struct GetFileNameList(pub FilePath);
 
 impl TryFrom<TransactionFrame> for GetFileNameList {
