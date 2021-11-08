@@ -815,41 +815,29 @@ impl Into<Parameter> for FileNameWithInfo {
     }
 }
 
-#[derive(Debug)]
+#[derive(Debug, From, Into)]
 pub struct FileType([u8; 4]);
 
 impl From<&[u8; 4]> for FileType {
     fn from(bytes: &[u8; 4]) -> Self {
-        Self(*bytes)
+        (*bytes).into()
     }
 }
 
-#[derive(Debug)]
+#[derive(Debug, From, Into)]
 pub struct Creator([u8; 4]);
 
 impl From<&[u8; 4]> for Creator {
     fn from(bytes: &[u8; 4]) -> Self {
-        Self(*bytes)
+        (*bytes).into()
     }
 }
 
-#[derive(Debug)]
+#[derive(Debug, From, Into)]
 pub struct FileSize(i32);
 
-impl From<i32> for FileSize {
-    fn from(int: i32) -> Self {
-        Self(int)
-    }
-}
-
-#[derive(Debug)]
+#[derive(Debug, From, Into)]
 pub struct NameScript(i16);
-
-impl From<i16> for NameScript {
-    fn from(int: i16) -> Self {
-        Self(int)
-    }
-}
 
 fn take_if_matches(
     parameter: Parameter,
