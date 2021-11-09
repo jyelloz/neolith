@@ -21,6 +21,7 @@ mod handshake;
 mod transaction;
 mod transaction_type;
 mod transaction_field;
+mod parameters;
 
 pub trait HotlineProtocol: Sized {
     fn into_bytes(self) -> Vec<u8>;
