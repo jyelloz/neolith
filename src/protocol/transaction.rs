@@ -8,9 +8,6 @@ use super::{
     be_i8,
     be_i16,
     be_i32,
-    be_u8,
-    be_u16,
-    be_u32,
     take,
     multi,
 };
@@ -317,26 +314,26 @@ impl HotlineProtocol for Parameter {
     }
 }
 
-#[derive(Debug, Clone, Copy, Into)]
-pub struct IntParameter(u32);
+#[derive(Debug, Clone, Copy, From, Into)]
+pub struct IntParameter(i32);
 
 impl IntParameter {
-    fn from_byte(data: &[u8]) -> Option<u32> {
-        if let Ok((b"", i)) = be_u8::<_, nom::error::Error<_>>(data) {
-            Some(i as u32)
+    fn from_i8(data: &[u8]) -> Option<i32> {
+        if let Ok((b"", i)) = be_i8::<_, nom::error::Error<_>>(data) {
+            Some(i as i32)
         } else {
             None
         }
     }
-    fn from_ushort(data: &[u8]) -> Option<u32> {
-        if let Ok((b"", i)) = be_u16::<_, nom::error::Error<_>>(data) {
-            Some(i as u32)
+    fn from_i16(data: &[u8]) -> Option<i32> {
+        if let Ok((b"", i)) = be_i16::<_, nom::error::Error<_>>(data) {
+            Some(i as i32)
         } else {
             None
         }
     }
-    fn from_uint(data: &[u8]) -> Option<u32> {
-        if let Ok((b"", i)) = be_u32::<_, nom::error::Error<_>>(data) {
+    fn from_i32(data: &[u8]) -> Option<i32> {
+        if let Ok((b"", i)) = be_i32::<_, nom::error::Error<_>>(data) {
             Some(i)
         } else {
             None
@@ -348,9 +345,9 @@ impl From<&Parameter> for Option<IntParameter> {
     fn from(p: &Parameter) -> Self {
         let data = p.field_data.as_slice();
         let value = match data.len() {
-            1 => IntParameter::from_byte(data),
-            2 => IntParameter::from_ushort(data),
-            4 => IntParameter::from_uint(data),
+            1 => IntParameter::from_i8(data),
+            2 => IntParameter::from_i16(data),
+            4 => IntParameter::from_i32(data),
             _ => None,
         };
         value.map(|v| IntParameter(v))
