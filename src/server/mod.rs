@@ -3,7 +3,6 @@ use futures::stream::{
     TryStreamExt as _,
     Stream,
     select,
-    select_all,
 };
 use tokio::sync::broadcast::{
     self,
