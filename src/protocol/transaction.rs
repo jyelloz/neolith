@@ -354,6 +354,23 @@ impl From<&Parameter> for Option<IntParameter> {
     }
 }
 
+impl Into<Vec<u8>> for IntParameter {
+    fn into(self) -> Vec<u8> {
+        let Self(int) = self;
+        if int < (i16::MIN as i32) {
+            int.to_be_bytes().to_vec()
+        } else if int < (i8::MIN as i32) {
+            (int as i16).to_be_bytes().to_vec()
+        } else if int <= (i8::MAX as i32) {
+            (int as i8).to_be_bytes().to_vec()
+        } else if int <= (i16::MAX as i32) {
+            (int as i16).to_be_bytes().to_vec()
+        } else {
+            int.to_be_bytes().to_vec()
+        }
+    }
+}
+
 #[derive(Debug, Clone)]
 pub struct TransactionBody {
     pub parameters: Vec<Parameter>,
