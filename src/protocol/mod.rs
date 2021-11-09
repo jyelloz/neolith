@@ -10,9 +10,6 @@ use nom::{
         be_i16,
         be_i32,
         be_i8,
-        be_u16,
-        be_u32,
-        be_u8,
     },
 };
 
