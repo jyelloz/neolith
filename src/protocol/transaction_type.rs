@@ -8,6 +8,9 @@ use num_enum::{
 )]
 #[repr(i16)]
 pub enum TransactionType {
+
+    Reply = 0,
+
     Error = 100,
 
     GetMessages,
