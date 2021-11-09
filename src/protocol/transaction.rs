@@ -15,7 +15,9 @@ use super::{
     multi,
 };
 
-#[derive(Debug, Clone, Copy)]
+use derive_more::{From, Into};
+
+#[derive(Debug, Clone, Copy, From, Into)]
 pub struct Flags(i8);
 
 impl Flags {
@@ -41,7 +43,7 @@ impl HotlineProtocol for Flags {
     }
 }
 
-#[derive(Debug, Clone, Copy)]
+#[derive(Debug, Clone, Copy, From, Into)]
 pub struct IsReply(i8);
 
 impl IsReply {
@@ -73,19 +75,8 @@ impl HotlineProtocol for IsReply {
     }
 }
 
-#[derive(Debug, Clone, Copy)]
+#[derive(Debug, Clone, Copy, From, Into)]
 pub struct Type(i16);
-
-impl From<i16> for Type {
-    fn from(int: i16) -> Self {
-        Self(int)
-    }
-}
-impl Into<i16> for Type {
-    fn into(self) -> i16 {
-        self.0
-    }
-}
 
 impl HotlineProtocol for Type {
     fn into_bytes(self) -> Vec<u8> {
@@ -98,20 +89,8 @@ impl HotlineProtocol for Type {
     }
 }
 
-#[derive(Debug, Clone, Copy)]
+#[derive(Debug, Clone, Copy, From, Into)]
 pub struct Id(i32);
-
-impl From<i32> for Id {
-    fn from(int: i32) -> Self {
-        Self(int)
-    }
-}
-
-impl Into<i32> for Id {
-    fn into(self) -> i32 {
-        self.0
-    }
-}
 
 impl HotlineProtocol for Id {
     fn into_bytes(self) -> Vec<u8> {
@@ -124,20 +103,8 @@ impl HotlineProtocol for Id {
     }
 }
 
-#[derive(Debug, Clone, Copy)]
+#[derive(Debug, Clone, Copy, From, Into)]
 pub struct TotalSize(i32);
-
-impl From<i32> for TotalSize {
-    fn from(int: i32) -> Self {
-        Self(int)
-    }
-}
-
-impl Into<i32> for TotalSize {
-    fn into(self) -> i32 {
-        self.0
-    }
-}
 
 impl HotlineProtocol for TotalSize {
     fn into_bytes(self) -> Vec<u8> {
@@ -150,20 +117,8 @@ impl HotlineProtocol for TotalSize {
     }
 }
 
-#[derive(Debug, Clone, Copy)]
+#[derive(Debug, Clone, Copy, From, Into)]
 pub struct DataSize(i32);
-
-impl From<i32> for DataSize {
-    fn from(int: i32) -> Self {
-        Self(int)
-    }
-}
-
-impl Into<i32> for DataSize {
-    fn into(self) -> i32 {
-        self.0
-    }
-}
 
 impl HotlineProtocol for DataSize {
     fn into_bytes(self) -> Vec<u8> {
@@ -262,20 +217,8 @@ impl HotlineProtocol for TransactionHeader {
     }
 }
 
-#[derive(Debug, Clone, Copy)]
+#[derive(Debug, Clone, Copy, From, Into)]
 pub struct FieldId(i16);
-
-impl From<i16> for FieldId {
-    fn from(int: i16) -> Self {
-        Self(int)
-    }
-}
-
-impl Into<i16> for FieldId {
-    fn into(self) -> i16 {
-        self.0
-    }
-}
 
 impl HotlineProtocol for FieldId {
     fn into_bytes(self) -> Vec<u8> {
@@ -288,7 +231,7 @@ impl HotlineProtocol for FieldId {
     }
 }
 
-#[derive(Debug, Clone, Copy)]
+#[derive(Debug, Clone, Copy, From, Into)]
 struct FieldSize(i16);
 
 impl From<&[u8]> for FieldSize {
@@ -308,7 +251,7 @@ impl HotlineProtocol for FieldSize {
     }
 }
 
-#[derive(Debug, Clone, Copy)]
+#[derive(Debug, Clone, Copy, From, Into)]
 struct ParameterCount(i16);
 
 impl HotlineProtocol for ParameterCount {
@@ -374,7 +317,7 @@ impl HotlineProtocol for Parameter {
     }
 }
 
-#[derive(Debug, Clone, Copy)]
+#[derive(Debug, Clone, Copy, Into)]
 pub struct IntParameter(u32);
 
 impl IntParameter {
@@ -411,12 +354,6 @@ impl From<&Parameter> for Option<IntParameter> {
             _ => None,
         };
         value.map(|v| IntParameter(v))
-    }
-}
-
-impl Into<u32> for IntParameter {
-    fn into(self) -> u32 {
-        self.0
     }
 }
 
