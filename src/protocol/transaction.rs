@@ -291,8 +291,8 @@ impl Parameter {
         let (bytes, data) = take(size)(bytes)?;
         Ok((bytes, data.to_vec()))
     }
-    pub fn int(self) -> Option<IntParameter> {
-        (&self).into()
+    pub fn int(&self) -> Option<IntParameter> {
+        self.into()
     }
 }
 
@@ -344,6 +344,14 @@ impl IntParameter {
         } else {
             None
         }
+    }
+    pub fn i8(&self) -> Option<i8> {
+        let Self(int) = self;
+        i8::try_from(*int).ok()
+    }
+    pub fn i16(&self) -> Option<i16> {
+        let Self(int) = self;
+        i16::try_from(*int).ok()
     }
 }
 
