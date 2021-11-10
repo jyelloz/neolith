@@ -202,12 +202,7 @@ impl Into<TransactionFrame> for LoginReply {
     fn into(self) -> TransactionFrame {
         let header = TransactionHeader {
             _type: TransactionType::Login.into(),
-            error_code: ErrorCode::ok(),
-            is_reply: IsReply::reply(),
-            flags: Flags::none(),
-            id: 0.into(),
-            data_size: 0.into(),
-            total_size: 0.into(),
+            ..Default::default()
         };
         let Self(version) = self;
         let parameters = vec![version.into()];
@@ -530,12 +525,8 @@ impl Into<TransactionFrame> for GetUserNameListReply {
     fn into(self) -> TransactionFrame {
         let header = TransactionHeader {
             _type: TransactionType::GetUserNameList.into(),
-            error_code: ErrorCode::ok(),
             is_reply: IsReply::reply(),
-            flags: Flags::none(),
-            id: 0.into(),
-            data_size: 0.into(),
-            total_size: 0.into(),
+            ..Default::default()
         };
         let Self(users) = self;
         let parameters: Vec<Parameter> = users.into_iter()
@@ -595,12 +586,7 @@ impl Into<TransactionFrame> for GetMessages {
     fn into(self) -> TransactionFrame {
         let header = TransactionHeader {
             _type: TransactionType::GetMessages.into(),
-            error_code: ErrorCode::ok(),
-            is_reply: IsReply::request(),
-            flags: Flags::none(),
-            id: 0.into(),
-            data_size: 0.into(),
-            total_size: 0.into(),
+            ..Default::default()
         };
         TransactionFrame::empty(header)
     }
@@ -624,12 +610,8 @@ impl Into<TransactionFrame> for GetMessagesReply {
     fn into(self) -> TransactionFrame {
         let header = TransactionHeader {
             _type: TransactionType::GetMessages.into(),
-            error_code: ErrorCode::ok(),
             is_reply: IsReply::reply(),
-            flags: Flags::none(),
-            id: 0.into(),
-            data_size: 0.into(),
-            total_size: 0.into(),
+            ..Default::default()
         };
         let parameters: Vec<Parameter> = self.0.into_iter()
             .map(|message| message.into())
@@ -680,12 +662,7 @@ impl Into<TransactionFrame> for GetFileNameList {
     fn into(self) -> TransactionFrame {
         let header = TransactionHeader {
             _type: TransactionType::GetFileNameList.into(),
-            error_code: ErrorCode::ok(),
-            is_reply: IsReply::request(),
-            flags: Flags::none(),
-            id: 0.into(),
-            data_size: 0.into(),
-            total_size: 0.into(),
+            ..Default::default()
         };
         TransactionFrame::empty(header)
     }
@@ -768,12 +745,8 @@ impl Into<TransactionFrame> for GetFileNameListReply {
     fn into(self) -> TransactionFrame {
         let header = TransactionHeader {
             _type: TransactionType::GetFileNameList.into(),
-            error_code: ErrorCode::ok(),
             is_reply: IsReply::reply(),
-            flags: Flags::none(),
-            id: 0.into(),
-            data_size: 0.into(),
-            total_size: 0.into(),
+            ..Default::default()
         };
         let parameters: Vec::<Parameter> = self.0.into_iter()
             .map(FileNameWithInfo::into)
