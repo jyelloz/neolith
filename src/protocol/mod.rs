@@ -57,6 +57,12 @@ impl ErrorCode {
     }
 }
 
+impl Default for ErrorCode {
+    fn default() -> Self {
+        Self::ok()
+    }
+}
+
 impl HotlineProtocol for ErrorCode {
     fn into_bytes(self) -> Vec<u8> {
         let Self(value) = self;
