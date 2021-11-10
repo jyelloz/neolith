@@ -272,6 +272,12 @@ impl Parameter {
     pub fn new(field_id: FieldId, field_data: Vec<u8>) -> Self {
         Self { field_id, field_data }
     }
+    pub fn new_int(field_id: FieldId, int: IntParameter) -> Self {
+        Self {
+            field_id,
+            field_data: int.into(),
+        }
+    }
     pub fn field_matches(&self, field: TransactionField) -> bool {
         self.field_id.0 == field as i16
     }
