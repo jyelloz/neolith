@@ -613,10 +613,12 @@ impl Into<TransactionFrame> for GetMessagesReply {
             is_reply: IsReply::reply(),
             ..Default::default()
         };
-        let parameters: Vec<Parameter> = self.0.into_iter()
-            .map(|message| message.into())
-            .collect();
-        TransactionFrame { header, body: parameters.into() }
+        let Self(messages) = self;
+        let body = messages.into_iter()
+            .map(Message::into)
+            .collect::<Vec<Parameter>>()
+            .into();
+        TransactionFrame { header, body }
     }
 }
 
