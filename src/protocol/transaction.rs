@@ -86,7 +86,7 @@ impl HotlineProtocol for Type {
     }
 }
 
-#[derive(Debug, Clone, Copy, From, Into)]
+#[derive(Debug, Clone, Copy, Default, From, Into)]
 pub struct Id(i32);
 
 impl HotlineProtocol for Id {
@@ -100,7 +100,7 @@ impl HotlineProtocol for Id {
     }
 }
 
-#[derive(Debug, Clone, Copy, From, Into)]
+#[derive(Debug, Clone, Copy, Default, From, Into)]
 pub struct TotalSize(i32);
 
 impl HotlineProtocol for TotalSize {
@@ -114,7 +114,7 @@ impl HotlineProtocol for TotalSize {
     }
 }
 
-#[derive(Debug, Clone, Copy, From, Into)]
+#[derive(Debug, Clone, Copy, Default, From, Into)]
 pub struct DataSize(i32);
 
 impl HotlineProtocol for DataSize {
@@ -167,6 +167,20 @@ impl TransactionHeader {
             id: request.id,
             is_reply: IsReply::reply(),
             ..self
+        }
+    }
+}
+
+impl Default for TransactionHeader {
+    fn default() -> Self {
+        Self {
+            _type: TransactionType::Error.into(),
+            id: 0.into(),
+            error_code: ErrorCode::ok(),
+            is_reply: IsReply::request(),
+            flags: Default::default(),
+            total_size: 0.into(),
+            data_size: 0.into(),
         }
     }
 }
