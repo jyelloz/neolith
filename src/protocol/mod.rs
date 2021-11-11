@@ -803,6 +803,68 @@ impl Into<TransactionFrame> for ChatMessage {
 }
 
 #[derive(Debug)]
+pub struct SendInstantMessage {
+    pub user_id: UserId,
+    pub message: Vec<u8>,
+}
+
+impl TryFrom<TransactionFrame> for SendInstantMessage {
+    type Error = ProtocolError;
+    fn try_from(frame: TransactionFrame) -> Result<Self, Self::Error> {
+
+        let TransactionFrame {
+            body, ..
+        } = frame.require_transaction_type(TransactionType::SendInstantMessage)?;
+
+        let TransactionBody { parameters, .. } = body;
+
+        let user_id = parameters.iter()
+            .find(|p| p.field_matches(TransactionField::UserId))
+            .ok_or(ProtocolError::MissingField(TransactionField::UserId))
+            .and_then(UserId::try_from)?;
+
+        let message = parameters.into_iter()
+            .filter(|p| p.field_matches(TransactionField::Data))
+            .map(|p| p.take())
+            .next()
+            .ok_or(ProtocolError::MissingField(TransactionField::Data))?;
+
+        Ok(Self { user_id, message })
+    }
+}
+
+impl Into<TransactionFrame> for SendInstantMessage {
+    fn into(self) -> TransactionFrame {
+        let header = TransactionHeader {
+            _type: TransactionType::SendChat.into(),
+            ..Default::default()
+        };
+        let Self { user_id, message } = self;
+        let body = vec![
+            user_id.into(),
+            Parameter::new(TransactionField::Data.into(), message),
+        ].into();
+        TransactionFrame { header, body }
+    }
+}
+
+pub struct SendInstantMessageReply;
+
+impl TryFrom<TransactionFrame> for SendInstantMessageReply {
+    type Error = ProtocolError;
+    fn try_from(frame: TransactionFrame) -> Result<Self, Self::Error> {
+        frame.require_transaction_type(TransactionType::Reply)?;
+        Ok(Self)
+    }
+}
+
+impl Into<TransactionFrame> for SendInstantMessageReply {
+    fn into(self) -> TransactionFrame {
+        TransactionFrame::empty(Default::default())
+    }
+}
+
+#[derive(Debug)]
 pub struct GetClientInfoTextRequest {
     pub user_id: UserId,
 }
