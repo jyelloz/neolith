@@ -803,6 +803,32 @@ impl Into<TransactionFrame> for ChatMessage {
 }
 
 #[derive(Debug)]
+pub struct ServerMessage {
+    pub user_id: UserId,
+    pub user_name: Nickname,
+    pub message: Vec<u8>,
+}
+
+impl Into<TransactionFrame> for ServerMessage {
+    fn into(self) -> TransactionFrame {
+        let header = TransactionHeader {
+            _type: TransactionType::ServerMessage.into(),
+            ..Default::default()
+        };
+        let Self { message, user_id, user_name } = self;
+        let body = vec![
+            Parameter::new(
+                TransactionField::Data.into(),
+                message,
+            ),
+            user_id.into(),
+            user_name.into(),
+        ].into();
+        TransactionFrame { header, body }
+    }
+}
+
+#[derive(Debug)]
 pub struct SendInstantMessage {
     pub user_id: UserId,
     pub message: Vec<u8>,
