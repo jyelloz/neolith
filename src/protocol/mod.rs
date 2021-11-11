@@ -95,12 +95,17 @@ pub use transaction::{
     Id,
 };
 pub use parameters::{
-    Credential,
-    UserLogin,
-    Password,
-    ChatOptions,
     ChatId,
+    ChatOptions,
+    Credential,
+    IconId,
+    Message,
     Nickname,
+    Password,
+    UserFlags,
+    UserId,
+    UserLogin,
+    UserNameWithInfo,
 };
 
 #[derive(Debug, PartialEq, Eq, PartialOrd, Ord)]
@@ -148,35 +153,6 @@ impl Into<Parameter> for ProtocolVersion {
             TransactionField::Version.into(),
             self.0.into(),
         )
-    }
-}
-
-#[derive(Debug, Clone, Copy, From, Into, PartialEq, Eq, PartialOrd, Ord)]
-pub struct IconId(i16);
-
-impl Into<Parameter> for IconId {
-    fn into(self) -> Parameter {
-        Parameter::new_int(
-            TransactionField::UserIconId.into(),
-            self.0.into(),
-        )
-    }
-}
-
-impl TryFrom<&Parameter> for IconId {
-    type Error = ProtocolError;
-    fn try_from(parameter: &Parameter) -> Result<Self, Self::Error> {
-        let data = take_if_matches(
-            parameter.clone(),
-            TransactionField::UserIconId,
-        )?;
-        let result: BIResult<i16> = be_i16(&data[..]);
-        match result {
-            Ok((_, data)) => Ok(data.into()),
-            Err(_) => Err(
-                ProtocolError::MalformedData(TransactionField::UserIconId)
-            ),
-        }
     }
 }
 
@@ -426,12 +402,7 @@ impl Into<TransactionFrame> for NotifyUserDelete {
             ..Default::default()
         };
         let Self { user_id } = self;
-        let user_id = Parameter::new(
-            TransactionField::UserId.into(),
-            user_id.0.to_be_bytes().to_vec(),
-        );
-        let parameters = vec![user_id];
-        let body = TransactionBody { parameters };
+        let body = vec![user_id.into()].into();
         TransactionFrame { header, body }
     }
 }
@@ -494,69 +465,6 @@ impl Into<TransactionFrame> for GetUserNameListReply {
     }
 }
 
-#[derive(Debug, Clone)]
-pub struct UserNameWithInfo {
-    pub user_id: UserId,
-    pub icon_id: IconId,
-    pub user_flags: UserFlags,
-    pub username: Nickname,
-}
-
-impl Into<Parameter> for UserNameWithInfo {
-    fn into(self) -> Parameter {
-        let username = self.username.take();
-        let username_len = username.len() as i16;
-        let data = [
-            &self.user_id.0.to_be_bytes()[..],
-            &self.icon_id.0.to_be_bytes()[..],
-            &self.user_flags.0.to_be_bytes()[..],
-            &username_len.to_be_bytes()[..],
-            &username[..],
-        ].into_iter()
-            .flat_map(|bytes| bytes.into_iter())
-            .map(|b| *b)
-            .collect();
-        Parameter::new(
-            TransactionField::UserNameWithInfo.into(),
-            data,
-        )
-    }
-}
-
-#[derive(Debug, Clone, Copy, From, Into, PartialEq, Eq, PartialOrd, Ord)]
-pub struct UserId(i16);
-
-impl TryFrom<&Parameter> for UserId {
-    type Error = ProtocolError;
-    fn try_from(p: &Parameter) -> Result<Self, Self::Error> {
-        p.int()
-            .and_then(|i| i.i16())
-            .map(Self::from)
-            .ok_or(ProtocolError::MalformedData(TransactionField::UserId))
-    }
-}
-
-impl Into<Parameter> for UserId {
-    fn into(self) -> Parameter {
-        Parameter::new_int(
-            TransactionField::UserId.into(),
-            self.0.into(),
-        )
-    }
-}
-
-#[derive(Debug, Clone, Copy, From, Into, PartialEq, Eq, PartialOrd, Ord)]
-pub struct UserFlags(i16);
-
-impl Into<Parameter> for UserFlags {
-    fn into(self) -> Parameter {
-        Parameter::new_int(
-            TransactionField::UserFlags.into(),
-            self.0.into(),
-        )
-    }
-}
-
 #[derive(Debug)]
 pub struct GetMessages;
 
@@ -605,23 +513,6 @@ impl Into<TransactionFrame> for GetMessagesReply {
             .collect::<Vec<Parameter>>()
             .into();
         TransactionFrame { header, body }
-    }
-}
-
-pub struct Message(Vec<u8>);
-
-impl Message {
-    pub fn new(message: Vec<u8>) -> Self {
-        Self(message)
-    }
-}
-
-impl Into<Parameter> for Message {
-    fn into(self) -> Parameter {
-        Parameter::new(
-            TransactionField::Data.into(),
-            self.0,
-        )
     }
 }
 
