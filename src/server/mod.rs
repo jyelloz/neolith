@@ -31,6 +31,7 @@ use transaction_stream::Frames;
 pub enum Message {
     TransactionReceived(TransactionFrame),
     Chat(Chat),
+    InstantMessage(InstantMessage),
     UserConnect(User),
     UserUpdate(User),
     UserDisconnect(User),
@@ -94,6 +95,13 @@ impl From<UserNameWithInfo> for User {
     }
 }
 
+#[derive(Debug, Clone)]
+pub struct InstantMessage {
+    pub from: User,
+    pub to: User,
+    pub message: Vec<u8>,
+}
+
 pub type BusResult<T> = Result<T, BusError>;
 
 impl Bus {
@@ -103,6 +111,13 @@ impl Bus {
     }
     pub fn chat(&mut self, chat: Chat) -> BusResult<()> {
         self.sender.send(Message::Chat(chat))?;
+        Ok(())
+    }
+    pub fn instant_message(
+        &mut self,
+        message: InstantMessage,
+    ) -> BusResult<()> {
+        self.sender.send(Message::InstantMessage(message))?;
         Ok(())
     }
     pub fn user_connect(&mut self, user: User) -> BusResult<()> {
