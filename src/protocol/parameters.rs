@@ -250,6 +250,16 @@ impl Into<Parameter> for UserFlags {
     }
 }
 
+impl TryFrom<&Parameter> for UserFlags {
+    type Error = ProtocolError;
+    fn try_from(parameter: &Parameter) -> Result<Self, Self::Error> {
+        parameter.int()
+            .and_then(|i| i.i16())
+            .map(Self::from)
+            .ok_or(ProtocolError::MalformedData(TransactionField::UserFlags))
+    }
+}
+
 #[derive(Debug, Clone)]
 pub struct UserNameWithInfo {
     pub user_id: UserId,
@@ -275,6 +285,30 @@ impl Into<Parameter> for UserNameWithInfo {
         Parameter::new(
             TransactionField::UserNameWithInfo.into(),
             data,
+        )
+    }
+}
+
+#[derive(Debug, Clone, From, Into, PartialEq, Eq, PartialOrd, Ord)]
+pub struct Message(Vec<u8>);
+
+impl Message {
+    pub fn new(message: Vec<u8>) -> Self {
+        Self(message)
+    }
+}
+
+impl From<&Parameter> for Message {
+    fn from(parameter: &Parameter) -> Self {
+        Self(parameter.clone().take())
+    }
+}
+
+impl Into<Parameter> for Message {
+    fn into(self) -> Parameter {
+        Parameter::new(
+            TransactionField::Data.into(),
+            self.0,
         )
     }
 }
