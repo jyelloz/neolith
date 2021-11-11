@@ -150,8 +150,8 @@ impl Default for ChatOptions {
 
 impl TryFrom<&Parameter> for ChatOptions {
     type Error = ProtocolError;
-    fn try_from(p: &Parameter) -> Result<Self, Self::Error> {
-        p.clone()
+    fn try_from(parameter: &Parameter) -> Result<Self, Self::Error> {
+        parameter.clone()
          .int()
          .map(|i| Self(i.into()))
          .ok_or(ProtocolError::MalformedData(TransactionField::ChatOptions))
@@ -174,8 +174,8 @@ pub struct ChatId(i32);
 
 impl TryFrom<&Parameter> for ChatId {
     type Error = ProtocolError;
-    fn try_from(p: &Parameter) -> Result<Self, Self::Error> {
-        p.clone()
+    fn try_from(parameter: &Parameter) -> Result<Self, Self::Error> {
+        parameter.clone()
          .int()
          .map(|i| Self(i.into()))
          .ok_or(ProtocolError::MalformedData(TransactionField::ChatId))
