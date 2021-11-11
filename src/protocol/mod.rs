@@ -735,14 +735,18 @@ impl Into<TransactionFrame> for SendChat {
     fn into(self) -> TransactionFrame {
         let header = TransactionHeader {
             _type: TransactionType::SendChat.into(),
-            error_code: ErrorCode::ok(),
-            is_reply: IsReply::request(),
-            flags: Flags::none(),
-            id: 0.into(),
-            data_size: 0.into(),
-            total_size: 0.into(),
+            ..Default::default()
         };
-        TransactionFrame::empty(header)
+        let Self { message, chat_id, options } = self;
+        let body = vec![
+            Some(Parameter::new(TransactionField::Data.into(), message)),
+            chat_id.map(ChatId::into),
+            Some(options.into()),
+        ].into_iter()
+            .flat_map(Option::into_iter)
+            .collect::<Vec<_>>()
+            .into();
+        TransactionFrame { header, body }
     }
 }
 
