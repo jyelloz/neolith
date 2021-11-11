@@ -222,9 +222,9 @@ pub struct ProtocolVersion(i16);
 
 impl Into<Parameter> for ProtocolVersion {
     fn into(self) -> Parameter {
-        Parameter::new(
+        Parameter::new_int(
             TransactionField::Version.into(),
-            self.0.to_be_bytes().to_vec(),
+            self.0.into(),
         )
     }
 }
@@ -234,9 +234,9 @@ pub struct IconId(i16);
 
 impl Into<Parameter> for IconId {
     fn into(self) -> Parameter {
-        Parameter::new(
+        Parameter::new_int(
             TransactionField::UserIconId.into(),
-            self.0.to_be_bytes().to_vec(),
+            self.0.into(),
         )
     }
 }
@@ -459,9 +459,9 @@ impl Into<TransactionBody> for ShowAgreement {
         let parameter = if let Some(agreement) = self.agreement {
             agreement.into()
         } else {
-            Parameter::new(
+            Parameter::new_int(
                 TransactionField::NoServerAgreement.into(),
-                1i16.to_be_bytes().to_vec(),
+                1i16.into(),
             )
         };
         TransactionBody { parameters: vec![parameter] }
@@ -516,40 +516,29 @@ impl Into<TransactionFrame> for NotifyUserChange {
             icon_id,
             user_flags,
         } = self;
-        let user_id = Parameter::new(
-            TransactionField::UserId.into(),
-            user_id.0.to_be_bytes().to_vec(),
-        );
-        let icon_id = Parameter::new(
-            TransactionField::UserIconId.into(),
-            icon_id.0.to_be_bytes().to_vec(),
-        );
-        let user_flags = Parameter::new(
-            TransactionField::UserFlags.into(),
-            user_flags.0.to_be_bytes().to_vec(),
-        );
-        let username = Parameter::new(
-            TransactionField::UserName.into(),
-            username.take(),
-        );
-        let parameters = vec![
-            user_id,
-            icon_id,
-            user_flags,
-            username,
-        ];
-        let body = TransactionBody { parameters };
+        let body = vec![
+            user_id.into(),
+            icon_id.into(),
+            user_flags.into(),
+            username.into(),
+        ].into();
         TransactionFrame { header, body }
     }
 }
 
 impl From<&UserNameWithInfo> for NotifyUserChange {
     fn from(user: &UserNameWithInfo) -> Self {
+        let UserNameWithInfo {
+            icon_id,
+            user_flags,
+            user_id,
+            username,
+        } = user.clone();
         Self {
-            icon_id: user.icon_id,
-            user_flags: user.user_flags,
-            user_id: user.user_id,
-            username: user.username.clone(),
+            icon_id,
+            user_flags,
+            user_id,
+            username,
         }
     }
 }
@@ -666,8 +655,36 @@ impl Into<Parameter> for UserNameWithInfo {
 #[derive(Debug, Clone, Copy, From, Into, PartialEq, Eq, PartialOrd, Ord)]
 pub struct UserId(i16);
 
+impl TryFrom<&Parameter> for UserId {
+    type Error = ProtocolError;
+    fn try_from(p: &Parameter) -> Result<Self, Self::Error> {
+        p.int()
+            .and_then(|i| i.i16())
+            .map(Self::from)
+            .ok_or(ProtocolError::MalformedData(TransactionField::UserId))
+    }
+}
+
+impl Into<Parameter> for UserId {
+    fn into(self) -> Parameter {
+        Parameter::new_int(
+            TransactionField::UserId.into(),
+            self.0.into(),
+        )
+    }
+}
+
 #[derive(Debug, Clone, Copy, From, Into, PartialEq, Eq, PartialOrd, Ord)]
 pub struct UserFlags(i16);
+
+impl Into<Parameter> for UserFlags {
+    fn into(self) -> Parameter {
+        Parameter::new_int(
+            TransactionField::UserFlags.into(),
+            self.0.into(),
+        )
+    }
+}
 
 #[derive(Debug)]
 pub struct GetMessages;
