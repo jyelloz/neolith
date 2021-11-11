@@ -94,6 +94,14 @@ pub use transaction::{
     TotalSize,
     Id,
 };
+pub use parameters::{
+    Credential,
+    UserLogin,
+    Password,
+    ChatOptions,
+    ChatId,
+    Nickname,
+};
 
 #[derive(Debug, PartialEq, Eq, PartialOrd, Ord)]
 pub struct LoginRequest {
@@ -101,92 +109,6 @@ pub struct LoginRequest {
     pub nickname: Nickname,
     pub password: Option<Password>,
     pub icon_id: IconId,
-}
-
-#[derive(Debug, PartialEq, Eq, PartialOrd, Ord)]
-pub struct UserLogin(Vec<u8>);
-
-impl UserLogin {
-    pub fn new(login: Vec<u8>) -> Self {
-        Self(login)
-    }
-    pub fn from_cleartext(clear: &[u8]) -> Self {
-        Self(invert_credential(clear))
-    }
-    pub fn raw_data(&self) -> &[u8] {
-        &self.0
-    }
-    pub fn take(self) -> Vec<u8> {
-        self.0
-    }
-}
-
-impl Credential for UserLogin {
-    fn deobfuscate(&self) -> Vec<u8> {
-        invert_credential(&self.0)
-    }
-}
-
-impl TryFrom<&Parameter> for UserLogin {
-    type Error = ProtocolError;
-    fn try_from(parameter: &Parameter) -> Result<Self, Self::Error> {
-        let data = take_if_matches(
-            parameter.clone(),
-            TransactionField::UserLogin,
-        )?;
-        Ok(Self::new(data))
-    }
-}
-
-impl Into<Parameter> for UserLogin {
-    fn into(self) -> Parameter {
-        let Self(field_data) = self;
-        let field_id = FieldId::from(TransactionField::UserLogin);
-        Parameter::new(field_id, field_data)
-    }
-}
-
-#[derive(Debug, Clone, PartialEq, Eq, PartialOrd, Ord)]
-pub struct Nickname(Vec<u8>);
-
-impl Nickname {
-    pub fn new(nickname: Vec<u8>) -> Self {
-        Self(nickname)
-    }
-    pub fn take(self) -> Vec<u8> {
-        self.0
-    }
-}
-
-impl Default for Nickname {
-    fn default() -> Self {
-        Self(b"unnamed".to_vec())
-    }
-}
-
-impl TryFrom<&Parameter> for Nickname {
-    type Error = ProtocolError;
-    fn try_from(parameter: &Parameter) -> Result<Self, Self::Error> {
-        let data = take_if_matches(
-            parameter.clone(),
-            TransactionField::UserName,
-        )?;
-        Ok(Self::new(data))
-    }
-}
-
-#[derive(Debug, PartialEq, Eq, PartialOrd, Ord)]
-pub struct Password(Vec<u8>);
-
-impl TryFrom<&Parameter> for Password {
-    type Error = ProtocolError;
-    fn try_from(parameter: &Parameter) -> Result<Self, Self::Error> {
-        let data = take_if_matches(
-            parameter.clone(),
-            TransactionField::UserPassword,
-        )?;
-        Ok(Self::new(data))
-    }
 }
 
 #[derive(Debug, PartialEq, Eq, PartialOrd, Ord)]
@@ -298,37 +220,6 @@ pub enum ServerBanner {
     Data(Vec<u8>),
 }
 
-fn invert_credential(data: &[u8]) -> Vec<u8> {
-    data.iter()
-        .map(|b| !b)
-        .collect()
-}
-
-trait Credential {
-    fn deobfuscate(&self) -> Vec<u8>;
-}
-
-impl Password {
-    pub fn new(password: Vec<u8>) -> Self {
-        Self(password)
-    }
-    pub fn from_cleartext(clear: &[u8]) -> Self {
-        Self(invert_credential(clear))
-    }
-    pub fn raw_data(&self) -> &[u8] {
-        &self.0
-    }
-    pub fn take(self) -> Vec<u8> {
-        self.0
-    }
-}
-
-impl Credential for Password {
-    fn deobfuscate(&self) -> Vec<u8> {
-        invert_credential(&self.0)
-    }
-}
-
 impl TryFrom<TransactionFrame> for LoginRequest {
     type Error = ProtocolError;
     fn try_from(frame: TransactionFrame) -> Result<Self, Self::Error> {
@@ -413,26 +304,6 @@ impl From<TransactionType> for Type {
 impl From<TransactionField> for FieldId {
     fn from(field: TransactionField) -> Self {
         Self::from(field as i16)
-    }
-}
-
-impl Into<Parameter> for Nickname {
-    fn into(self) -> Parameter {
-        let Self(nickname) = self;
-        Parameter::new(
-            TransactionField::UserName.into(),
-            nickname,
-        )
-    }
-}
-
-impl Into<Parameter> for Password {
-    fn into(self) -> Parameter {
-        let Self(password) = self;
-        Parameter::new(
-            TransactionField::UserPassword.into(),
-            password,
-        )
     }
 }
 
