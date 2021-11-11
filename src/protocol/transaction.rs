@@ -163,7 +163,7 @@ impl TransactionHeader {
     }
     pub fn reply_to(self, request: &TransactionHeader) -> Self {
         Self {
-            _type: request._type,
+            _type: TransactionType::Reply.into(),
             id: request.id,
             is_reply: IsReply::reply(),
             ..self
