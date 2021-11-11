@@ -260,7 +260,7 @@ impl TryFrom<&Parameter> for UserFlags {
     }
 }
 
-#[derive(Debug, Clone)]
+#[derive(Debug, Clone, PartialEq, Eq)]
 pub struct UserNameWithInfo {
     pub user_id: UserId,
     pub icon_id: IconId,
