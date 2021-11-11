@@ -34,4 +34,8 @@ impl Users {
     pub fn borrow(&self) -> &[UserNameWithInfo] {
         &self.0
     }
+    pub fn find(&self, id: UserId) -> Option<&UserNameWithInfo> {
+        self.0.iter()
+            .find(|u| u.user_id == id)
+    }
 }
