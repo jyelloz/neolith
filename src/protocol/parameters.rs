@@ -1,6 +1,6 @@
 use super::{
     ProtocolError,
-    transaction::{Parameter, IntParameter},
+    transaction::Parameter,
     transaction_field::TransactionField,
 };
 
