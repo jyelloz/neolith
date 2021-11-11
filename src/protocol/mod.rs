@@ -496,6 +496,98 @@ impl TryFrom<TransactionFrame> for SetClientUserInfo {
     }
 }
 
+#[derive(Debug, PartialEq, Eq, PartialOrd, Ord)]
+pub struct NotifyUserChange {
+    pub user_id: UserId,
+    pub user_flags: UserFlags,
+    pub username: Nickname,
+    pub icon_id: IconId,
+}
+
+impl Into<TransactionFrame> for NotifyUserChange {
+    fn into(self) -> TransactionFrame {
+        let header = TransactionHeader {
+            _type: TransactionType::NotifyUserChange.into(),
+            ..Default::default()
+        };
+        let Self {
+            user_id,
+            username,
+            icon_id,
+            user_flags,
+        } = self;
+        let user_id = Parameter::new(
+            TransactionField::UserId.into(),
+            user_id.0.to_be_bytes().to_vec(),
+        );
+        let icon_id = Parameter::new(
+            TransactionField::UserIconId.into(),
+            icon_id.0.to_be_bytes().to_vec(),
+        );
+        let user_flags = Parameter::new(
+            TransactionField::UserFlags.into(),
+            user_flags.0.to_be_bytes().to_vec(),
+        );
+        let username = Parameter::new(
+            TransactionField::UserName.into(),
+            username.take(),
+        );
+        let parameters = vec![
+            user_id,
+            icon_id,
+            user_flags,
+            username,
+        ];
+        let body = TransactionBody { parameters };
+        TransactionFrame { header, body }
+    }
+}
+
+impl From<&UserNameWithInfo> for NotifyUserChange {
+    fn from(user: &UserNameWithInfo) -> Self {
+        Self {
+            icon_id: user.icon_id,
+            user_flags: user.user_flags,
+            user_id: user.user_id,
+            username: user.username.clone(),
+        }
+    }
+}
+
+#[derive(Debug, PartialEq, Eq, PartialOrd, Ord)]
+pub struct NotifyUserDelete {
+    pub user_id: UserId,
+}
+
+impl Into<TransactionFrame> for NotifyUserDelete {
+    fn into(self) -> TransactionFrame {
+        let header = TransactionHeader {
+            _type: TransactionType::NotifyUserDelete.into(),
+            ..Default::default()
+        };
+        let Self { user_id } = self;
+        let user_id = Parameter::new(
+            TransactionField::UserId.into(),
+            user_id.0.to_be_bytes().to_vec(),
+        );
+        let parameters = vec![user_id];
+        let body = TransactionBody { parameters };
+        TransactionFrame { header, body }
+    }
+}
+
+impl From<UserId> for NotifyUserDelete {
+    fn from(user_id: UserId) -> Self {
+        Self { user_id }
+    }
+}
+
+impl From<&UserNameWithInfo> for NotifyUserDelete {
+    fn from(user: &UserNameWithInfo) -> Self {
+        user.user_id.into()
+    }
+}
+
 #[derive(Debug, PartialEq, Eq)]
 pub struct GetUserNameList;
 
