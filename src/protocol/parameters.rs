@@ -161,10 +161,9 @@ impl TryFrom<&Parameter> for ChatOptions {
 impl Into<Parameter> for ChatOptions {
     fn into(self) -> Parameter {
         let Self(int) = self;
-        let value = IntParameter::from(int);
-        Parameter::new(
+        Parameter::new_int(
             TransactionField::ChatOptions.into(),
-            value.into(),
+            int.into(),
         )
     }
 }
@@ -185,10 +184,97 @@ impl TryFrom<&Parameter> for ChatId {
 impl Into<Parameter> for ChatId {
     fn into(self) -> Parameter {
         let Self(int) = self;
-        let value = IntParameter::from(int);
-        Parameter::new(
+        Parameter::new_int(
             TransactionField::ChatId.into(),
-            value.into(),
+            int.into(),
+        )
+    }
+}
+
+#[derive(Debug, Clone, Copy, From, Into, PartialEq, Eq, PartialOrd, Ord)]
+pub struct IconId(i16);
+
+impl Into<Parameter> for IconId {
+    fn into(self) -> Parameter {
+        let Self(int) = self;
+        Parameter::new_int(
+            TransactionField::UserIconId.into(),
+            int.into(),
+        )
+    }
+}
+
+impl TryFrom<&Parameter> for IconId {
+    type Error = ProtocolError;
+    fn try_from(parameter: &Parameter) -> Result<Self, Self::Error> {
+        parameter.int()
+            .and_then(|int| int.i16())
+            .map(Self::from)
+            .ok_or(ProtocolError::MalformedData(TransactionField::UserIconId))
+    }
+}
+
+#[derive(Debug, Clone, Copy, From, Into, PartialEq, Eq, PartialOrd, Ord)]
+pub struct UserId(i16);
+
+impl TryFrom<&Parameter> for UserId {
+    type Error = ProtocolError;
+    fn try_from(parameter: &Parameter) -> Result<Self, Self::Error> {
+        parameter.int()
+            .and_then(|i| i.i16())
+            .map(Self::from)
+            .ok_or(ProtocolError::MalformedData(TransactionField::UserId))
+    }
+}
+
+impl Into<Parameter> for UserId {
+    fn into(self) -> Parameter {
+        let Self(int) = self;
+        Parameter::new_int(
+            TransactionField::UserId.into(),
+            int.into(),
+        )
+    }
+}
+
+#[derive(Debug, Clone, Copy, From, Into, PartialEq, Eq, PartialOrd, Ord)]
+pub struct UserFlags(i16);
+
+impl Into<Parameter> for UserFlags {
+    fn into(self) -> Parameter {
+        let Self(int) = self;
+        Parameter::new_int(
+            TransactionField::UserFlags.into(),
+            int.into(),
+        )
+    }
+}
+
+#[derive(Debug, Clone)]
+pub struct UserNameWithInfo {
+    pub user_id: UserId,
+    pub icon_id: IconId,
+    pub user_flags: UserFlags,
+    pub username: Nickname,
+}
+
+impl Into<Parameter> for UserNameWithInfo {
+    fn into(self) -> Parameter {
+        let username = self.username.take();
+        let username_len = username.len() as i16;
+        let data = [
+            &self.user_id.0.to_be_bytes()[..],
+            &self.icon_id.0.to_be_bytes()[..],
+            &self.user_flags.0.to_be_bytes()[..],
+            &username_len.to_be_bytes()[..],
+            &username[..],
+        ].into_iter()
+            .flat_map(|bytes| bytes.into_iter())
+            .map(|b| *b)
+            .collect();
+        Parameter::new(
+            TransactionField::UserNameWithInfo.into(),
+            data,
         )
     }
 }
