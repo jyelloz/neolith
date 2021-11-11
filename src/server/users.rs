@@ -8,7 +8,7 @@ pub struct Users(Vec<UserNameWithInfo>, usize);
 
 impl Users {
     pub fn new() -> Self {
-        Self(vec![], 0)
+        Self(vec![], 1)
     }
     pub fn add(&mut self, user: &mut UserNameWithInfo) -> UserId {
         let Self(users, top_id) = self;
