@@ -927,6 +927,197 @@ pub struct FileSize(i32);
 #[derive(Debug, From, Into)]
 pub struct NameScript(i16);
 
+#[derive(Debug)]
+pub struct SendChat {
+    pub options: ChatOptions,
+    pub chat_id: Option<ChatId>,
+    pub message: Vec<u8>,
+}
+
+impl TryFrom<TransactionFrame> for SendChat {
+    type Error = ProtocolError;
+    fn try_from(frame: TransactionFrame) -> Result<Self, Self::Error> {
+
+        let TransactionFrame {
+            body, ..
+        } = frame.require_transaction_type(TransactionType::SendChat)?;
+
+        let TransactionBody { parameters, .. } = body;
+
+        let options = parameters.iter()
+            .filter(|p| p.field_matches(TransactionField::ChatOptions))
+            .find_map(|p| ChatOptions::try_from(p).ok())
+            .unwrap_or_default();
+
+        let chat_id = parameters.iter()
+            .filter(|p| p.field_matches(TransactionField::ChatId))
+            .find_map(|p| ChatId::try_from(p).ok());
+
+        let message = parameters.into_iter()
+            .filter(|p| p.field_matches(TransactionField::Data))
+            .map(|p| p.take())
+            .next()
+            .ok_or(ProtocolError::MissingField(TransactionField::Data))?;
+
+        let chat = Self {
+            options,
+            chat_id,
+            message,
+        };
+
+        Ok(chat)
+    }
+}
+
+impl Into<TransactionFrame> for SendChat {
+    fn into(self) -> TransactionFrame {
+        let header = TransactionHeader {
+            _type: TransactionType::SendChat.into(),
+            error_code: ErrorCode::ok(),
+            is_reply: IsReply::request(),
+            flags: Flags::none(),
+            id: 0.into(),
+            data_size: 0.into(),
+            total_size: 0.into(),
+        };
+        TransactionFrame::empty(header)
+    }
+}
+
+#[derive(Debug)]
+pub struct ChatMessage {
+    pub chat_id: Option<ChatId>,
+    pub message: Vec<u8>,
+}
+
+impl TryFrom<TransactionFrame> for ChatMessage {
+    type Error = ProtocolError;
+    fn try_from(frame: TransactionFrame) -> Result<Self, Self::Error> {
+
+        let TransactionFrame {
+            body, ..
+        } = frame.require_transaction_type(TransactionType::ChatMessage)?;
+
+        let TransactionBody { parameters, .. } = body;
+
+        let chat_id = parameters.iter()
+            .filter(|p| p.field_matches(TransactionField::ChatId))
+            .find_map(|p| ChatId::try_from(p).ok());
+
+        let message = parameters.into_iter()
+            .filter(|p| p.field_matches(TransactionField::Data))
+            .map(|p| p.take())
+            .next()
+            .ok_or(ProtocolError::MissingField(TransactionField::Data))?;
+
+        let chat = Self {
+            chat_id,
+            message,
+        };
+
+        Ok(chat)
+    }
+}
+
+impl Into<TransactionFrame> for ChatMessage {
+    fn into(self) -> TransactionFrame {
+        let header = TransactionHeader {
+            _type: TransactionType::ChatMessage.into(),
+            ..Default::default()
+        };
+        let Self { message, .. } = self;
+        let body = vec![
+            Parameter::new(
+                TransactionField::Data.into(),
+                message,
+            ),
+        ].into();
+        TransactionFrame { header, body }
+    }
+}
+
+#[derive(Debug)]
+pub struct GetClientInfoTextRequest {
+    pub user_id: UserId,
+}
+
+impl TryFrom<TransactionFrame> for GetClientInfoTextRequest {
+    type Error = ProtocolError;
+    fn try_from(frame: TransactionFrame) -> Result<Self, Self::Error> {
+
+        let TransactionFrame {
+            body, ..
+        } = frame.require_transaction_type(TransactionType::GetClientInfoText)?;
+
+        let TransactionBody { parameters, .. } = body;
+
+        let user_id = parameters.iter()
+            .find(|p| p.field_matches(TransactionField::UserId))
+            .ok_or(ProtocolError::MissingField(TransactionField::UserId))
+            .and_then(UserId::try_from)?;
+
+        Ok(Self { user_id })
+    }
+}
+
+impl Into<TransactionFrame> for GetClientInfoTextRequest {
+    fn into(self) -> TransactionFrame {
+        let header = TransactionHeader {
+            _type: TransactionType::GetClientInfoText.into(),
+            ..Default::default()
+        };
+        let Self { user_id, .. } = self;
+        let body = vec![user_id.into()].into();
+        TransactionFrame { header, body }
+    }
+}
+
+#[derive(Debug)]
+pub struct GetClientInfoTextReply {
+    pub user_name: Nickname,
+    pub text: Vec<u8>,
+}
+
+impl TryFrom<TransactionFrame> for GetClientInfoTextReply {
+    type Error = ProtocolError;
+    fn try_from(frame: TransactionFrame) -> Result<Self, Self::Error> {
+
+        let TransactionFrame {
+            body, ..
+        } = frame.require_transaction_type(TransactionType::GetClientInfoText)?;
+
+        let TransactionBody { parameters, .. } = body;
+
+        let user_name = parameters.iter()
+            .find(|p| p.field_matches(TransactionField::UserName))
+            .ok_or(ProtocolError::MissingField(TransactionField::UserName))
+            .and_then(Nickname::try_from)?;
+
+        let text = parameters.iter()
+            .cloned()
+            .find(|p| p.field_matches(TransactionField::Data))
+            .map(Parameter::take)
+            .ok_or(ProtocolError::MissingField(TransactionField::Data))?;
+
+        Ok(Self { user_name, text })
+    }
+}
+
+impl Into<TransactionFrame> for GetClientInfoTextReply {
+    fn into(self) -> TransactionFrame {
+        let header = TransactionHeader {
+            _type: TransactionType::GetClientInfoText.into(),
+            ..Default::default()
+        };
+        let Self { user_name, text } = self;
+        let body = vec![
+            user_name.into(),
+            Parameter::new(TransactionField::Data.into(), text),
+        ].into();
+        TransactionFrame { header, body }
+    }
+}
+
 fn take_if_matches(
     parameter: Parameter,
     field: TransactionField,
