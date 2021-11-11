@@ -18,6 +18,15 @@ impl Users {
         users.push(user.clone());
         user_id
     }
+    pub fn update(&mut self, user: &UserNameWithInfo) -> Option<UserId> {
+        let Self(users, ..) = self;
+        if let Some(u) = users.iter_mut().find(|u| u.user_id == user.user_id) {
+            *u = user.clone();
+            Some(user.user_id)
+        } else {
+            None
+        }
+    }
     pub fn remove(&mut self, user: &UserNameWithInfo) {
         let Self(users, ..) = self;
         users.retain(|u| u.user_id != user.user_id);
