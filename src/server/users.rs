@@ -38,14 +38,11 @@ impl Users {
         user_id
     }
     pub fn update(&mut self, user: &UserNameWithInfo) -> Option<UserId> {
+        let user_id = user.user_id;
         let Self(users, ..) = self;
         let user = User::from(user.clone());
-        if let Some(u) = &mut users.get(&user){
-            *u = &user;
-            Some(user.0.user_id)
-        } else {
-            None
-        }
+        users.replace(user)?;
+        Some(user_id)
     }
     pub fn remove(&mut self, user: &UserNameWithInfo) {
         let Self(users, ..) = self;
