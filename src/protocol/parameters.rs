@@ -2,6 +2,11 @@ use super::{
     ProtocolError,
     transaction::Parameter,
     transaction_field::TransactionField,
+    multi,
+    take,
+    be_i16,
+    be_i8,
+    BIResult,
 };
 
 use derive_more::{From, Into};
@@ -310,6 +315,99 @@ impl Into<Parameter> for Message {
             TransactionField::Data.into(),
             self.0,
         )
+    }
+}
+
+#[derive(Debug)]
+pub enum FilePath {
+    Root,
+    Directory(Vec<Vec<u8>>),
+}
+
+impl FilePath {
+    pub fn path(&self) -> Option<&[Vec<u8>]> {
+        if let Self::Directory(path) = self {
+            Some(path)
+        } else {
+            None
+        }
+    }
+    fn parse_depth(bytes: &[u8]) -> BIResult<usize> {
+        let (bytes, depth) = be_i16(bytes)?;
+        Ok((bytes, depth as usize))
+    }
+    fn parse_path_component(bytes: &[u8]) -> BIResult<&[u8]> {
+        let (bytes, _) = take(2usize)(bytes)?;
+        let (bytes, length) = be_i8(bytes)?;
+        let (bytes, name) = take(length as usize)(bytes)?;
+        Ok((bytes, name))
+    }
+    fn parse_path(bytes: &[u8]) -> BIResult<Vec<&[u8]>> {
+        let (bytes, depth) = Self::parse_depth(bytes)?;
+        multi::count(Self::parse_path_component, depth)(bytes)
+    }
+    fn encode_path_component(component: Vec<u8>) -> Vec<u8> {
+        let component_length = component.len() as i8;
+        vec![
+            &[0u8; 2][..],
+            &component_length.to_be_bytes()[..],
+            &component.as_slice()[..],
+        ].into_iter()
+            .flat_map(|b| b.into_iter())
+            .map(|b| *b)
+            .collect()
+    }
+    fn encode_parameter(components: Vec<Vec<u8>>) -> Parameter {
+        let depth = components.len() as i16;
+        let components = components.into_iter()
+            .map(Self::encode_path_component);
+        let data = std::iter::once(depth.to_be_bytes().to_vec())
+            .chain(components)
+            .flat_map(|b| b.into_iter())
+            .collect();
+        Parameter::new(
+            TransactionField::FilePath.into(),
+            data,
+        )
+    }
+}
+
+impl Default for FilePath {
+    fn default() -> Self {
+        Self::Root
+    }
+}
+
+impl TryFrom<&[u8]> for FilePath {
+    type Error = ProtocolError;
+    fn try_from(bytes: &[u8]) -> Result<Self, Self::Error> {
+        match Self::parse_path(bytes) {
+            Ok((_, components)) => {
+                let components = components.iter()
+                    .map(|c| c.to_vec())
+                    .collect();
+                Ok(Self::Directory(components))
+            },
+            Err(_) => Err(ProtocolError::MalformedData(TransactionField::FilePath))
+        }
+    }
+}
+
+impl TryFrom<&Parameter> for FilePath {
+    type Error = ProtocolError;
+    fn try_from(parameter: &Parameter) -> Result<Self, Self::Error> {
+        let data = take_if_matches(parameter.clone(), TransactionField::FilePath)?;
+        Self::try_from(data.as_slice())
+    }
+}
+
+impl Into<Option<Parameter>> for FilePath {
+    fn into(self) -> Option<Parameter> {
+        if let Self::Directory(path) = self {
+            Some(Self::encode_parameter(path))
+        } else {
+            None
+        }
     }
 }
 
