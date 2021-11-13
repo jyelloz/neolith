@@ -91,8 +91,10 @@ pub struct FileInfo {
 impl TryFrom<(PathBuf, Metadata)> for FileInfo {
     type Error = std::io::Error;
     fn try_from((path, metadata): (PathBuf, Metadata)) -> Result<Self> {
-        let modified_at = metadata.modified()?;
-        let created_at = metadata.created()?;
+        let modified_at = metadata.modified()
+            .unwrap_or(SystemTime::UNIX_EPOCH);
+        let created_at = metadata.created()
+            .unwrap_or(modified_at);
         let (type_code, creator_code) = if metadata.is_dir() {
             (FileType::directory(), Creator::of_directory())
         } else {
