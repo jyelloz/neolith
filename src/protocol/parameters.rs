@@ -22,7 +22,7 @@ fn invert_credential(data: &[u8]) -> Vec<u8> {
         .collect()
 }
 
-#[derive(Debug, Clone, PartialEq, Eq, PartialOrd, Ord, From, Into)]
+#[derive(Clone, PartialEq, Eq, PartialOrd, Ord, From, Into)]
 pub struct Nickname(Vec<u8>);
 
 impl Nickname {
@@ -31,6 +31,15 @@ impl Nickname {
     }
     pub fn take(self) -> Vec<u8> {
         self.0
+    }
+}
+
+impl std::fmt::Debug for Nickname {
+    fn fmt(&self, f: &mut std::fmt::Formatter<'_>) -> std::fmt::Result {
+        let text = String::from_utf8_lossy(self.0.as_slice());
+        f.debug_tuple("Nickname")
+            .field(&text)
+            .finish()
     }
 }
 
