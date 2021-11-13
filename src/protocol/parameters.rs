@@ -4,8 +4,9 @@ use super::{
     transaction_field::TransactionField,
     multi,
     take,
-    be_i16,
     be_i8,
+    be_i16,
+    be_i32,
     BIResult,
 };
 
@@ -318,7 +319,46 @@ impl Into<Parameter> for Message {
     }
 }
 
-#[derive(Debug)]
+#[derive(Debug, Clone, From, Into, PartialEq, Eq, PartialOrd, Ord)]
+pub struct FileName(Vec<u8>);
+
+impl From<&Parameter> for FileName {
+    fn from(parameter: &Parameter) -> Self {
+        Self(parameter.clone().take())
+    }
+}
+
+impl Into<Parameter> for FileName {
+    fn into(self) -> Parameter {
+        Parameter::new(
+            TransactionField::FileName.into(),
+            self.0,
+        )
+    }
+}
+
+#[derive(Debug, Default, Clone, Copy, From, Into)]
+pub struct FileSize(i32);
+
+impl TryFrom<&Parameter> for FileSize {
+    type Error = ProtocolError;
+    fn try_from(parameter: &Parameter) -> Result<Self, Self::Error> {
+        parameter.int()
+            .ok_or(ProtocolError::MalformedData(TransactionField::FileSize))
+            .map(|p| Self(p.into()))
+    }
+}
+
+impl Into<Parameter> for FileSize {
+    fn into(self) -> Parameter {
+        Parameter::new_int(
+            TransactionField::FileSize.into(),
+            self.0.into(),
+        )
+    }
+}
+
+#[derive(Debug, Clone)]
 pub enum FilePath {
     Root,
     Directory(Vec<Vec<u8>>),
@@ -408,6 +448,213 @@ impl Into<Option<Parameter>> for FilePath {
         } else {
             None
         }
+    }
+}
+
+#[derive(Debug, From, Into)]
+pub struct FileComment(Vec<u8>);
+
+impl TryFrom<&Parameter> for FileComment {
+    type Error = ProtocolError;
+    fn try_from(parameter: &Parameter) -> Result<Self, Self::Error> {
+        let data = take_if_matches(parameter.clone(), TransactionField::FileComment)?;
+        Ok(data.into())
+    }
+}
+
+impl Into<Parameter> for FileComment {
+    fn into(self) -> Parameter {
+        Parameter::new(
+            TransactionField::FileComment.into(),
+            self.0
+        )
+    }
+}
+
+#[derive(Debug, Clone, Copy, From, Into)]
+pub struct FileType(pub [u8; 4]);
+
+impl From<&[u8; 4]> for FileType {
+    fn from(data: &[u8; 4]) -> Self {
+        data.to_owned().into()
+    }
+}
+
+impl TryFrom<&Parameter> for FileType {
+    type Error = ProtocolError;
+    fn try_from(parameter: &Parameter) -> Result<Self, Self::Error> {
+        let data = take_if_matches(parameter.clone(), TransactionField::FileType)?;
+        if data.len() != 4 {
+            Err(ProtocolError::MalformedData(TransactionField::FileType))?;
+        }
+        let mut file_type = [0u8; 4];
+        file_type.copy_from_slice(&data[..4]);
+        Ok(file_type.into())
+    }
+}
+
+impl Into<Parameter> for FileType {
+    fn into(self) -> Parameter {
+        Parameter::new(
+            TransactionField::FileType.into(),
+            self.0.to_vec()
+        )
+    }
+}
+
+#[derive(Debug, Clone, Copy, From, Into)]
+pub struct Creator(pub [u8; 4]);
+
+#[derive(Debug, Clone, From, Into)]
+pub struct FileTypeString(Vec<u8>);
+
+impl From<&FileType> for FileTypeString {
+    fn from(type_code: &FileType) -> Self {
+        Self(type_code.0.to_vec())
+    }
+}
+
+impl TryFrom<&Parameter> for FileTypeString {
+    type Error = ProtocolError;
+    fn try_from(parameter: &Parameter) -> Result<Self, Self::Error> {
+        let data = take_if_matches(
+            parameter.clone(),
+            TransactionField::FileTypeString,
+        )?;
+        Ok(data.into())
+    }
+}
+
+impl Into<Parameter> for FileTypeString {
+    fn into(self) -> Parameter {
+        Parameter::new(
+            TransactionField::FileTypeString.into(),
+            self.0.to_vec()
+        )
+    }
+}
+
+#[derive(Debug, Clone, From, Into)]
+pub struct FileCreatorString(Vec<u8>);
+
+impl TryFrom<&Parameter> for FileCreatorString {
+    type Error = ProtocolError;
+    fn try_from(parameter: &Parameter) -> Result<Self, Self::Error> {
+        let data = take_if_matches(
+            parameter.clone(),
+            TransactionField::FileCreatorString,
+        )?;
+        Ok(data.into())
+    }
+}
+
+impl Into<Parameter> for FileCreatorString {
+    fn into(self) -> Parameter {
+        Parameter::new(
+            TransactionField::FileCreatorString.into(),
+            self.0.to_vec()
+        )
+    }
+}
+
+#[derive(Debug, Default, Clone, Copy, PartialEq, Eq)]
+struct DateParameter {
+    pub year: i16,
+    pub milliseconds: i16,
+    pub seconds: i32,
+}
+
+impl DateParameter {
+    fn parse_year(bytes: &[u8]) -> BIResult<i16> {
+        be_i16(bytes)
+    }
+    fn parse_milliseconds(bytes: &[u8]) -> BIResult<i16> {
+        be_i16(bytes)
+    }
+    fn parse_seconds(bytes: &[u8]) -> BIResult<i32> {
+        be_i32(bytes)
+    }
+    pub fn parse(bytes: &[u8]) -> BIResult<Self> {
+        let (bytes, year) = Self::parse_year(&bytes)?;
+        let (bytes, milliseconds) = Self::parse_milliseconds(&bytes)?;
+        let (bytes, seconds) = Self::parse_seconds(&bytes)?;
+        Ok((
+                bytes,
+                Self {
+                    year,
+                    milliseconds,
+                    seconds,
+                },
+        ))
+    }
+    pub fn pack(&self) -> Vec<u8> {
+        let Self { year, milliseconds, seconds } = self;
+        [
+            &year.to_be_bytes()[..],
+            &milliseconds.to_be_bytes()[..],
+            &seconds.to_be_bytes()[..],
+        ].into_iter()
+            .flat_map(|b| b.into_iter())
+            .map(|b| *b)
+            .collect()
+    }
+}
+
+#[derive(Debug, Default, Clone, Copy, From, Into, PartialEq, Eq)]
+pub struct FileCreatedAt(DateParameter);
+
+impl TryFrom<&Parameter> for FileCreatedAt {
+    type Error = ProtocolError;
+    fn try_from(parameter: &Parameter) -> Result<Self, Self::Error> {
+        let data = take_if_matches(
+            parameter.clone(),
+            TransactionField::FileCreateDate,
+        )?;
+        let (tail, date) = DateParameter::parse(&data)
+            .map_err(|_| ProtocolError::MalformedData(TransactionField::FileCreateDate))?;
+        if !tail.is_empty() {
+            Err(ProtocolError::MalformedData(TransactionField::FileCreateDate))?;
+        }
+        Ok(Self(date))
+    }
+}
+
+impl Into<Parameter> for FileCreatedAt {
+    fn into(self) -> Parameter {
+        let Self(date) = self;
+        Parameter::new(
+            TransactionField::FileCreateDate.into(),
+            date.pack(),
+        )
+    }
+}
+
+#[derive(Debug, Default, Clone, Copy, From, Into, PartialEq, Eq)]
+pub struct FileModifiedAt(DateParameter);
+
+impl TryFrom<&Parameter> for FileModifiedAt {
+    type Error = ProtocolError;
+    fn try_from(parameter: &Parameter) -> Result<Self, Self::Error> {
+        let data = take_if_matches(
+            parameter.clone(),
+            TransactionField::FileModifyDate,
+        )?;
+        let (tail, date) = DateParameter::parse(&data)
+            .map_err(|_| ProtocolError::MalformedData(TransactionField::FileModifyDate))?;
+        if !tail.is_empty() {
+            Err(ProtocolError::MalformedData(TransactionField::FileModifyDate))?;
+        }
+        Ok(Self(date))
+    }
+}
+
+impl Into<Parameter> for FileModifiedAt {
+    fn into(self) -> Parameter {
+        let Self(date) = self;
+        Parameter::new(
+            TransactionField::FileModifyDate.into(),
+            date.pack(),
+        )
     }
 }
 
