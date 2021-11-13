@@ -98,7 +98,16 @@ pub use parameters::{
     ChatId,
     ChatOptions,
     Credential,
+    FileComment,
+    FileCreatedAt,
+    FileModifiedAt,
+    FileName,
     FilePath,
+    FileType,
+    FileSize,
+    FileTypeString,
+    Creator,
+    FileCreatorString,
     IconId,
     Message,
     Nickname,
@@ -592,7 +601,7 @@ impl Into<Parameter> for FileNameWithInfo {
         let data = [
             &self.file_type.0[..],
             &self.creator.0[..],
-            &self.file_size.0.to_be_bytes()[..],
+            &(i32::from(self.file_size)).to_be_bytes()[..],
             &[0u8; 4][..],
             &self.name_script.0.to_be_bytes()[..],
             &filename_size.to_be_bytes()[..],
@@ -609,28 +618,83 @@ impl Into<Parameter> for FileNameWithInfo {
 }
 
 #[derive(Debug, From, Into)]
-pub struct FileType([u8; 4]);
-
-impl From<&[u8; 4]> for FileType {
-    fn from(bytes: &[u8; 4]) -> Self {
-        (*bytes).into()
-    }
-}
-
-#[derive(Debug, From, Into)]
-pub struct Creator([u8; 4]);
-
-impl From<&[u8; 4]> for Creator {
-    fn from(bytes: &[u8; 4]) -> Self {
-        (*bytes).into()
-    }
-}
-
-#[derive(Debug, From, Into)]
-pub struct FileSize(i32);
-
-#[derive(Debug, From, Into)]
 pub struct NameScript(i16);
+
+#[derive(Debug, Clone)]
+pub struct GetFileInfo {
+    pub filename: FileName,
+    pub path: FilePath,
+}
+
+impl TryFrom<TransactionFrame> for GetFileInfo {
+    type Error = ProtocolError;
+    fn try_from(frame: TransactionFrame) -> Result<Self, Self::Error> {
+        let TransactionFrame {
+            body, ..
+        } = frame.require_transaction_type(TransactionType::GetFileInfo)?;
+
+        let TransactionBody { parameters, .. } = body;
+
+        let filename = parameters.iter()
+            .find(|p| p.field_matches(TransactionField::FileName))
+            .ok_or(ProtocolError::MissingField(TransactionField::FileName))
+            .map(FileName::from)?;
+
+        let path = parameters.iter()
+            .find(|p| p.field_matches(TransactionField::FilePath))
+            .map(|p| FilePath::try_from(p));
+
+        let path = if let Some(path) = path {
+            path?
+        } else {
+            FilePath::Root
+        };
+
+        Ok(Self { filename, path })
+    }
+}
+
+impl Into<TransactionFrame> for GetFileInfo {
+    fn into(self) -> TransactionFrame {
+        let header = TransactionHeader {
+            _type: TransactionType::GetFileNameList.into(),
+            ..Default::default()
+        };
+        TransactionFrame::empty(header)
+    }
+}
+
+#[derive(Debug)]
+pub struct GetFileInfoReply {
+    pub filename: FileName,
+    pub size: FileSize,
+    pub type_code: FileType,
+    pub creator: FileCreatorString,
+    pub comment: FileComment,
+    pub created_at: FileCreatedAt,
+    pub modified_at: FileModifiedAt,
+}
+
+impl Into<TransactionFrame> for GetFileInfoReply {
+    fn into(self) -> TransactionFrame {
+        let header = TransactionHeader {
+            _type: TransactionType::GetFileInfo.into(),
+            ..Default::default()
+        };
+        let type_string = FileTypeString::from(&self.type_code);
+        let body = vec![
+            self.filename.into(),
+            self.type_code.into(),
+            self.creator.into(),
+            self.created_at.into(),
+            self.modified_at.into(),
+            self.comment.into(),
+            self.size.into(),
+            type_string.into(),
+        ].into();
+        TransactionFrame { header, body }
+    }
+}
 
 #[derive(Debug)]
 pub struct SendChat {
