@@ -6,9 +6,11 @@ use super::{
     take,
     be_i8,
     be_i16,
-    be_i32,
     BIResult,
+    date::DateParameter,
 };
+
+use std::time::SystemTime;
 
 use derive_more::{From, Into};
 
@@ -566,51 +568,14 @@ impl Into<Parameter> for FileCreatorString {
     }
 }
 
-#[derive(Debug, Default, Clone, Copy, PartialEq, Eq)]
-struct DateParameter {
-    pub year: i16,
-    pub milliseconds: i16,
-    pub seconds: i32,
-}
-
-impl DateParameter {
-    fn parse_year(bytes: &[u8]) -> BIResult<i16> {
-        be_i16(bytes)
-    }
-    fn parse_milliseconds(bytes: &[u8]) -> BIResult<i16> {
-        be_i16(bytes)
-    }
-    fn parse_seconds(bytes: &[u8]) -> BIResult<i32> {
-        be_i32(bytes)
-    }
-    pub fn parse(bytes: &[u8]) -> BIResult<Self> {
-        let (bytes, year) = Self::parse_year(&bytes)?;
-        let (bytes, milliseconds) = Self::parse_milliseconds(&bytes)?;
-        let (bytes, seconds) = Self::parse_seconds(&bytes)?;
-        Ok((
-                bytes,
-                Self {
-                    year,
-                    milliseconds,
-                    seconds,
-                },
-        ))
-    }
-    pub fn pack(&self) -> Vec<u8> {
-        let Self { year, milliseconds, seconds } = self;
-        [
-            &year.to_be_bytes()[..],
-            &milliseconds.to_be_bytes()[..],
-            &seconds.to_be_bytes()[..],
-        ].into_iter()
-            .flat_map(|b| b.into_iter())
-            .map(|b| *b)
-            .collect()
-    }
-}
-
 #[derive(Debug, Default, Clone, Copy, From, Into, PartialEq, Eq)]
 pub struct FileCreatedAt(DateParameter);
+
+impl From<SystemTime> for FileCreatedAt {
+    fn from(time: SystemTime) -> Self {
+        Self(time.into())
+    }
+}
 
 impl TryFrom<&Parameter> for FileCreatedAt {
     type Error = ProtocolError;
@@ -640,6 +605,12 @@ impl Into<Parameter> for FileCreatedAt {
 
 #[derive(Debug, Default, Clone, Copy, From, Into, PartialEq, Eq)]
 pub struct FileModifiedAt(DateParameter);
+
+impl From<SystemTime> for FileModifiedAt {
+    fn from(time: SystemTime) -> Self {
+        Self(time.into())
+    }
+}
 
 impl TryFrom<&Parameter> for FileModifiedAt {
     type Error = ProtocolError;
