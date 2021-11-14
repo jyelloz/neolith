@@ -786,12 +786,7 @@ impl TryFrom<TransactionFrame> for ChatMessage {
             .next()
             .ok_or(ProtocolError::MissingField(TransactionField::Data))?;
 
-        let chat = Self {
-            chat_id,
-            message,
-        };
-
-        Ok(chat)
+        Ok(Self { chat_id, message })
     }
 }
 
