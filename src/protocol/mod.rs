@@ -46,6 +46,8 @@ pub enum ProtocolError {
     UnexpectedTransaction { expected: i16, encountered: i16 },
     #[error("the transaction header refers to unsupported type {0:?}")]
     UnsupportedTransaction(i16),
+    #[error("system error")]
+    SystemError,
 }
 
 #[derive(Debug, PartialEq, Eq, PartialOrd, Ord, Clone, Copy)]
