@@ -1,8 +1,13 @@
 use std::{
-    fs::{DirEntry as OsDirEntry, Metadata},
-    io::{Result, ErrorKind},
+    fs::{self, DirEntry as OsDirEntry, Metadata},
+    io::{self, Result, ErrorKind},
     path::{Path, PathBuf, Component},
     time::SystemTime,
+};
+
+use magic::{
+    Cookie,
+    CookieFlags,
 };
 
 use four_cc::FourCC;
@@ -56,16 +61,17 @@ pub struct DirEntry {
     pub creator_code: Creator,
 }
 
-impl TryFrom<OsDirEntry> for DirEntry {
+impl <'a> TryFrom<FilesContext<'a>> for DirEntry {
     type Error = std::io::Error;
-    fn try_from(dirent: OsDirEntry) -> Result<Self> {
+    fn try_from(dirent: FilesContext<'a>) -> Result<Self> {
+        let FilesContext { files, dirent } = dirent;
         let metadata = dirent.metadata()?;
         let path = dirent.path();
         let size = metadata.len();
         let (type_code, creator_code) = if metadata.is_dir() {
             (FileType::directory(), Creator::default())
         } else {
-            (FileType::default(), Creator::default())
+            files.apple_magic(&path)?
         };
         Ok(
             Self {
@@ -88,9 +94,12 @@ pub struct FileInfo {
     pub modified_at: SystemTime,
 }
 
-impl TryFrom<(PathBuf, Metadata)> for FileInfo {
+impl TryFrom<(PathBuf, Metadata, FileType, Creator)> for FileInfo {
     type Error = std::io::Error;
-    fn try_from((path, metadata): (PathBuf, Metadata)) -> Result<Self> {
+    fn try_from(
+        (path, metadata, file_type, creator):
+        (PathBuf, Metadata, FileType, Creator)
+    ) -> Result<Self> {
         let modified_at = metadata.modified()
             .unwrap_or(SystemTime::UNIX_EPOCH);
         let created_at = metadata.created()
@@ -98,7 +107,7 @@ impl TryFrom<(PathBuf, Metadata)> for FileInfo {
         let (type_code, creator_code) = if metadata.is_dir() {
             (FileType::directory(), Creator::of_directory())
         } else {
-            (FileType::default(), Creator::default())
+            (file_type, creator)
         };
         let size = metadata.len();
         Ok(
@@ -120,28 +129,37 @@ pub trait Files {
     fn get_info(&self, path: &Path) -> Result<FileInfo>;
 }
 
-pub struct OsFiles(PathBuf);
+pub struct OsFiles {
+    root: PathBuf,
+    magic: Cookie,
+}
 
 impl OsFiles {
     pub fn with_root(root: PathBuf) -> Result<Self> {
         let root = root.canonicalize()?;
-        let metadata = std::fs::metadata(&root)?;
+        let metadata = fs::metadata(&root)?;
+        let magic = Cookie::open(magic::flags::APPLE)
+            .or::<io::Error>(Err(ErrorKind::Other.into()))?;
+        magic.load::<String>(&[])
+            .or::<io::Error>(Err(ErrorKind::Other.into()))?;
         if metadata.is_dir() {
-            Ok(Self(root))
+            Ok(Self { root, magic })
         } else {
             Err(ErrorKind::InvalidInput.into())
         }
     }
     pub fn list(&self, path: &Path) -> Result<Vec<DirEntry>> {
         let path = self.subpath(path)?;
-        std::fs::read_dir(path)?
+        fs::read_dir(path)?
+            .map(|e| e.map(|e| self.listing_context(e)))
             .map(|e| e.and_then(DirEntry::try_from))
             .collect()
     }
     pub fn get_info(&self, path: &Path) -> Result<FileInfo> {
         let path = self.subpath(path)?;
-        let metadata = std::fs::metadata(&path)?;
-        (path, metadata).try_into()
+        let metadata = fs::metadata(&path)?;
+        let (file_type, creator) = self.apple_magic(&path)?;
+        (path, metadata, file_type, creator).try_into()
     }
     fn validate_path(path: &Path) -> Result<&Path> {
         let complex = path.components()
@@ -152,12 +170,28 @@ impl OsFiles {
         Ok(path)
     }
     fn subpath(&self, path: &Path) -> Result<PathBuf> {
-        let Self(root) = self;
+        let Self { root, .. } = self;
         let path = Self::validate_path(path)?;
         let subpath = root.components()
             .chain(path.components())
             .collect();
         Ok(subpath)
+    }
+    fn apple_magic(&self, path: &Path) -> Result<(FileType, Creator)> {
+        let magic = self.magic.file(&path)
+            .or::<io::Error>(Err(ErrorKind::Other.into()))?;
+        let magic = magic.as_bytes();
+        let (creator, file_type) = (&magic[..4], &magic[4..]);
+        Ok((
+            FileType(file_type.into()),
+            Creator(creator.into())),
+        )
+    }
+    fn listing_context(&self, dirent: OsDirEntry) -> FilesContext {
+        FilesContext {
+            files: self,
+            dirent,
+        }
     }
 }
 
@@ -168,4 +202,9 @@ impl Files for OsFiles {
     fn get_info(&self, path: &Path) -> Result<FileInfo> {
         OsFiles::get_info(self, path)
     }
+}
+
+struct FilesContext<'a> {
+    files: &'a OsFiles,
+    dirent: OsDirEntry,
 }
