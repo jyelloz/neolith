@@ -5,13 +5,11 @@ use std::{
     time::SystemTime,
 };
 
-use magic::{
-    Cookie,
-    CookieFlags,
-};
+use magic::Cookie;
 
 use four_cc::FourCC;
 
+#[derive(Debug)]
 pub struct FileType(FourCC);
 
 impl FileType {
@@ -158,7 +156,11 @@ impl OsFiles {
     pub fn get_info(&self, path: &Path) -> Result<FileInfo> {
         let path = self.subpath(path)?;
         let metadata = fs::metadata(&path)?;
-        let (file_type, creator) = self.apple_magic(&path)?;
+        let (file_type, creator) = if metadata.is_dir() {
+            (FileType::directory(), Creator::of_directory())
+        } else {
+            self.apple_magic(&path)?
+        };
         (path, metadata, file_type, creator).try_into()
     }
     fn validate_path(path: &Path) -> Result<&Path> {
