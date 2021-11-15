@@ -477,6 +477,20 @@ impl TransactionFrame {
     }
 }
 
+pub trait IntoFrameExt {
+    fn framed(self) -> TransactionFrame;
+    fn reply_to(self, request: &TransactionHeader) -> TransactionFrame;
+}
+
+impl <F: Into<TransactionFrame>> IntoFrameExt for F {
+    fn framed(self) -> TransactionFrame {
+        self.into()
+    }
+    fn reply_to(self, request: &TransactionHeader) -> TransactionFrame {
+        self.framed().reply_to(request)
+    }
+}
+
 impl HotlineProtocol for TransactionFrame {
     fn into_bytes(self) -> Vec<u8> {
         let Self { header, body } = self;

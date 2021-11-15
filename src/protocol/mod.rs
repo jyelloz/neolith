@@ -96,6 +96,7 @@ pub use transaction::{
     DataSize,
     TotalSize,
     Id,
+    IntoFrameExt,
 };
 pub use parameters::{
     ChatId,
