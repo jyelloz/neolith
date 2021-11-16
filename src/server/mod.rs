@@ -12,6 +12,8 @@ use tokio::sync::broadcast::{
 };
 use async_stream::stream;
 
+use derive_more::{From, Into};
+
 use thiserror::Error;
 
 pub mod files;
@@ -32,6 +34,7 @@ use transaction_stream::Frames;
 pub enum Message {
     TransactionReceived(TransactionFrame),
     Chat(Chat),
+    Broadcast(Broadcast),
     InstantMessage(InstantMessage),
     UserConnect(User),
     UserUpdate(User),
@@ -114,6 +117,10 @@ impl Bus {
         self.sender.send(Message::Chat(chat))?;
         Ok(())
     }
+    pub fn broadcast(&mut self, broadcast: Broadcast) -> BusResult<()> {
+        self.sender.send(Message::Broadcast(broadcast))?;
+        Ok(())
+    }
     pub fn instant_message(
         &mut self,
         message: InstantMessage,
@@ -153,6 +160,26 @@ impl Bus {
                 };
                 yield result;
             }
+        }
+    }
+}
+
+#[derive(Debug, Clone, From, Into)]
+pub struct Broadcast(pub Vec<u8>);
+
+impl Into<ChatMessage> for Broadcast {
+    fn into(self) -> ChatMessage {
+        let Self(text) = self;
+        let message = [
+            &b"\r\r<<BEGIN BROADCAST>>"[..],
+            &b"\r"[..],
+            &text[..],
+            &b"\r<<END BROADCAST>>"[..],
+            &b"\r"[..],
+        ].concat();
+        ChatMessage {
+            chat_id: None,
+            message,
         }
     }
 }
