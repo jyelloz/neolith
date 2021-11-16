@@ -20,13 +20,14 @@ use std::{
     path::PathBuf,
 };
 
-use anyhow::bail;
+use anyhow::{anyhow, bail};
 
 type Result<T> = anyhow::Result<T>;
 
 use neolith::protocol::{
     HotlineProtocol,
     IntoFrameExt as _,
+    ChatId,
     ClientHandshakeRequest,
     GetFileInfo,
     GetFileInfoReply,
@@ -40,6 +41,11 @@ use neolith::protocol::{
     GetMessagesReply,
     GetUserNameList,
     GetUserNameListReply,
+    InviteToNewChat,
+    InviteToNewChatReply,
+    InviteToChat,
+    JoinChat,
+    LeaveChat,
     LoginReply,
     LoginRequest,
     Message,
@@ -504,6 +510,50 @@ impl <R: AsyncRead + Unpin, W: AsyncWrite + Unpin> Established<R, W> {
         if let Ok(req) = SendBroadcast::try_from(frame.clone()) {
             let message = req.message;
             globals.bus.broadcast(message.into())?;
+            let reply = SendBroadcastReply.reply_to(&header);
+            write_frame(w, reply).await?;
+            return Ok(())
+        }
+
+        if let Ok(req) = InviteToNewChat::try_from(frame.clone()) {
+            eprintln!("invite: {:?}", &req);
+            let user = globals.user.clone()
+                .ok_or(anyhow!("user unavailable"))?;
+            let reply = InviteToNewChatReply {
+                chat_id: 1.into(),
+                user_id: user.user_id,
+                icon_id: user.icon_id,
+                user_name: user.username,
+                flags: user.user_flags,
+            }.reply_to(&header);
+            write_frame(w, reply).await?;
+            return Ok(())
+        }
+
+        if let Ok(req) = InviteToChat::try_from(frame.clone()) {
+            eprintln!("invite: {:?}", &req);
+            let user = globals.user.clone()
+                .ok_or(anyhow!("user unavailable"))?;
+            let reply = InviteToNewChatReply {
+                chat_id: 1.into(),
+                user_id: user.user_id,
+                icon_id: user.icon_id,
+                user_name: user.username,
+                flags: user.user_flags,
+            }.reply_to(&header);
+            write_frame(w, reply).await?;
+            return Ok(())
+        }
+
+        if let Ok(req) = JoinChat::try_from(frame.clone()) {
+            eprintln!("join: {:?}", &req);
+            let reply = SendBroadcastReply.reply_to(&header);
+            write_frame(w, reply).await?;
+            return Ok(())
+        }
+
+        if let Ok(req) = LeaveChat::try_from(frame.clone()) {
+            eprintln!("leave: {:?}", &req);
             let reply = SendBroadcastReply.reply_to(&header);
             write_frame(w, reply).await?;
             return Ok(())
