@@ -45,6 +45,8 @@ use neolith::protocol::{
     Message,
     ProtocolVersion,
     ServerHandshakeReply,
+    SendBroadcast,
+    SendBroadcastReply,
     SendChat,
     SendInstantMessage,
     SendInstantMessageReply,
@@ -359,12 +361,16 @@ impl <R: AsyncRead + Unpin, W: AsyncWrite + Unpin> Established<R, W> {
                     let current_user = &globals.user;
                     if current_user.as_ref().map(|u| u.user_id.clone()) == Some(to.0.user_id) {
                         let message = ServerMessage {
-                            user_id: from.0.user_id,
-                            user_name: from.0.username,
+                            user_id: Some(from.0.user_id),
+                            user_name: Some(from.0.username),
                             message,
                         };
                         write_frame(w, message.framed()).await?;
                     }
+                },
+                BusMessage::Broadcast(message) => {
+                    let broadcast: ServerMessage = message.into();
+                    write_frame(w, broadcast.framed()).await?;
                 },
                 BusMessage::UserConnect(User(user))
                 |
@@ -492,6 +498,14 @@ impl <R: AsyncRead + Unpin, W: AsyncWrite + Unpin> Established<R, W> {
                 )?;
             }
             let reply = SendInstantMessageReply.reply_to(&header);
+            write_frame(w, reply).await?;
+            return Ok(())
+        }
+
+        if let Ok(req) = SendBroadcast::try_from(frame.clone()) {
+            let message = req.message;
+            globals.bus.broadcast(message.into())?;
+            let reply = SendBroadcastReply.reply_to(&header);
             write_frame(w, reply).await?;
             return Ok(())
         }
