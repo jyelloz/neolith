@@ -935,6 +935,83 @@ impl Into<TransactionFrame> for InviteToNewChat {
 }
 
 #[derive(Debug)]
+pub struct InviteToNewChatReply {
+    pub chat_id: ChatId,
+    pub user_id: UserId,
+    pub icon_id: IconId,
+    pub flags: UserFlags,
+    pub user_name: Nickname,
+}
+
+impl TryFrom<TransactionFrame> for InviteToNewChatReply {
+    type Error = ProtocolError;
+    fn try_from(frame: TransactionFrame) -> Result<Self, Self::Error> {
+        let frame = frame.require_transaction_type(TransactionType::Reply)?;
+        let TransactionFrame { body, .. } = frame;
+        let TransactionBody { parameters } = body;
+
+        let chat_id = parameters.iter()
+            .find(|p| p.field_matches(TransactionField::ChatId))
+            .ok_or(ProtocolError::MissingField(TransactionField::ChatId))
+            .and_then(ChatId::try_from)?;
+
+        let user_id = parameters.iter()
+            .find(|p| p.field_matches(TransactionField::UserId))
+            .ok_or(ProtocolError::MissingField(TransactionField::UserId))
+            .and_then(UserId::try_from)?;
+
+        let icon_id = parameters.iter()
+            .find(|p| p.field_matches(TransactionField::UserIconId))
+            .ok_or(ProtocolError::MissingField(TransactionField::UserIconId))
+            .and_then(IconId::try_from)?;
+
+        let flags = parameters.iter()
+            .find(|p| p.field_matches(TransactionField::UserFlags))
+            .ok_or(ProtocolError::MissingField(TransactionField::UserFlags))
+            .and_then(UserFlags::try_from)?;
+
+        let user_name = parameters.iter()
+            .find(|p| p.field_matches(TransactionField::UserName))
+            .ok_or(ProtocolError::MissingField(TransactionField::UserName))
+            .and_then(Nickname::try_from)?;
+
+        Ok(
+            Self {
+                chat_id,
+                user_id,
+                icon_id,
+                flags,
+                user_name,
+            }
+        )
+    }
+}
+
+impl Into<TransactionFrame> for InviteToNewChatReply {
+    fn into(self) -> TransactionFrame {
+        let header = TransactionHeader {
+            _type: TransactionType::InviteToNewChat.into(),
+            ..Default::default()
+        };
+        let Self {
+            chat_id,
+            user_id,
+            user_name,
+            icon_id,
+            flags,
+        } = self;
+        let body = vec![
+            chat_id.into(),
+            user_id.into(),
+            icon_id.into(),
+            user_name.into(),
+            flags.into(),
+        ].into();
+        TransactionFrame { header, body }
+    }
+}
+
+#[derive(Debug)]
 pub struct InviteToChat {
     pub user_id: UserId,
     pub chat_id: ChatId,
@@ -972,6 +1049,37 @@ impl Into<TransactionFrame> for InviteToChat {
             user_id.into(),
             chat_id.into(),
         ].into();
+        TransactionFrame { header, body }
+    }
+}
+
+#[derive(Debug, From, Into)]
+pub struct JoinChat(ChatId);
+
+impl TryFrom<TransactionFrame> for JoinChat {
+    type Error = ProtocolError;
+    fn try_from(frame: TransactionFrame) -> Result<Self, Self::Error> {
+        let frame = frame.require_transaction_type(TransactionType::JoinChat)?;
+        let TransactionFrame { body, .. } = frame;
+        let TransactionBody { parameters } = body;
+
+        let chat_id = parameters.iter()
+            .find(|p| p.field_matches(TransactionField::ChatId))
+            .ok_or(ProtocolError::MissingField(TransactionField::ChatId))
+            .and_then(ChatId::try_from)?;
+
+        Ok(Self(chat_id))
+    }
+}
+
+impl Into<TransactionFrame> for JoinChat {
+    fn into(self) -> TransactionFrame {
+        let header = TransactionHeader {
+            _type: TransactionType::JoinChat.into(),
+            ..Default::default()
+        };
+        let Self(chat_id) = self;
+        let body = vec![chat_id.into()].into();
         TransactionFrame { header, body }
     }
 }
