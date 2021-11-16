@@ -935,6 +935,48 @@ impl Into<TransactionFrame> for InviteToNewChat {
 }
 
 #[derive(Debug)]
+pub struct InviteToChat {
+    pub user_id: UserId,
+    pub chat_id: ChatId,
+}
+
+impl TryFrom<TransactionFrame> for InviteToChat {
+    type Error = ProtocolError;
+    fn try_from(frame: TransactionFrame) -> Result<Self, Self::Error> {
+        let frame = frame.require_transaction_type(TransactionType::InviteToChat)?;
+        let TransactionFrame { body, .. } = frame;
+        let TransactionBody { parameters } = body;
+
+        let user_id = parameters.iter()
+            .find(|p| p.field_matches(TransactionField::UserId))
+            .ok_or(ProtocolError::MissingField(TransactionField::UserId))
+            .and_then(UserId::try_from)?;
+
+        let chat_id = parameters.iter()
+            .find(|p| p.field_matches(TransactionField::ChatId))
+            .ok_or(ProtocolError::MissingField(TransactionField::ChatId))
+            .and_then(ChatId::try_from)?;
+
+        Ok(Self { user_id, chat_id })
+    }
+}
+
+impl Into<TransactionFrame> for InviteToChat {
+    fn into(self) -> TransactionFrame {
+        let header = TransactionHeader {
+            _type: TransactionType::InviteToChat.into(),
+            ..Default::default()
+        };
+        let Self { user_id, chat_id } = self;
+        let body = vec![
+            user_id.into(),
+            chat_id.into(),
+        ].into();
+        TransactionFrame { header, body }
+    }
+}
+
+#[derive(Debug)]
 pub struct GetClientInfoTextRequest {
     pub user_id: UserId,
 }
