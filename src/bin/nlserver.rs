@@ -346,6 +346,7 @@ impl <R: AsyncRead + Unpin, W: AsyncWrite + Unpin> Established<R, W> {
         ).events();
         let mut events = Box::pin(events);
         while let Some(event) = events.try_next().await? {
+            let current_user = &globals.user;
             match event {
                 BusMessage::TransactionReceived(frame) => Self::transaction(
                     w,
@@ -358,7 +359,6 @@ impl <R: AsyncRead + Unpin, W: AsyncWrite + Unpin> Established<R, W> {
                 },
                 BusMessage::InstantMessage(message) => {
                     let InstantMessage { from, to, message } = message;
-                    let current_user = &globals.user;
                     if current_user.as_ref().map(|u| u.user_id.clone()) == Some(to.0.user_id) {
                         let message = ServerMessage {
                             user_id: Some(from.0.user_id),
