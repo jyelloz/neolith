@@ -976,6 +976,60 @@ impl Into<TransactionFrame> for GetClientInfoTextReply {
     }
 }
 
+#[derive(Debug)]
+pub struct SendBroadcast {
+    pub message: Vec<u8>,
+}
+
+impl TryFrom<TransactionFrame> for SendBroadcast {
+    type Error = ProtocolError;
+    fn try_from(frame: TransactionFrame) -> Result<Self, Self::Error> {
+        let TransactionFrame {
+            body, ..
+        } = frame.require_transaction_type(TransactionType::UserBroadcast)?;
+
+        let TransactionBody { parameters, .. } = body;
+
+        let message = parameters.into_iter()
+            .filter(|p| p.field_matches(TransactionField::Data))
+            .map(|p| p.take())
+            .next()
+            .ok_or(ProtocolError::MissingField(TransactionField::Data))?;
+
+        Ok(Self { message })
+    }
+}
+
+impl Into<TransactionFrame> for SendBroadcast {
+    fn into(self) -> TransactionFrame {
+        let header = TransactionHeader {
+            _type: TransactionType::GetClientInfoText.into(),
+            ..Default::default()
+        };
+        let Self { message } = self;
+        let body = vec![
+            Parameter::new(TransactionField::Data.into(), message),
+        ].into();
+        TransactionFrame { header, body }
+    }
+}
+
+pub struct SendBroadcastReply;
+
+impl TryFrom<TransactionFrame> for SendBroadcastReply {
+    type Error = ProtocolError;
+    fn try_from(frame: TransactionFrame) -> Result<Self, Self::Error> {
+        frame.require_transaction_type(TransactionType::Reply)?;
+        Ok(Self)
+    }
+}
+
+impl Into<TransactionFrame> for SendBroadcastReply {
+    fn into(self) -> TransactionFrame {
+        TransactionFrame::empty(Default::default())
+    }
+}
+
 fn take_if_matches(
     parameter: Parameter,
     field: TransactionField,
