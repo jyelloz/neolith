@@ -1081,9 +1081,9 @@ mod tests {
             login,
             LoginRequest {
                 login: Some(UserLogin::from_cleartext(b"jyelloz")),
-                nickname: Nickname::new(b"jyelloz".clone().into()),
+                nickname: Some(Nickname::new(b"jyelloz".clone().into())),
                 password: Some(Password::from_cleartext(b"123456")),
-                icon_id: 145.into(),
+                icon_id: Some(145.into()),
             },
         );
 
