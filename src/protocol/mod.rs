@@ -808,8 +808,8 @@ impl Into<TransactionFrame> for ChatMessage {
 
 #[derive(Debug)]
 pub struct ServerMessage {
-    pub user_id: UserId,
-    pub user_name: Nickname,
+    pub user_id: Option<UserId>,
+    pub user_name: Option<Nickname>,
     pub message: Vec<u8>,
 }
 
@@ -820,14 +820,20 @@ impl Into<TransactionFrame> for ServerMessage {
             ..Default::default()
         };
         let Self { message, user_id, user_name } = self;
+        let message = Parameter::new(
+            TransactionField::Data.into(),
+            message,
+        );
+        let user_id = user_id.map(UserId::into);
+        let user_name = user_name.map(Nickname::into);
         let body = vec![
-            Parameter::new(
-                TransactionField::Data.into(),
-                message,
-            ),
-            user_id.into(),
-            user_name.into(),
-        ].into();
+            Some(message),
+            user_id,
+            user_name,
+        ].into_iter()
+            .flat_map(Option::into_iter)
+            .collect::<Vec<_>>()
+            .into();
         TransactionFrame { header, body }
     }
 }
