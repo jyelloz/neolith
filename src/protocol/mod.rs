@@ -976,6 +976,37 @@ impl Into<TransactionFrame> for InviteToChat {
     }
 }
 
+#[derive(Debug, From, Into)]
+pub struct LeaveChat(ChatId);
+
+impl TryFrom<TransactionFrame> for LeaveChat {
+    type Error = ProtocolError;
+    fn try_from(frame: TransactionFrame) -> Result<Self, Self::Error> {
+        let frame = frame.require_transaction_type(TransactionType::LeaveChat)?;
+        let TransactionFrame { body, .. } = frame;
+        let TransactionBody { parameters } = body;
+
+        let chat_id = parameters.iter()
+            .find(|p| p.field_matches(TransactionField::ChatId))
+            .ok_or(ProtocolError::MissingField(TransactionField::ChatId))
+            .and_then(ChatId::try_from)?;
+
+        Ok(Self(chat_id))
+    }
+}
+
+impl Into<TransactionFrame> for LeaveChat {
+    fn into(self) -> TransactionFrame {
+        let header = TransactionHeader {
+            _type: TransactionType::LeaveChat.into(),
+            ..Default::default()
+        };
+        let Self(chat_id) = self;
+        let body = vec![chat_id.into()].into();
+        TransactionFrame { header, body }
+    }
+}
+
 #[derive(Debug)]
 pub struct GetClientInfoTextRequest {
     pub user_id: UserId,
