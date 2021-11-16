@@ -26,6 +26,7 @@ use crate::protocol::{
     ProtocolError,
     ChatMessage,
     UserNameWithInfo,
+    ServerMessage,
 };
 
 use transaction_stream::Frames;
@@ -167,19 +168,13 @@ impl Bus {
 #[derive(Debug, Clone, From, Into)]
 pub struct Broadcast(pub Vec<u8>);
 
-impl Into<ChatMessage> for Broadcast {
-    fn into(self) -> ChatMessage {
-        let Self(text) = self;
-        let message = [
-            &b"\r\r<<BEGIN BROADCAST>>"[..],
-            &b"\r"[..],
-            &text[..],
-            &b"\r<<END BROADCAST>>"[..],
-            &b"\r"[..],
-        ].concat();
-        ChatMessage {
-            chat_id: None,
+impl Into<ServerMessage> for Broadcast {
+    fn into(self) -> ServerMessage {
+        let Self(message) = self;
+        ServerMessage {
             message,
+            user_id: None,
+            user_name: None,
         }
     }
 }
