@@ -185,7 +185,7 @@ impl Into<Parameter> for ChatOptions {
     }
 }
 
-#[derive(Debug, Clone, Copy, From, Into)]
+#[derive(Debug, Clone, Copy, From, Into, PartialEq, Eq)]
 pub struct ChatId(i32);
 
 impl TryFrom<&Parameter> for ChatId {
