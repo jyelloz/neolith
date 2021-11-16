@@ -900,6 +900,40 @@ impl Into<TransactionFrame> for SendInstantMessageReply {
     }
 }
 
+#[derive(Debug, From, Into)]
+pub struct InviteToNewChat(Vec<UserId>);
+
+impl TryFrom<TransactionFrame> for InviteToNewChat {
+    type Error = ProtocolError;
+    fn try_from(frame: TransactionFrame) -> Result<Self, Self::Error> {
+        let frame = frame.require_transaction_type(TransactionType::InviteToNewChat)?;
+        let TransactionFrame { body, .. } = frame;
+        let TransactionBody { parameters } = body;
+
+        let user_ids: Result<_, _> = parameters.iter()
+            .filter(|p| p.field_matches(TransactionField::UserId))
+            .map(UserId::try_from)
+            .collect();
+
+        Ok(Self(user_ids?))
+    }
+}
+
+impl Into<TransactionFrame> for InviteToNewChat {
+    fn into(self) -> TransactionFrame {
+        let header = TransactionHeader {
+            _type: TransactionType::InviteToNewChat.into(),
+            ..Default::default()
+        };
+        let Self(user_ids) = self;
+        let body = user_ids.into_iter()
+            .map(UserId::into)
+            .collect::<Vec<Parameter>>()
+            .into();
+        TransactionFrame { header, body }
+    }
+}
+
 #[derive(Debug)]
 pub struct GetClientInfoTextRequest {
     pub user_id: UserId,
