@@ -69,7 +69,6 @@ use neolith::server::{
     ServerEvents,
     files::{DirEntry, OsFiles, FileInfo},
     transaction_stream::Frames,
-    transaction_sink::Frames as FramesSink,
     users::Users,
 };
 

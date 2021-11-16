@@ -19,7 +19,6 @@ use thiserror::Error;
 pub mod files;
 pub mod users;
 pub mod transaction_stream;
-pub mod transaction_sink;
 
 use crate::protocol::{
     TransactionFrame,
