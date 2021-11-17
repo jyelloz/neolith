@@ -18,6 +18,7 @@ use thiserror::Error;
 
 pub mod files;
 pub mod users;
+pub mod chat;
 pub mod transaction_stream;
 
 use crate::protocol::{
