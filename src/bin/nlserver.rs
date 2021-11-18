@@ -61,6 +61,8 @@ use neolith::protocol::{
     SetClientUserInfo,
     NotifyUserChange,
     NotifyUserDelete,
+    NotifyChatUserChange,
+    NotifyChatUserDelete,
     TransactionFrame,
     UserId,
     UserNameWithInfo,
@@ -70,12 +72,14 @@ use neolith::server::{
     Bus,
     User,
     Chat,
+    ChatRoomPresence,
     InstantMessage,
     Message as BusMessage,
     ServerEvents,
     files::{DirEntry, OsFiles, FileInfo},
     transaction_stream::Frames,
     users::Users,
+    chat::{Chats, ChatRoom},
 };
 
 fn os_path(path: FilePath) -> PathBuf {
@@ -140,6 +144,7 @@ impl Files {
 struct Globals {
     user: Option<UserNameWithInfo>,
     users: Arc<Mutex<Users>>,
+    chats: Arc<Mutex<Chats>>,
     bus: Bus,
 }
 
@@ -182,6 +187,20 @@ impl Globals {
             bus.user_disconnect(user.clone().into());
         }
     }
+    fn chat_join(&mut self, chat: ChatId, user: &UserNameWithInfo) {
+        let Self { chats, bus, .. } = self;
+        if let Ok(mut chats) = chats.lock() {
+            chats.join(chat, user);
+            bus.chat_room_join(chat, user.clone().into());
+        }
+    }
+    fn chat_leave(&mut self, chat: ChatId, user: &UserNameWithInfo) {
+        let Self { chats, bus, .. } = self;
+        if let Ok(mut chats) = chats.lock() {
+            chats.leave(chat, user);
+            bus.chat_room_leave(chat, user.clone().into());
+        }
+    }
 }
 
 #[tokio::main]
@@ -192,6 +211,7 @@ async fn main() -> Result<()> {
     let globals = Globals {
         user: None,
         users: Arc::new(Mutex::new(Users::new())),
+        chats: Arc::new(Mutex::new(Chats::new())),
         bus: Bus::new(10),
     };
 
@@ -385,6 +405,14 @@ impl <R: AsyncRead + Unpin, W: AsyncWrite + Unpin> Established<R, W> {
                 },
                 BusMessage::UserDisconnect(User(user)) => {
                     let notify: NotifyUserDelete = (&user).into();
+                    write_frame(w, notify.framed()).await?;
+                },
+                BusMessage::ChatRoomJoin(ChatRoomPresence(room, user)) => {
+                    let notify: NotifyChatUserChange = (room, &user.0).into();
+                    write_frame(w, notify.framed()).await?;
+                },
+                BusMessage::ChatRoomLeave(ChatRoomPresence(room, user)) => {
+                    let notify: NotifyChatUserDelete = (room, &user.0).into();
                     write_frame(w, notify.framed()).await?;
                 },
             }
