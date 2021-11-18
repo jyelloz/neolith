@@ -11,7 +11,7 @@ use std::collections::HashSet;
 pub struct Users(HashSet<User>, i16);
 
 #[derive(Debug, Clone, From, Into, Eq)]
-struct User(UserNameWithInfo);
+pub struct User(UserNameWithInfo);
 
 impl std::hash::Hash for User {
     fn hash<H: std::hash::Hasher>(&self, state: &mut H) {
