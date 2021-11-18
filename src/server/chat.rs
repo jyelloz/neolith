@@ -21,36 +21,59 @@ impl std::cmp::PartialEq for ChatRoomId {
     }
 }
 
-#[derive(Debug, Clone, From, Into, PartialEq, Eq)]
-pub struct ChatRoom(HashSet<User>);
-
-impl ChatRoom {
-    pub fn new() -> Self {
-        Self(HashSet::new())
+impl ChatRoomId {
+    fn add(&mut self, user: &UserNameWithInfo) {
+        let Self(_, room) = self;
+        room.add(user)
     }
-    pub fn add(&mut self, user: &UserNameWithInfo) {
-        self.0.insert(user.clone().into());
-    }
-    pub fn remove(&mut self, user: &UserNameWithInfo) {
-        self.0.remove(&user.clone().into());
+    fn remove(&mut self, user: &UserNameWithInfo) {
+        let Self(_, room) = self;
+        room.remove(user)
     }
 }
 
+#[derive(Debug, Default, Clone, From, Into, PartialEq, Eq)]
+pub struct ChatRoom{
+    pub subject: Option<Vec<u8>>,
+    users: HashSet<User>,
+}
+
+impl ChatRoom {
+    pub fn add(&mut self, user: &UserNameWithInfo) {
+        self.users.insert(user.clone().into());
+    }
+    pub fn remove(&mut self, user: &UserNameWithInfo) {
+        self.users.remove(&user.clone().into());
+    }
+}
+
+#[derive(Debug, Default)]
 pub struct Chats(HashSet<ChatRoomId>);
 
 impl Chats {
     pub fn new() -> Self {
-        Self(HashSet::new())
+        Self::default()
     }
-    pub fn join(&mut self, user: &UserNameWithInfo, chat_id: ChatId) {
+    fn take_room(&mut self, chat_id: ChatId) -> ChatRoomId {
+        let tester = ChatRoomId(chat_id, ChatRoom::default());
+        self.0.take(&tester)
+            .unwrap_or(tester)
     }
-    pub fn leave(&mut self, user: &UserNameWithInfo, chat_id: ChatId) {
+    fn return_room(&mut self, room: ChatRoomId) {
+        self.0.insert(room);
     }
-    pub fn room(&self, chat_id: ChatId) -> Vec<UserNameWithInfo> {
-        self.0.get(&ChatRoomId(chat_id, ChatRoom::new()))
-            .into_iter()
-            .flat_map(|id_and_room| id_and_room.1.0.clone().into_iter())
-            .map(User::into)
-            .collect()
+    pub fn join(&mut self, chat_id: ChatId, user: &UserNameWithInfo) {
+        let mut room = self.take_room(chat_id);
+        room.add(user);
+        self.return_room(room);
+    }
+    pub fn leave(&mut self, chat_id: ChatId, user: &UserNameWithInfo) {
+        let mut room = self.take_room(chat_id);
+        room.remove(user);
+        self.return_room(room);
+    }
+    pub fn room(&self, chat_id: ChatId) -> Option<&ChatRoom> {
+        self.0.get(&ChatRoomId(chat_id, ChatRoom::default()))
+            .map(|room| &room.1)
     }
 }
