@@ -24,6 +24,7 @@ pub mod transaction_stream;
 use crate::protocol::{
     TransactionFrame,
     ProtocolError,
+    ChatId,
     ChatMessage,
     UserNameWithInfo,
     ServerMessage,
@@ -35,6 +36,8 @@ use transaction_stream::Frames;
 pub enum Message {
     TransactionReceived(TransactionFrame),
     Chat(Chat),
+    ChatRoomJoin(ChatRoomPresence),
+    ChatRoomLeave(ChatRoomPresence),
     Broadcast(Broadcast),
     InstantMessage(InstantMessage),
     UserConnect(User),
@@ -101,6 +104,9 @@ impl From<UserNameWithInfo> for User {
 }
 
 #[derive(Debug, Clone)]
+pub struct ChatRoomPresence(pub ChatId, pub User);
+
+#[derive(Debug, Clone)]
 pub struct InstantMessage {
     pub from: User,
     pub to: User,
@@ -139,6 +145,14 @@ impl Bus {
     }
     pub fn user_disconnect(&mut self, user: User) -> BusResult<()> {
         self.sender.send(Message::UserDisconnect(user))?;
+        Ok(())
+    }
+    pub fn chat_room_join(&mut self, chat: ChatId, user: User) -> BusResult<()> {
+        self.sender.send(Message::ChatRoomJoin(ChatRoomPresence(chat, user)))?;
+        Ok(())
+    }
+    pub fn chat_room_leave(&mut self, chat: ChatId, user: User) -> BusResult<()> {
+        self.sender.send(Message::ChatRoomLeave(ChatRoomPresence(chat, user)))?;
         Ok(())
     }
     pub fn recv(&mut self) -> BusResult<Option<Message>> {
