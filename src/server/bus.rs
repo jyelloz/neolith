@@ -74,21 +74,23 @@ impl Bus {
             notifications,
         }
     }
-    fn process(&mut self, command: Command) {
-        let Self { filters, notifications, .. } = self;
-        let filters = filters.as_mut_slice();
+    fn process(command: Command, filters: &mut Filters, notifications: &mut bc::Sender<Notification>) {
         for filter in filters {
             filter.process(&command, notifications.clone());
         }
     }
-    async fn next_command(&mut self) -> Option<Command> {
-        self.commands.recv().await
-    }
     /// Represents a long-running task which will process all incoming commands.
     /// This consumes the underlying Bus.
-    pub async fn run(mut self) {
-        while let Some(command) = self.next_command().await {
-            self.process(command);
+    pub async fn run(self) {
+        let Self {
+            commands_tx,
+            mut commands,
+            mut notifications,
+            mut filters,
+        } = self;
+        drop(commands_tx);
+        while let Some(command) = commands.recv().await {
+            Self::process(command, &mut filters, &mut notifications);
         }
         eprintln!("Bus: shutting down");
     }
