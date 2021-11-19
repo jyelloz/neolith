@@ -11,19 +11,7 @@ use super::{
     InstantMessage,
 };
 
-/// A middleware between the network server's connections and its backing state.
-///
-/// It processes Commands using a set of configured filters which may mutate
-/// internal state based on the Command and also may react by submitting a
-/// Notification which is broadcast across the system, allowing connections to
-/// notify the client or some other internal component to begin a
-/// synchronization action.
-pub struct Bus {
-    commands: mpsc::Receiver<Command>,
-    filters: Vec<Box<dyn Filter + Send>>,
-    notifications: bc::Sender<Notification>,
-}
-
+#[derive(Debug, Clone)]
 pub enum Command {
     Chat(Chat),
     ChatRoomSubjectUpdate(ChatId, Vec<u8>),
@@ -38,6 +26,7 @@ pub enum Command {
     UserDisconnect(User),
 }
 
+#[derive(Debug, Clone)]
 pub enum Notification {
 }
 
@@ -49,13 +38,37 @@ pub trait Filter {
     );
 }
 
+type Filters = Vec<Box<dyn Filter + Send>>;
+
+/// A middleware between the network server's connections and its backing state.
+///
+/// It processes Commands using a set of configured filters which may mutate
+/// internal state based on the Command and also may react by submitting a
+/// Notification which is broadcast across the system, allowing connections to
+/// notify the client or some other internal component to begin a
+/// synchronization action.
+pub struct Bus {
+    commands_tx: mpsc::Sender<Command>,
+    commands: mpsc::Receiver<Command>,
+    filters: Filters,
+    notifications: bc::Sender<Notification>,
+}
+
 impl Bus {
-    pub fn new(
-        commands: mpsc::Receiver<Command>,
-        filters: Vec<Box<dyn Filter + Send>>,
-        notifications: bc::Sender<Notification>,
-    ) -> Self {
+    pub fn new() -> Self {
+        Self::new_with_filters(vec![])
+    }
+    pub fn new_with_filters(filters: Filters) -> Self {
+        Self::new_with_buffer_and_filters(10, filters)
+    }
+    pub fn new_with_buffer(buffer: usize) -> Self {
+        Self::new_with_buffer_and_filters(buffer, vec![])
+    }
+    pub fn new_with_buffer_and_filters(buffer: usize, filters: Filters) -> Self {
+        let (commands_tx, commands) = mpsc::channel(buffer);
+        let (notifications, _) = bc::channel(buffer);
         Self {
+            commands_tx,
             commands,
             filters,
             notifications,
@@ -71,10 +84,21 @@ impl Bus {
     async fn next_command(&mut self) -> Option<Command> {
         self.commands.recv().await
     }
+    /// Represents a long-running task which will process all incoming commands.
+    /// This consumes the underlying Bus.
     pub async fn run(mut self) {
         while let Some(command) = self.next_command().await {
             self.process(command);
         }
         eprintln!("Bus: shutting down");
+    }
+    pub fn add_filter(&mut self, filter: Box<dyn Filter + Send>) {
+        self.filters.push(filter)
+    }
+    pub fn command_publisher(&self) -> mpsc::Sender<Command> {
+        self.commands_tx.clone()
+    }
+    pub fn notification_subscriber(&self) -> bc::Receiver<Notification> {
+        self.notifications.subscribe()
     }
 }
