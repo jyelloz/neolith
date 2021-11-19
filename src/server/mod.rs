@@ -95,14 +95,9 @@ impl Into<ChatMessage> for Chat {
     }
 }
 
-#[derive(Debug, Clone)]
+#[derive(Debug, Clone, From, Into)]
 pub struct User(pub UserNameWithInfo);
 
-impl From<UserNameWithInfo> for User {
-    fn from(user: UserNameWithInfo) -> Self {
-        Self(user)
-    }
-}
 
 #[derive(Debug, Clone)]
 pub struct ChatRoomPresence(pub ChatId, pub User);
