@@ -42,5 +42,7 @@ implementation along with a reference client and server.
     - Well-designed state machines for connections
     - A good dispatch mechanism for transaction receipt.
     - A good model for request-reply sequences.
+    - More ergonomic declaration and (de-)serialization of each protocol struct.
+    - Communication with Trackers
 - Client
     - Anything
