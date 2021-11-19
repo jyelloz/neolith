@@ -3,6 +3,8 @@ use tokio::sync::{
     broadcast as bc,
 };
 
+use derive_more::From;
+
 use super::{
     Chat,
     ChatId,
@@ -100,7 +102,16 @@ impl Bus {
     pub fn command_publisher(&self) -> mpsc::Sender<Command> {
         self.commands_tx.clone()
     }
-    pub fn notification_subscriber(&self) -> bc::Receiver<Notification> {
-        self.notifications.subscribe()
+    pub fn notification_subscriber(&self) -> NotificationSubscriber {
+        self.notifications.clone().into()
+    }
+}
+
+#[derive(Debug, Clone, From)]
+pub struct NotificationSubscriber(bc::Sender<Notification>);
+
+impl NotificationSubscriber {
+    pub fn subscribe(&mut self) -> bc::Receiver<Notification> {
+        self.0.subscribe()
     }
 }
