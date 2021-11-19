@@ -98,9 +98,20 @@ impl Into<ChatMessage> for Chat {
 #[derive(Debug, Clone, From, Into)]
 pub struct User(pub UserNameWithInfo);
 
+#[derive(Debug, Clone, From, Into)]
+pub struct ChatRoomPresence(pub ChatId, pub User);
 
 #[derive(Debug, Clone)]
-pub struct ChatRoomPresence(pub ChatId, pub User);
+pub struct ChatRoomChat(pub ChatId, pub User, pub Vec<u8>);
+
+impl Into<ChatMessage> for ChatRoomChat {
+    fn into(self) -> ChatMessage {
+        let Self(chat_id, user, text) = self;
+        let chat_id = Some(chat_id);
+        let chat = Chat(user, text);
+        ChatMessage { chat_id, ..chat.into() }
+    }
+}
 
 #[derive(Debug, Clone)]
 pub struct InstantMessage {
