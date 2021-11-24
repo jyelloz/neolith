@@ -7,6 +7,8 @@ use derive_more::{From, Into};
 
 use std::collections::HashSet;
 
+use tokio::sync::{mpsc, oneshot, watch};
+
 #[derive(Debug, Clone)]
 pub struct Users(HashSet<User>, i16);
 
@@ -65,5 +67,93 @@ impl Users {
             .cloned()
             .map(User::into)
             .collect()
+    }
+}
+
+#[derive(Debug)]
+enum Command {
+    Connect(UserNameWithInfo, oneshot::Sender<UserId>),
+    Update(UserNameWithInfo, oneshot::Sender<()>),
+    Disconnect(UserNameWithInfo, oneshot::Sender<()>),
+}
+
+#[derive(Debug, Clone, From)]
+pub struct UserList(mpsc::Sender<Command>);
+
+impl UserList {
+    pub fn new() -> (Self, UserUpdateProcessor) {
+        let (tx, rx) = mpsc::channel(10);
+        let list = Self(tx);
+        let proc = UserUpdateProcessor::new(rx);
+        (list, proc)
+    }
+    pub async fn add(
+        &mut self,
+        user: UserNameWithInfo,
+    ) -> Result<UserId, oneshot::error::RecvError> {
+        let (tx, rx) = oneshot::channel();
+        self.0.send(Command::Connect(user, tx)).await;
+        rx.await
+    }
+    pub async fn update(
+        &mut self,
+        user: UserNameWithInfo,
+    ) -> Result<(), oneshot::error::RecvError> {
+        let (tx, rx) = oneshot::channel();
+        self.0.send(Command::Update(user, tx)).await;
+        rx.await
+    }
+    pub async fn delete(
+        &mut self,
+        user: UserNameWithInfo,
+    ) -> Result<(), oneshot::error::RecvError> {
+        let (tx, rx) = oneshot::channel();
+        self.0.send(Command::Disconnect(user, tx)).await;
+        rx.await
+    }
+}
+
+pub struct UserUpdateProcessor {
+    queue: mpsc::Receiver<Command>,
+    users: Users,
+    updates: watch::Sender<Users>,
+}
+
+impl UserUpdateProcessor {
+    fn new(queue: mpsc::Receiver<Command>) -> Self {
+        let users = Users::new();
+        let (updates, _rx) = watch::channel(users.clone());
+        Self {
+            queue,
+            users,
+            updates,
+        }
+    }
+    pub async fn run(self) {
+        let Self { mut users, mut queue, updates } = self;
+        while let Some(command) = queue.recv().await {
+            eprintln!("handling update: {:?}", &command);
+            match command {
+                Command::Connect(user, tx) => {
+                    let id = users.add(&mut user.into());
+                    tx.send(id);
+                },
+                Command::Update(user, tx) => {
+                    users.update(&mut user.into());
+                    tx.send(());
+                },
+                Command::Disconnect(user, tx) => {
+                    users.remove(&mut user.into());
+                    tx.send(());
+                },
+            }
+            if updates.send(users.clone()).is_err() {
+                eprintln!("UserUpdateProcessor: shutting down");
+                return;
+            }
+        }
+    }
+    pub fn subscribe(&self) -> watch::Receiver<Users> {
+        self.updates.subscribe()
     }
 }
