@@ -188,6 +188,12 @@ impl Into<Parameter> for ChatOptions {
 #[derive(Debug, Clone, Copy, From, Into, PartialEq, Eq, PartialOrd, Ord)]
 pub struct ChatId(i32);
 
+impl Default for ChatId {
+    fn default() -> Self {
+        1.into()
+    }
+}
+
 impl TryFrom<&Parameter> for ChatId {
     type Error = ProtocolError;
     fn try_from(parameter: &Parameter) -> Result<Self, Self::Error> {
@@ -231,7 +237,13 @@ impl TryFrom<&Parameter> for IconId {
     }
 }
 
-#[derive(Debug, Clone, Copy, From, Into, PartialEq, Eq, PartialOrd, Ord)]
+#[derive(
+    Debug, Clone, Copy,
+    From, Into,
+    PartialEq, Eq,
+    PartialOrd, Ord,
+    Hash,
+)]
 pub struct UserId(i16);
 
 impl TryFrom<&Parameter> for UserId {
