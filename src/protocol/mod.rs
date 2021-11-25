@@ -1223,6 +1223,46 @@ impl Into<TransactionFrame> for LeaveChat {
     }
 }
 
+#[derive(Debug, From, Into)]
+pub struct SetChatSubject(ChatId, Vec<u8>);
+
+impl TryFrom<TransactionFrame> for SetChatSubject {
+    type Error = ProtocolError;
+    fn try_from(frame: TransactionFrame) -> Result<Self, Self::Error> {
+        let frame = frame.require_transaction_type(TransactionType::SetChatSubject)?;
+        let TransactionFrame { body, .. } = frame;
+        let TransactionBody { parameters } = body;
+
+        let chat_id = parameters.iter()
+            .find(|p| p.field_matches(TransactionField::ChatId))
+            .ok_or(ProtocolError::MissingField(TransactionField::ChatId))
+            .and_then(ChatId::try_from)?;
+
+        let subject = parameters.iter()
+            .find(|p| p.field_matches(TransactionField::Data))
+            .cloned()
+            .ok_or(ProtocolError::MissingField(TransactionField::Data))?
+            .take();
+
+        Ok(Self(chat_id, subject))
+    }
+}
+
+impl Into<TransactionFrame> for SetChatSubject {
+    fn into(self) -> TransactionFrame {
+        let header = TransactionHeader {
+            _type: TransactionType::SetChatSubject.into(),
+            ..Default::default()
+        };
+        let Self(chat_id, subject) = self;
+        let body = vec![
+            chat_id.into(),
+            Parameter::new(TransactionField::Data.into(), subject),
+        ].into();
+        TransactionFrame { header, body }
+    }
+}
+
 #[derive(Debug)]
 pub struct GetClientInfoTextRequest {
     pub user_id: UserId,
