@@ -1383,9 +1383,9 @@ impl Into<TransactionFrame> for SendBroadcast {
     }
 }
 
-pub struct SendBroadcastReply;
+pub struct GenericReply;
 
-impl TryFrom<TransactionFrame> for SendBroadcastReply {
+impl TryFrom<TransactionFrame> for GenericReply {
     type Error = ProtocolError;
     fn try_from(frame: TransactionFrame) -> Result<Self, Self::Error> {
         frame.require_transaction_type(TransactionType::Reply)?;
@@ -1393,7 +1393,7 @@ impl TryFrom<TransactionFrame> for SendBroadcastReply {
     }
 }
 
-impl Into<TransactionFrame> for SendBroadcastReply {
+impl Into<TransactionFrame> for GenericReply {
     fn into(self) -> TransactionFrame {
         TransactionFrame::empty(Default::default())
     }
