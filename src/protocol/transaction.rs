@@ -421,6 +421,12 @@ impl Default for TransactionBody {
     }
 }
 
+impl FromIterator<Parameter> for TransactionBody {
+    fn from_iter<I: IntoIterator<Item=Parameter>>(iter: I) -> Self {
+        Vec::from_iter(iter).into()
+    }
+}
+
 impl From<Vec<Parameter>> for TransactionBody {
     fn from(parameters: Vec<Parameter>) -> Self {
         Self { parameters }
