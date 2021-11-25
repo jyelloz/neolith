@@ -17,6 +17,8 @@ use derive_more::{From, Into};
 
 use thiserror::Error;
 
+use std::iter;
+
 mod handshake;
 mod transaction;
 mod transaction_type;
@@ -1183,6 +1185,47 @@ impl Into<TransactionFrame> for JoinChat {
         };
         let Self(chat_id) = self;
         let body = vec![chat_id.into()].into();
+        TransactionFrame { header, body }
+    }
+}
+
+#[derive(Debug, From, Into)]
+pub struct JoinChatReply(ChatId, Vec<UserNameWithInfo>);
+
+impl TryFrom<TransactionFrame> for JoinChatReply {
+    type Error = ProtocolError;
+    fn try_from(frame: TransactionFrame) -> Result<Self, Self::Error> {
+        let frame = frame.require_transaction_type(TransactionType::JoinChat)?;
+        let TransactionFrame { body, .. } = frame;
+        let TransactionBody { parameters } = body;
+
+        let chat_id = parameters.iter()
+            .find(|p| p.field_matches(TransactionField::ChatId))
+            .ok_or(ProtocolError::MissingField(TransactionField::ChatId))
+            .and_then(ChatId::try_from)?;
+
+        let users = parameters.iter()
+            .filter(|p| p.field_matches(TransactionField::UserNameWithInfo))
+            .map(UserNameWithInfo::try_from)
+            .collect::<Result<_, _>>()?;
+
+        Ok(Self(chat_id, users))
+    }
+}
+
+impl Into<TransactionFrame> for JoinChatReply {
+    fn into(self) -> TransactionFrame {
+        let header = TransactionHeader {
+            _type: TransactionType::Reply.into(),
+            ..Default::default()
+        };
+        let Self(chat_id, users) = self;
+        let users: Vec<Parameter> = users.into_iter()
+            .map(UserNameWithInfo::into)
+            .collect();
+        let body = iter::once(chat_id.into())
+            .chain(users.into_iter())
+            .collect();
         TransactionFrame { header, body }
     }
 }
