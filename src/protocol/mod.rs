@@ -861,7 +861,7 @@ impl Into<TransactionFrame> for SendChat {
     }
 }
 
-#[derive(Debug)]
+#[derive(Debug, Clone)]
 pub struct ChatMessage {
     pub chat_id: Option<ChatId>,
     pub message: Vec<u8>,
@@ -897,13 +897,19 @@ impl Into<TransactionFrame> for ChatMessage {
             _type: TransactionType::ChatMessage.into(),
             ..Default::default()
         };
-        let Self { message, .. } = self;
+        let Self { message, chat_id } = self;
+        let message = Parameter::new(
+            TransactionField::Data.into(),
+            message,
+        );
+        let chat_id = chat_id.map(ChatId::into);
         let body = vec![
-            Parameter::new(
-                TransactionField::Data.into(),
-                message,
-            ),
-        ].into();
+            Some(message),
+            chat_id,
+        ].into_iter()
+            .flat_map(Option::into_iter)
+            .collect::<Vec<Parameter>>()
+            .into();
         TransactionFrame { header, body }
     }
 }
