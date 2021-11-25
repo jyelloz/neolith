@@ -572,10 +572,10 @@ impl Into<TransactionFrame> for GetUserNameListReply {
             ..Default::default()
         };
         let Self(users) = self;
-        let parameters: Vec<Parameter> = users.into_iter()
+        let body = users.into_iter()
             .map(UserNameWithInfo::into)
             .collect();
-        TransactionFrame { header, body: parameters.into() }
+        TransactionFrame { header, body }
     }
 }
 
@@ -624,8 +624,7 @@ impl Into<TransactionFrame> for GetMessagesReply {
         let Self(messages) = self;
         let body = messages.into_iter()
             .map(Message::into)
-            .collect::<Vec<Parameter>>()
-            .into();
+            .collect();
         TransactionFrame { header, body }
     }
 }
@@ -683,10 +682,10 @@ impl Into<TransactionFrame> for GetFileNameListReply {
             is_reply: IsReply::reply(),
             ..Default::default()
         };
-        let parameters: Vec::<Parameter> = self.0.into_iter()
+        let body = self.0.into_iter()
             .map(FileNameWithInfo::into)
             .collect();
-        TransactionFrame { header, body: parameters.into() }
+        TransactionFrame { header, body }
     }
 }
 
@@ -855,8 +854,7 @@ impl Into<TransactionFrame> for SendChat {
             Some(options.into()),
         ].into_iter()
             .flat_map(Option::into_iter)
-            .collect::<Vec<_>>()
-            .into();
+            .collect();
         TransactionFrame { header, body }
     }
 }
@@ -908,8 +906,7 @@ impl Into<TransactionFrame> for ChatMessage {
             chat_id,
         ].into_iter()
             .flat_map(Option::into_iter)
-            .collect::<Vec<Parameter>>()
-            .into();
+            .collect();
         TransactionFrame { header, body }
     }
 }
@@ -940,8 +937,7 @@ impl Into<TransactionFrame> for ServerMessage {
             user_name,
         ].into_iter()
             .flat_map(Option::into_iter)
-            .collect::<Vec<_>>()
-            .into();
+            .collect();
         TransactionFrame { header, body }
     }
 }
@@ -1036,8 +1032,7 @@ impl Into<TransactionFrame> for InviteToNewChat {
         let Self(user_ids) = self;
         let body = user_ids.into_iter()
             .map(UserId::into)
-            .collect::<Vec<Parameter>>()
-            .into();
+            .collect();
         TransactionFrame { header, body }
     }
 }
