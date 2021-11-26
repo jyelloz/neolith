@@ -103,6 +103,7 @@ pub use transaction::{
 pub use parameters::{
     ChatId,
     ChatOptions,
+    ChatSubject,
     Credential,
     FileComment,
     FileCreatedAt,
@@ -1299,7 +1300,7 @@ impl Into<TransactionFrame> for LeaveChat {
 }
 
 #[derive(Debug, From, Into)]
-pub struct SetChatSubject(ChatId, Vec<u8>);
+pub struct SetChatSubject(ChatId, ChatSubject);
 
 impl TryFrom<TransactionFrame> for SetChatSubject {
     type Error = ProtocolError;
@@ -1314,10 +1315,9 @@ impl TryFrom<TransactionFrame> for SetChatSubject {
             .and_then(ChatId::try_from)?;
 
         let subject = parameters.iter()
-            .find(|p| p.field_matches(TransactionField::Data))
-            .cloned()
-            .ok_or(ProtocolError::MissingField(TransactionField::Data))?
-            .take();
+            .find(|p| p.field_matches(TransactionField::ChatSubject))
+            .ok_or(ProtocolError::MissingField(TransactionField::ChatSubject))
+            .and_then(ChatSubject::try_from)?;
 
         Ok(Self(chat_id, subject))
     }
@@ -1332,7 +1332,7 @@ impl Into<TransactionFrame> for SetChatSubject {
         let Self(chat_id, subject) = self;
         let body = vec![
             chat_id.into(),
-            Parameter::new(TransactionField::Data.into(), subject),
+            subject.into(),
         ].into();
         TransactionFrame { header, body }
     }
