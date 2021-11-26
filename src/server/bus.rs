@@ -1,13 +1,13 @@
-use tokio::sync::{
-    mpsc,
-    broadcast as bc,
-};
+use tokio::sync::broadcast;
 
-use derive_more::From;
+use derive_more::{From, Into};
 
 use super::{
     Chat,
-    ChatId,
+    ChatMessage,
+    ChatRoomCreationRequest,
+    ChatRoomPresence,
+    ChatRoomSubject,
     User,
     Broadcast,
     InstantMessage,
@@ -16,11 +16,11 @@ use super::{
 #[derive(Debug, Clone)]
 pub enum Command {
     Chat(Chat),
-    ChatRoomSubjectUpdate(ChatId, Vec<u8>),
-    ChatRoomUserJoin(ChatId, User),
-    ChatRoomUserUpdate(ChatId, User),
-    ChatRoomUserLeave(ChatId, User),
-    ChatRoomChat(ChatId, User, Vec<u8>),
+    ChatRoomCreate(ChatRoomCreationRequest),
+    ChatRoomSubjectUpdate(ChatRoomSubject),
+    ChatRoomUserJoin(ChatRoomPresence),
+    ChatRoomUserUpdate(ChatRoomPresence),
+    ChatRoomUserLeave(ChatRoomPresence),
     Broadcast(Broadcast),
     InstantMessage(InstantMessage),
     UserConnect(User),
@@ -30,17 +30,16 @@ pub enum Command {
 
 #[derive(Debug, Clone)]
 pub enum Notification {
+    Empty,
+    Chat(ChatMessage),
+    ChatRoomJoin(ChatRoomPresence),
+    ChatRoomLeave(ChatRoomPresence),
+    Broadcast(Broadcast),
+    InstantMessage(InstantMessage),
+    UserConnect(User),
+    UserUpdate(User),
+    UserDisconnect(User),
 }
-
-pub trait Filter {
-    fn process(
-        &mut self,
-        command: &Command,
-        notifications: bc::Sender<Notification>,
-    );
-}
-
-type Filters = Vec<Box<dyn Filter + Send>>;
 
 /// A middleware between the network server's connections and its backing state.
 ///
@@ -49,69 +48,37 @@ type Filters = Vec<Box<dyn Filter + Send>>;
 /// Notification which is broadcast across the system, allowing connections to
 /// notify the client or some other internal component to begin a
 /// synchronization action.
+#[derive(Debug, Clone)]
 pub struct Bus {
-    commands_tx: mpsc::Sender<Command>,
-    commands: mpsc::Receiver<Command>,
-    filters: Filters,
-    notifications: bc::Sender<Notification>,
+    tx: broadcast::Sender<Notification>,
 }
 
 impl Bus {
     pub fn new() -> Self {
-        Self::new_with_filters(vec![])
-    }
-    pub fn new_with_filters(filters: Filters) -> Self {
-        Self::new_with_buffer_and_filters(10, filters)
+        Self::new_with_buffer(10)
     }
     pub fn new_with_buffer(buffer: usize) -> Self {
-        Self::new_with_buffer_and_filters(buffer, vec![])
+        let (tx, _) = broadcast::channel(buffer);
+        Self { tx }
     }
-    pub fn new_with_buffer_and_filters(buffer: usize, filters: Filters) -> Self {
-        let (commands_tx, commands) = mpsc::channel(buffer);
-        let (notifications, _) = bc::channel(buffer);
-        Self {
-            commands_tx,
-            commands,
-            filters,
-            notifications,
-        }
+    pub fn publish(&self, notification: Notification) {
+        self.tx.send(notification).ok();
     }
-    fn process(command: Command, filters: &mut Filters, notifications: &mut bc::Sender<Notification>) {
-        for filter in filters {
-            filter.process(&command, notifications.clone());
-        }
-    }
-    /// Represents a long-running task which will process all incoming commands.
-    /// This consumes the underlying Bus.
-    pub async fn run(self) {
-        let Self {
-            commands_tx,
-            mut commands,
-            mut notifications,
-            mut filters,
-        } = self;
-        drop(commands_tx);
-        while let Some(command) = commands.recv().await {
-            Self::process(command, &mut filters, &mut notifications);
-        }
-        eprintln!("Bus: shutting down");
-    }
-    pub fn add_filter(&mut self, filter: Box<dyn Filter + Send>) {
-        self.filters.push(filter)
-    }
-    pub fn command_publisher(&self) -> mpsc::Sender<Command> {
-        self.commands_tx.clone()
-    }
-    pub fn notification_subscriber(&self) -> NotificationSubscriber {
-        self.notifications.clone().into()
+    pub fn subscribe(&self) -> Notifications {
+        self.tx.subscribe().into()
     }
 }
 
-#[derive(Debug, Clone, From)]
-pub struct NotificationSubscriber(bc::Sender<Notification>);
+#[derive(Debug, From, Into)]
+pub struct Notifications(broadcast::Receiver<Notification>);
 
-impl NotificationSubscriber {
-    pub fn subscribe(&mut self) -> bc::Receiver<Notification> {
-        self.0.subscribe()
+impl Notifications {
+    pub fn incoming(self) -> impl futures::stream::Stream<Item = Notification> {
+        let Self(mut notifications) = self;
+        async_stream::stream! {
+            while let Ok(notification) = notifications.recv().await {
+                yield notification;
+            }
+        }
     }
 }
