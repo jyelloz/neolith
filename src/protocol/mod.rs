@@ -536,6 +536,44 @@ impl From<(ChatId, &UserNameWithInfo)> for NotifyChatUserDelete {
     }
 }
 
+#[derive(Debug, From, Into, PartialEq, Eq, PartialOrd, Ord)]
+pub struct NotifyChatSubject {
+    pub chat_id: ChatId,
+    pub subject: ChatSubject,
+}
+
+impl Into<TransactionFrame> for NotifyChatSubject {
+    fn into(self) -> TransactionFrame {
+        let header = TransactionHeader {
+            _type: TransactionType::NotifyChatSubject.into(),
+            ..Default::default()
+        };
+        let Self { chat_id, subject } = self;
+        let body = vec![
+            chat_id.into(),
+            subject.into(),
+        ].into();
+        TransactionFrame { header, body }
+    }
+}
+
+impl TryFrom<TransactionFrame> for NotifyChatSubject {
+    type Error = ProtocolError;
+    fn try_from(frame: TransactionFrame) -> Result<Self, Self::Error> {
+        let TransactionFrame { body, .. } = frame;
+        let TransactionBody { parameters } = body;
+        let chat_id = parameters.iter()
+            .find(|p| p.field_matches(TransactionField::ChatId))
+            .ok_or(ProtocolError::MissingField(TransactionField::ChatId))
+            .and_then(|p| ChatId::try_from(p))?;
+        let subject = parameters.iter()
+            .find(|p| p.field_matches(TransactionField::ChatSubject))
+            .ok_or(ProtocolError::MissingField(TransactionField::ChatSubject))
+            .and_then(|p| ChatSubject::try_from(p))?;
+        Ok(Self { chat_id, subject })
+    }
+}
+
 #[derive(Debug, PartialEq, Eq)]
 pub struct GetUserNameList;
 
