@@ -214,6 +214,30 @@ impl Into<Parameter> for ChatId {
     }
 }
 
+#[derive(Debug, Clone, From, Into, PartialEq, Eq, PartialOrd, Ord)]
+pub struct ChatSubject(Vec<u8>);
+
+impl TryFrom<&Parameter> for ChatSubject {
+    type Error = ProtocolError;
+    fn try_from(parameter: &Parameter) -> Result<Self, Self::Error> {
+        let subject = take_if_matches(
+            parameter.clone(),
+            TransactionField::ChatSubject,
+        )?;
+        Ok(subject.into())
+    }
+}
+
+impl Into<Parameter> for ChatSubject {
+    fn into(self) -> Parameter {
+        let Self(subject) = self;
+        Parameter::new(
+            TransactionField::ChatSubject.into(),
+            subject,
+        )
+    }
+}
+
 #[derive(Debug, Clone, Copy, From, Into, PartialEq, Eq, PartialOrd, Ord)]
 pub struct IconId(i16);
 
