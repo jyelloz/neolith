@@ -4,16 +4,33 @@ use crate::protocol::{
 };
 
 use derive_more::{From, Into};
+use thiserror::Error;
 
 use std::collections::HashSet;
 
 use tokio::sync::{mpsc, oneshot, watch};
 
+#[derive(Debug, Error)]
+pub enum UsersError {
+    #[error("execution error")]
+    ExecutionError(#[from] oneshot::error::RecvError),
+    #[error("service unavailable")]
+    ServiceUnavailable,
+}
+
+impl <T> From<mpsc::error::SendError<T>> for UsersError {
+    fn from(_: mpsc::error::SendError<T>) -> Self {
+        Self::ServiceUnavailable
+    }
+}
+
+type Result<T> = ::core::result::Result<T, UsersError>;
+
 #[derive(Debug, Clone)]
 pub struct Users(HashSet<User>, i16);
 
 #[derive(Debug, Clone, From, Into, Eq)]
-pub struct User(UserNameWithInfo);
+struct User(UserNameWithInfo);
 
 impl std::hash::Hash for User {
     fn hash<H: std::hash::Hasher>(&self, state: &mut H) {
@@ -90,26 +107,29 @@ impl UserList {
     pub async fn add(
         &mut self,
         user: UserNameWithInfo,
-    ) -> Result<UserId, oneshot::error::RecvError> {
+    ) -> Result<UserId> {
         let (tx, rx) = oneshot::channel();
-        self.0.send(Command::Connect(user, tx)).await;
-        rx.await
+        self.0.send(Command::Connect(user, tx)).await?;
+        let id = rx.await?;
+        Ok(id)
     }
     pub async fn update(
         &mut self,
         user: UserNameWithInfo,
-    ) -> Result<(), oneshot::error::RecvError> {
+    ) -> Result<()> {
         let (tx, rx) = oneshot::channel();
-        self.0.send(Command::Update(user, tx)).await;
-        rx.await
+        self.0.send(Command::Update(user, tx)).await?;
+        rx.await?;
+        Ok(())
     }
     pub async fn delete(
         &mut self,
         user: UserNameWithInfo,
-    ) -> Result<(), oneshot::error::RecvError> {
+    ) -> Result<()> {
         let (tx, rx) = oneshot::channel();
-        self.0.send(Command::Disconnect(user, tx)).await;
-        rx.await
+        self.0.send(Command::Disconnect(user, tx)).await?;
+        rx.await?;
+        Ok(())
     }
 }
 
@@ -129,29 +149,30 @@ impl UserUpdateProcessor {
             updates,
         }
     }
-    pub async fn run(self) {
+    pub async fn run(self) -> Result<()> {
         let Self { mut users, mut queue, updates } = self;
         while let Some(command) = queue.recv().await {
             eprintln!("handling update: {:?}", &command);
             match command {
                 Command::Connect(user, tx) => {
                     let id = users.add(&mut user.into());
-                    tx.send(id);
+                    tx.send(id).ok();
                 },
                 Command::Update(user, tx) => {
                     users.update(&mut user.into());
-                    tx.send(());
+                    tx.send(()).ok();
                 },
                 Command::Disconnect(user, tx) => {
                     users.remove(&mut user.into());
-                    tx.send(());
+                    tx.send(()).ok();
                 },
             }
             if updates.send(users.clone()).is_err() {
                 eprintln!("UserUpdateProcessor: shutting down");
-                return;
+                break;
             }
         }
+        Ok(())
     }
     pub fn subscribe(&self) -> watch::Receiver<Users> {
         self.updates.subscribe()
