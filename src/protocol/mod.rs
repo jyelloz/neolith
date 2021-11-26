@@ -945,6 +945,43 @@ impl Into<TransactionFrame> for ServerMessage {
 }
 
 #[derive(Debug)]
+pub struct DisconnectMessage {
+    pub message: Vec<u8>,
+}
+
+impl TryFrom<TransactionFrame> for DisconnectMessage {
+    type Error = ProtocolError;
+    fn try_from(frame: TransactionFrame) -> Result<Self, Self::Error> {
+        let TransactionFrame {
+            body, ..
+        } = frame.require_transaction_type(TransactionType::SendInstantMessage)?;
+        let TransactionBody { parameters, .. } = body;
+        let message = parameters.into_iter()
+            .filter(|p| p.field_matches(TransactionField::Data))
+            .map(|p| p.take())
+            .next()
+            .ok_or(ProtocolError::MissingField(TransactionField::Data))?;
+        Ok(Self { message })
+    }
+}
+
+impl Into<TransactionFrame> for DisconnectMessage {
+    fn into(self) -> TransactionFrame {
+        let header = TransactionHeader {
+            _type: TransactionType::DisconnectMessage.into(),
+            ..Default::default()
+        };
+        let Self { message } = self;
+        let message = Parameter::new(
+            TransactionField::Data.into(),
+            message,
+        );
+        let body = vec![message].into();
+        TransactionFrame { header, body }
+    }
+}
+
+#[derive(Debug)]
 pub struct SendInstantMessage {
     pub user_id: UserId,
     pub message: Vec<u8>,
