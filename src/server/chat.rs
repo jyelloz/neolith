@@ -14,6 +14,22 @@ use derive_more::{From, Into};
 use std::collections::HashSet;
 use tokio::sync::{mpsc, oneshot, watch};
 
+#[derive(Debug, Error)]
+pub enum ChatError {
+    #[error("execution error")]
+    ExecutionError(#[from] oneshot::error::RecvError),
+    #[error("service unavailable")]
+    ServiceUnavailable,
+}
+
+impl <T> From<mpsc::error::SendError<T>> for ChatError {
+    fn from(_: mpsc::error::SendError<T>) -> Self {
+        Self::ServiceUnavailable
+    }
+}
+
+type Result<T> = ::core::result::Result<T, ChatError>;
+
 #[derive(Debug, Default, Clone, From, Into, Eq)]
 pub struct ChatRoomId(ChatId, ChatRoom);
 
@@ -60,6 +76,11 @@ impl ChatRoom {
     }
     pub fn remove(&mut self, user: UserId) {
         self.users.remove(&user);
+    }
+    pub fn users(&self) -> Vec<UserId> {
+        self.users.iter()
+            .cloned()
+            .collect()
     }
 }
 
@@ -113,20 +134,6 @@ impl Chats {
     }
 }
 
-#[derive(Debug, Error)]
-pub enum ChatError {
-    #[error("execution error")]
-    ExecutionError(#[from] oneshot::error::RecvError),
-    #[error("service unavailable")]
-    ServiceUnavailable,
-}
-
-impl <T> From<mpsc::error::SendError<T>> for ChatError {
-    fn from(_: mpsc::error::SendError<T>) -> Self {
-        Self::ServiceUnavailable
-    }
-}
-
 #[derive(Debug)]
 enum Command {
     // Chat(Chat),
@@ -142,8 +149,6 @@ pub struct ChatUpdateProcessor {
     chats: Chats,
     updates: watch::Sender<Chats>,
 }
-
-type Result<T> = ::core::result::Result<T, ChatError>;
 
 #[derive(Debug, Clone)]
 pub struct ChatsList(mpsc::Sender<Command>);
