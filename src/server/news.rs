@@ -1,5 +1,7 @@
 use encoding::{Encoding, EncoderTrap, DecoderTrap};
 
+pub static SEPARATOR: &'static str = "\r--\r";
+
 #[derive(Clone)]
 pub struct News<E> {
     encoding: E,
@@ -33,7 +35,7 @@ impl <E: Encoding> News<E> {
             .map(String::as_str)
             .rev()
             .collect::<Vec<&str>>()
-            .join("");
+            .join(SEPARATOR);
         self.encode(&news)
     }
     fn decode(&self, s: &[u8]) -> String {
