@@ -28,6 +28,7 @@ implementation along with a reference client and server.
     - Read-only file browsing backed by a UNIX filesystem subtree
     - Chat messaging
     - Broadcast messaging
+    - Private chat rooms
     - Instant messaging
 
 ### What is not implemented?
@@ -38,7 +39,6 @@ implementation along with a reference client and server.
     - File/folder transfer
     - File manipulation (move/delete/set info)
     - News posting
-    - Private chat rooms
     - Well-designed state machines for connections
     - A good dispatch mechanism for transaction receipt.
     - A good model for request-reply sequences.
