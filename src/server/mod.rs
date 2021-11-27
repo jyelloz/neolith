@@ -24,13 +24,15 @@ use self::bus::{
 };
 
 use crate::protocol::{
-    TransactionFrame,
-    ProtocolError,
     ChatId,
     ChatMessage,
+    Message,
+    NotifyNewsMessage,
+    ProtocolError,
+    ServerMessage,
+    TransactionFrame,
     UserId,
     UserNameWithInfo,
-    ServerMessage,
 };
 
 use transaction_stream::Frames;
@@ -124,6 +126,15 @@ impl Into<ServerMessage> for Broadcast {
 
 #[derive(Debug, Clone, From, Into)]
 pub struct Article(pub Vec<u8>);
+
+impl Into<NotifyNewsMessage> for Article {
+    fn into(self) -> NotifyNewsMessage {
+        let Self(mut message) = self;
+        message.extend_from_slice(news::SEPARATOR.as_bytes());
+        let message = Message::from(message);
+        NotifyNewsMessage::from(message)
+    }
+}
 
 pub enum Event {
     Notification(Notification),
