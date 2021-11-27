@@ -5,6 +5,7 @@ use tokio::{
         AsyncReadExt as _,
         AsyncWriteExt as _,
     },
+    sync::watch,
     net::TcpListener,
 };
 use futures::stream::TryStreamExt;
@@ -15,10 +16,7 @@ use encoding::{
     all::MAC_ROMAN,
 };
 
-use std::{
-    sync::{Arc, Mutex},
-    path::PathBuf,
-};
+use std::path::PathBuf;
 
 use anyhow::{anyhow, bail};
 
@@ -28,6 +26,7 @@ use neolith::protocol::{
     HotlineProtocol,
     IntoFrameExt as _,
     ChatId,
+    ChatSubject,
     ClientHandshakeRequest,
     GetFileInfo,
     GetFileInfoReply,
@@ -45,14 +44,16 @@ use neolith::protocol::{
     InviteToNewChatReply,
     InviteToChat,
     JoinChat,
+    JoinChatReply,
     LeaveChat,
     LoginReply,
     LoginRequest,
+    SetChatSubject,
     Message,
     ProtocolVersion,
     ServerHandshakeReply,
     SendBroadcast,
-    SendBroadcastReply,
+    GenericReply,
     SendChat,
     SendInstantMessage,
     SendInstantMessageReply,
@@ -61,6 +62,7 @@ use neolith::protocol::{
     SetClientUserInfo,
     NotifyUserChange,
     NotifyUserDelete,
+    NotifyChatSubject,
     NotifyChatUserChange,
     NotifyChatUserDelete,
     TransactionFrame,
@@ -69,17 +71,20 @@ use neolith::protocol::{
 };
 
 use neolith::server::{
-    Bus,
-    User,
+    Broadcast,
     Chat,
+    ChatRoomSubject,
+    ChatRoomInvite,
     ChatRoomPresence,
+    Event,
     InstantMessage,
-    Message as BusMessage,
     ServerEvents,
+    User,
+    bus::{Bus, Notification},
     files::{DirEntry, OsFiles, FileInfo},
     transaction_stream::Frames,
-    users::Users,
-    chat::{Chats, ChatRoom},
+    users::{Users, UserList},
+    chat::{Chats, ChatsList},
 };
 
 fn os_path(path: FilePath) -> PathBuf {
@@ -142,64 +147,119 @@ impl Files {
 
 #[derive(Debug, Clone)]
 struct Globals {
-    user: Option<UserNameWithInfo>,
-    users: Arc<Mutex<Users>>,
-    chats: Arc<Mutex<Chats>>,
+    user_id: Option<UserId>,
+    users: watch::Receiver<Users>,
+    chats: watch::Receiver<Chats>,
+    users_tx: UserList,
+    chats_tx: ChatsList,
     bus: Bus,
 }
 
 impl Globals {
+    fn user(&self) -> Option<UserNameWithInfo> {
+        self.user_id.and_then(|id| self.user_find(id))
+    }
+    fn require_user(&self) -> Result<UserNameWithInfo> {
+        let user = self.user().ok_or(anyhow!("user unavailable"))?;
+        Ok(user)
+    }
     fn user_list(&mut self) -> Vec<UserNameWithInfo> {
-        if let Ok(users) = self.users.lock() {
-            users.to_vec()
-        } else {
-            vec![]
-        }
+        self.users.borrow().to_vec()
     }
     fn user_find(&self, id: UserId) -> Option<UserNameWithInfo> {
-        self.users.lock()
-            .ok()
-            .and_then(|users| users.find(id).map(|u| u.clone()))
+        self.users.borrow()
+            .find(id)
+            .cloned()
     }
-    fn user_add(&mut self, user: &mut UserNameWithInfo) -> bool {
-        let Self { users, bus, .. } = self;
-        if let Ok(mut users) = users.lock() {
-            users.add(user);
-            bus.user_connect(user.clone().into());
-            true
-        } else {
-            false
-        }
+    async fn user_add(&mut self, user: &UserNameWithInfo) {
+        let user_id = self.users_tx.add(user.clone())
+            .await
+            .expect("failed to add user");
+        self.user_id.replace(user_id);
+        let user = self.require_user().unwrap();
+        self.bus.publish(Notification::UserConnect(user.into()));
     }
-    fn user_update(&mut self, user: &UserNameWithInfo) -> bool {
-        let Self { users, bus, .. } = self;
-        if let Ok(mut users) = users.lock() {
-            users.update(user);
-            bus.user_update(user.clone().into()).map(|_| true).unwrap_or(false)
-        } else {
-            false
-        }
+    async fn user_update(&mut self, user: &UserNameWithInfo) {
+        self.users_tx.update(user.clone())
+            .await
+            .expect("failed to update user");
+        let user = self.require_user().unwrap();
+        self.bus.publish(Notification::UserUpdate(user.into()));
     }
-    fn user_remove(&mut self, user: &UserNameWithInfo) {
-        let Self { users, bus, .. } = self;
-        if let Ok(mut users) = users.lock() {
-            users.remove(user);
-            bus.user_disconnect(user.clone().into());
-        }
+    async fn user_remove(&mut self, user: &UserNameWithInfo) {
+        self.users_tx.delete(user.clone())
+            .await
+            .expect("failed to remove user");
+        self.bus.publish(Notification::UserDisconnect(user.clone().into()));
     }
-    fn chat_join(&mut self, chat: ChatId, user: &UserNameWithInfo) {
-        let Self { chats, bus, .. } = self;
-        if let Ok(mut chats) = chats.lock() {
-            chats.join(chat, user);
-            bus.chat_room_join(chat, user.clone().into());
-        }
+    fn chat_get_subject(&self, chat_id: ChatId) -> Option<ChatSubject> {
+        let chats = self.chats.borrow();
+        chats.room(chat_id)
+            .cloned()
+            .and_then(|room| room.subject)
+            .map(ChatSubject::from)
     }
-    fn chat_leave(&mut self, chat: ChatId, user: &UserNameWithInfo) {
-        let Self { chats, bus, .. } = self;
-        if let Ok(mut chats) = chats.lock() {
-            chats.leave(chat, user);
-            bus.chat_room_leave(chat, user.clone().into());
+    fn chat_list(&self, chat_id: ChatId) -> Vec<UserNameWithInfo> {
+        let users = self.users.borrow();
+        let chats = self.chats.borrow();
+        chats.room(chat_id)
+            .into_iter()
+            .flat_map(|r| r.users().into_iter())
+            .map(|id| users.find(id))
+            .flat_map(Option::into_iter)
+            .cloned()
+            .collect()
+    }
+    async fn chat_create(&mut self, creator: UserId, users: Vec<UserId>) -> ChatId {
+        let chat_id = self.chats_tx.create(users.clone().into())
+            .await
+            .expect("failed to create chat room");
+        let users = users.into_iter()
+            .filter(|user| creator != *user);
+        for user in users {
+            self.bus.publish(
+                Notification::ChatRoomInvite((chat_id, user).into())
+            );
         }
+        chat_id
+    }
+    async fn chat_invite(&mut self, chat_id: ChatId, user: UserId) {
+        self.bus.publish(
+            Notification::ChatRoomInvite((chat_id, user).into())
+        );
+    }
+    async fn chat_join(&mut self, chat: ChatId, user: &UserNameWithInfo) {
+        let presence = ChatRoomPresence::from((chat, user.clone().into()));
+        self.chats_tx.join(presence.clone())
+            .await
+            .expect("failed to join chat room");
+        self.bus.publish(Notification::ChatRoomJoin(presence));
+    }
+    async fn chat_leave(&mut self, chat: ChatId, user: &UserNameWithInfo) {
+        let presence = ChatRoomPresence::from((chat, user.clone().into()));
+        self.chats_tx.leave((chat, user.clone().into()).into())
+            .await
+            .expect("failed to leave chat room");
+        self.bus.publish(Notification::ChatRoomLeave(presence));
+    }
+    async fn chat_subject_change(&mut self, chat: ChatId, subject: Vec<u8>) {
+        let update = ChatRoomSubject::from((chat, subject));
+        self.chats_tx.change_subject(update.clone())
+            .await
+            .expect("failed to update chat subject");
+        self.bus.publish(Notification::ChatRoomSubjectUpdate(update));
+    }
+    fn chat(&mut self, chat: Chat) {
+        let chat: ChatMessage = chat.into();
+        self.bus.publish(chat.into());
+    }
+    fn instant_message(&mut self, message: InstantMessage) {
+        let message = Notification::InstantMessage(message);
+        self.bus.publish(message);
+    }
+    fn server_broadcast(&mut self, broadcast: Broadcast) {
+        let broadcast = Notification::Broadcast(broadcast);
+        self.bus.publish(broadcast);
     }
 }
 
@@ -208,12 +268,22 @@ async fn main() -> Result<()> {
 
     let listener = TcpListener::bind("0.0.0.0:5500").await?;
 
+    let bus = Bus::new();
+
+    let (users_tx, users_rx) = UserList::new();
+    let (chats_tx, chats_rx) = ChatsList::new();
+
     let globals = Globals {
-        user: None,
-        users: Arc::new(Mutex::new(Users::new())),
-        chats: Arc::new(Mutex::new(Chats::new())),
-        bus: Bus::new(10),
+        user_id: None,
+        users: users_rx.subscribe(),
+        chats: chats_rx.subscribe(),
+        users_tx,
+        chats_tx,
+        bus,
     };
+
+    tokio::spawn(users_rx.run());
+    tokio::spawn(chats_rx.run());
 
     loop {
         let (socket, addr) = listener.accept().await?;
@@ -280,14 +350,13 @@ struct New<R, W>(R, W, Globals);
 impl <R: AsyncRead + Unpin, W: AsyncWrite + Unpin> New<R, W> {
     fn handshake_sync(buf: &[u8]) -> Result<ProtocolVersion> {
         match ClientHandshakeRequest::from_bytes(&buf) {
-            Ok((_, request)) => {
+            Ok((_, _request)) => {
                 Ok(123i16.into())
             },
             Err(e) => bail!("failed to parse handshake request: {:?}", e),
         }
     }
     pub async fn handshake(&mut self) -> Result<ProtocolVersion> {
-
         let Self(r, w, _) = self;
 
         let mut buf = [0u8; 12];
@@ -313,8 +382,6 @@ impl <R: AsyncRead + Unpin, W: AsyncWrite + Unpin> Unauthenticated<R, W> {
 
         let TransactionFrame { header, .. } = frame.clone();
 
-        dbg!(&frame);
-
         let login = LoginRequest::try_from(frame)?;
 
         let reply = LoginReply::default().reply_to(&header);
@@ -329,14 +396,13 @@ impl <R: AsyncRead + Unpin, W: AsyncWrite + Unpin> Unauthenticated<R, W> {
             nickname.clone(),
             icon_id.clone(),
         ) {
-            let mut user = UserNameWithInfo {
+            let user = UserNameWithInfo {
                 icon_id,
                 user_flags: 0.into(),
                 username: nickname,
                 user_id: 0.into(),
             };
-            globals.user_add(&mut user);
-            globals.user = Some(user.clone());
+            globals.user_add(&user).await;
         }
 
         Ok(login)
@@ -358,64 +424,30 @@ impl <R: AsyncRead + Unpin, W: AsyncWrite + Unpin> Established<R, W> {
         match self.handle_inner().await {
             Ok(ok) => Ok(ok),
             Err(err) => {
-                self.disconnect();
+                eprintln!("error");
+                self.disconnect().await;
                 Err(err)
             },
         }
     }
     async fn handle_inner(&mut self) -> Result<()> {
         let Self { r, w, globals } = self;
-        let events = ServerEvents::new(
-            r,
-            globals.bus.clone(),
-        ).events();
+        let events = ServerEvents::new(r, globals.bus.subscribe())
+            .events();
         let mut events = Box::pin(events);
         while let Some(event) = events.try_next().await? {
-            let current_user = &globals.user;
             match event {
-                BusMessage::TransactionReceived(frame) => Self::transaction(
+                Event::Frame(frame) => Self::transaction(
                     w,
                     globals,
                     frame,
-                ).await?,
-                BusMessage::Chat(chat) => {
-                    let chat: ChatMessage = chat.into();
-                    write_frame(w, chat.framed()).await?;
-                },
-                BusMessage::InstantMessage(message) => {
-                    let InstantMessage { from, to, message } = message;
-                    if current_user.as_ref().map(|u| u.user_id.clone()) == Some(to.0.user_id) {
-                        let message = ServerMessage {
-                            user_id: Some(from.0.user_id),
-                            user_name: Some(from.0.username),
-                            message,
-                        };
-                        write_frame(w, message.framed()).await?;
-                    }
-                },
-                BusMessage::Broadcast(message) => {
-                    let broadcast: ServerMessage = message.into();
-                    write_frame(w, broadcast.framed()).await?;
-                },
-                BusMessage::UserConnect(User(user))
-                |
-                BusMessage::UserUpdate(User(user)) => {
-                    let notify: NotifyUserChange = (&user).into();
-                    write_frame(w, notify.framed()).await?;
-                },
-                BusMessage::UserDisconnect(User(user)) => {
-                    let notify: NotifyUserDelete = (&user).into();
-                    write_frame(w, notify.framed()).await?;
-                },
-                BusMessage::ChatRoomJoin(ChatRoomPresence(room, user)) => {
-                    let notify: NotifyChatUserChange = (room, &user.0).into();
-                    write_frame(w, notify.framed()).await?;
-                },
-                BusMessage::ChatRoomLeave(ChatRoomPresence(room, user)) => {
-                    let notify: NotifyChatUserDelete = (room, &user.0).into();
-                    write_frame(w, notify.framed()).await?;
-                },
-            }
+                ).await,
+                Event::Notification(notification) => Self::notification(
+                    w,
+                    globals,
+                    notification,
+                ).await,
+            }?;
         }
         Ok(())
     }
@@ -487,48 +519,40 @@ impl <R: AsyncRead + Unpin, W: AsyncWrite + Unpin> Established<R, W> {
         }
 
         if let Ok(req) = SetClientUserInfo::try_from(frame.clone()) {
-            let user = if let Some(mut user) = globals.user.clone() {
+            if let Some(mut user) = globals.user() {
                 user.username = req.username;
                 user.icon_id = req.icon_id;
-                globals.user_update(&user);
-                user
+                globals.user_update(&user).await;
             } else {
                 let SetClientUserInfo { username, icon_id } = req;
-                let mut user = UserNameWithInfo {
+                let user = UserNameWithInfo {
                     icon_id,
                     username,
                     user_flags: 0.into(),
                     user_id: 0.into(),
                 };
-                globals.user_add(&mut user);
-                user
-            };
-            globals.user.replace(user);
+                globals.user_add(&user).await;
+            }
             return Ok(())
         }
 
         if let Ok(req) = SendChat::try_from(frame.clone()) {
-            let message = req.message;
-            if let Some(user) = &globals.user {
-                let user = User(user.clone());
-                let chat = Chat(user, message);
-                globals.bus.chat(chat)?;
-            }
+            let SendChat { chat_id, message, .. } = req;
+            let user = globals.require_user()?;
+            let chat = Chat(chat_id, user.clone().into(), message);
+            globals.chat(chat);
             return Ok(())
         }
 
         if let Ok(req) = SendInstantMessage::try_from(frame.clone()) {
             let SendInstantMessage { user_id, message } = req;
+            let user = globals.user();
             let to = globals.user_find(user_id);
-            let Globals { user, bus, .. } = globals;
             if let (Some(from), Some(to)) = (user, to) {
-                bus.instant_message(
-                    InstantMessage {
-                        from: from.clone().into(),
-                        to: to.into(),
-                        message,
-                    }
-                )?;
+                let from = from.clone().into();
+                let to = to.clone().into();
+                let message = InstantMessage { from, to, message };
+                globals.instant_message(message);
             }
             let reply = SendInstantMessageReply.reply_to(&header);
             write_frame(w, reply).await?;
@@ -536,19 +560,24 @@ impl <R: AsyncRead + Unpin, W: AsyncWrite + Unpin> Established<R, W> {
         }
 
         if let Ok(req) = SendBroadcast::try_from(frame.clone()) {
-            let message = req.message;
-            globals.bus.broadcast(message.into())?;
-            let reply = SendBroadcastReply.reply_to(&header);
+            globals.server_broadcast(req.message.into());
+            let reply = GenericReply.reply_to(&header);
             write_frame(w, reply).await?;
             return Ok(())
         }
 
         if let Ok(req) = InviteToNewChat::try_from(frame.clone()) {
-            eprintln!("invite: {:?}", &req);
-            let user = globals.user.clone()
-                .ok_or(anyhow!("user unavailable"))?;
+            let user = globals.require_user()?.clone();
+            let users = {
+                let mut users: Vec<UserId> = req.into();
+                users.push(user.user_id);
+                users
+            };
+            eprintln!("users {:?}, ", &users);
+            let chat_id = globals.chat_create(user.user_id, users).await;
+            eprintln!("created {:?}, ", &chat_id);
             let reply = InviteToNewChatReply {
-                chat_id: 1.into(),
+                chat_id,
                 user_id: user.user_id,
                 icon_id: user.icon_id,
                 user_name: user.username,
@@ -560,30 +589,44 @@ impl <R: AsyncRead + Unpin, W: AsyncWrite + Unpin> Established<R, W> {
 
         if let Ok(req) = InviteToChat::try_from(frame.clone()) {
             eprintln!("invite: {:?}", &req);
-            let user = globals.user.clone()
-                .ok_or(anyhow!("user unavailable"))?;
+            let user = globals.require_user()?.clone();
+            let InviteToChat { chat_id, user_id } = req;
             let reply = InviteToNewChatReply {
-                chat_id: 1.into(),
-                user_id: user.user_id,
+                chat_id,
+                user_id,
                 icon_id: user.icon_id,
                 user_name: user.username,
                 flags: user.user_flags,
             }.reply_to(&header);
+            globals.chat_invite(chat_id, user_id).await;
             write_frame(w, reply).await?;
             return Ok(())
         }
 
         if let Ok(req) = JoinChat::try_from(frame.clone()) {
             eprintln!("join: {:?}", &req);
-            let reply = SendBroadcastReply.reply_to(&header);
+            let chat_id: ChatId = req.into();
+            let user = globals.require_user()?;
+            let subject = globals.chat_get_subject(chat_id);
+            globals.chat_join(chat_id, &user).await;
+            let users = globals.chat_list(chat_id);
+            let reply = JoinChatReply::from((subject, users))
+                .reply_to(&header);
             write_frame(w, reply).await?;
             return Ok(())
         }
 
         if let Ok(req) = LeaveChat::try_from(frame.clone()) {
             eprintln!("leave: {:?}", &req);
-            let reply = SendBroadcastReply.reply_to(&header);
-            write_frame(w, reply).await?;
+            let user = globals.require_user()?;
+            globals.chat_leave(req.into(), &user).await;
+            return Ok(())
+        }
+
+        if let Ok(req) = SetChatSubject::try_from(frame.clone()) {
+            eprintln!("leave: {:?}", &req);
+            let (chat_id, subject) = req.into();
+            globals.chat_subject_change(chat_id, subject.into()).await;
             return Ok(())
         }
 
@@ -596,29 +639,92 @@ impl <R: AsyncRead + Unpin, W: AsyncWrite + Unpin> Established<R, W> {
 
         if let Ok(req) = GetClientInfoTextRequest::try_from(frame.clone()) {
             let GetClientInfoTextRequest { user_id } = req;
-            let user = globals.user_list()
-                .into_iter()
-                .find(|u| u.user_id == user_id);
-            if let Some(user) = user {
-                let text = format!("{:#?}", &user).replace("\n", "\r");
-                let reply = GetClientInfoTextReply {
-                    user_name: user.username,
-                    text: text.into_bytes(),
-                }.reply_to(&header);
-                write_frame(w, reply).await?;
-                return Ok(())
-            }
+            let user = globals.user_find(user_id)
+                .ok_or(anyhow!("could not find user"))?;
+            let text = format!("{:#?}", &user).replace("\n", "\r");
+            let reply = GetClientInfoTextReply {
+                user_name: user.username,
+                text: text.into_bytes(),
+            }.reply_to(&header);
+            write_frame(w, reply).await?;
+            return Ok(())
         }
 
         eprintln!("established: unhandled request {:?} {:?}", header, body);
 
         Ok(())
     }
-    fn disconnect(&mut self) {
+    async fn notification(
+        w: &mut W,
+        globals: &mut Globals,
+        notification: Notification,
+    ) -> Result<()> {
+        let current_user = globals.user();
+        match notification {
+            Notification::Empty => {},
+            Notification::Chat(chat) => {
+                eprintln!("chat notification: {:?}", &chat);
+                let chat: ChatMessage = chat.into();
+                write_frame(w, chat.framed()).await?;
+            },
+            Notification::InstantMessage(message) => {
+                let InstantMessage { from, to, message } = message;
+                if current_user.map(|u| u.user_id) == Some(to.0.user_id) {
+                    let message = ServerMessage {
+                        user_id: Some(from.0.user_id),
+                        user_name: Some(from.0.username),
+                        message,
+                    };
+                    write_frame(w, message.framed()).await?;
+                }
+            },
+            Notification::Broadcast(message) => {
+                let broadcast: ServerMessage = message.into();
+                write_frame(w, broadcast.framed()).await?;
+            },
+            Notification::UserConnect(User(user))
+            |
+            Notification::UserUpdate(User(user)) => {
+                let notify: NotifyUserChange = (&user).into();
+                write_frame(w, notify.framed()).await?;
+            },
+            Notification::UserDisconnect(User(user)) => {
+                let notify: NotifyUserDelete = (&user).into();
+                write_frame(w, notify.framed()).await?;
+            },
+            Notification::ChatRoomInvite(ChatRoomInvite(chat_id, user)) => {
+                if Some(user) == current_user.map(|u| u.user_id) {
+                    let invite = InviteToChat {
+                        user_id: user.into(),
+                        chat_id,
+                    };
+                    write_frame(w, invite.framed()).await?;
+                }
+            },
+            Notification::ChatRoomJoin(ChatRoomPresence(room, user)) => {
+                let notify: NotifyChatUserChange = (room, &user.0).into();
+                write_frame(w, notify.framed()).await?;
+            },
+            Notification::ChatRoomLeave(ChatRoomPresence(room, user)) => {
+                let notify: NotifyChatUserDelete = (room, &user.0).into();
+                write_frame(w, notify.framed()).await?;
+            },
+            Notification::ChatRoomSubjectUpdate(ChatRoomSubject(room, subject)) => {
+                let notification = NotifyChatSubject::from(
+                    (room, subject.into())
+                );
+                write_frame(w, notification.framed()).await?;
+            },
+        }
+        Ok(())
+    }
+    async fn disconnect(&mut self) {
+        eprintln!("disconnecting");
         let Self { globals, .. } = self;
-        let Globals { user, .. } = &globals;
-        if let Some(user) = user.clone() {
-            globals.user_remove(&user);
+        if let Some(user) = globals.user() {
+            globals.user_remove(&user).await;
+        } else {
+            eprintln!("no user to remove");
         };
     }
 }
