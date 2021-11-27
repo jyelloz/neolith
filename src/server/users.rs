@@ -95,14 +95,14 @@ enum Command {
 }
 
 #[derive(Debug, Clone, From)]
-pub struct UserList(mpsc::Sender<Command>);
+pub struct UsersService(mpsc::Sender<Command>);
 
-impl UserList {
+impl UsersService {
     pub fn new() -> (Self, UserUpdateProcessor) {
         let (tx, rx) = mpsc::channel(10);
-        let list = Self(tx);
-        let proc = UserUpdateProcessor::new(rx);
-        (list, proc)
+        let service = Self(tx);
+        let process = UserUpdateProcessor::new(rx);
+        (service, process)
     }
     pub async fn add(
         &mut self,

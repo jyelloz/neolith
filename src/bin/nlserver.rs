@@ -86,7 +86,7 @@ use neolith::server::{
     bus::{Bus, Notification},
     files::{DirEntry, OsFiles, FileInfo},
     transaction_stream::Frames,
-    users::{Users, UserList},
+    users::{Users, UsersService},
     chat::{Chats, ChatsService},
     news::News,
 };
@@ -154,7 +154,7 @@ struct Globals {
     user_id: Option<UserId>,
     users: watch::Receiver<Users>,
     chats: watch::Receiver<Chats>,
-    users_tx: UserList,
+    users_tx: UsersService,
     chats_tx: ChatsService,
     bus: Bus,
     news: News<SingleByteEncoding>,
@@ -281,7 +281,7 @@ async fn main() -> Result<()> {
 
     let bus = Bus::new();
 
-    let (users_tx, users_rx) = UserList::new();
+    let (users_tx, users_rx) = UsersService::new();
     let (chats_tx, chats_rx) = ChatsService::new();
 
     let mut news = News::new(*MAC_ROMAN);
