@@ -1,16 +1,11 @@
 use tokio::io::AsyncRead;
 use futures::stream::{
     TryStreamExt as _,
+    StreamExt as _,
     Stream,
     select,
 };
-use tokio::sync::broadcast::{
-    self,
-    Sender,
-    Receiver,
-    error::{SendError, RecvError, TryRecvError},
-};
-use async_stream::stream;
+use tokio::sync::broadcast::error::{SendError, RecvError};
 
 use derive_more::{From, Into};
 
@@ -22,35 +17,22 @@ pub mod users;
 pub mod chat;
 pub mod transaction_stream;
 
+use self::bus::{
+    Notification,
+    Notifications,
+};
+
 use crate::protocol::{
     TransactionFrame,
     ProtocolError,
     ChatId,
     ChatMessage,
+    UserId,
     UserNameWithInfo,
     ServerMessage,
 };
 
 use transaction_stream::Frames;
-
-#[derive(Debug, Clone)]
-pub enum Message {
-    TransactionReceived(TransactionFrame),
-    Chat(Chat),
-    ChatRoomJoin(ChatRoomPresence),
-    ChatRoomLeave(ChatRoomPresence),
-    Broadcast(Broadcast),
-    InstantMessage(InstantMessage),
-    UserConnect(User),
-    UserUpdate(User),
-    UserDisconnect(User),
-}
-
-#[derive(Debug)]
-pub struct Bus {
-    sender: Sender<Message>,
-    receiver: Receiver<Message>,
-}
 
 #[derive(Debug, Error)]
 pub enum BusError {
@@ -105,19 +87,16 @@ impl Into<UserId> for User {
 }
 
 #[derive(Debug, Clone, From, Into)]
+pub struct ChatRoomSubject(pub ChatId, pub Vec<u8>);
+
+#[derive(Debug, Clone, From, Into)]
+pub struct ChatRoomCreationRequest(pub Vec<UserId>);
+
+#[derive(Debug, Clone, From, Into)]
 pub struct ChatRoomPresence(pub ChatId, pub User);
 
-#[derive(Debug, Clone)]
-pub struct ChatRoomChat(pub ChatId, pub User, pub Vec<u8>);
-
-impl Into<ChatMessage> for ChatRoomChat {
-    fn into(self) -> ChatMessage {
-        let Self(chat_id, user, text) = self;
-        let chat_id = Some(chat_id);
-        let chat = Chat(user, text);
-        ChatMessage { chat_id, ..chat.into() }
-    }
-}
+#[derive(Debug, Clone, From, Into)]
+pub struct ChatRoomInvite(pub ChatId, pub UserId);
 
 #[derive(Debug, Clone)]
 pub struct InstantMessage {
@@ -127,70 +106,6 @@ pub struct InstantMessage {
 }
 
 pub type BusResult<T> = Result<T, BusError>;
-
-impl Bus {
-    pub fn new(capacity: usize) -> Self {
-        let (sender, receiver) = broadcast::channel(capacity);
-        Self { sender, receiver }
-    }
-    pub fn chat(&mut self, chat: Chat) -> BusResult<()> {
-        self.sender.send(Message::Chat(chat))?;
-        Ok(())
-    }
-    pub fn broadcast(&mut self, broadcast: Broadcast) -> BusResult<()> {
-        self.sender.send(Message::Broadcast(broadcast))?;
-        Ok(())
-    }
-    pub fn instant_message(
-        &mut self,
-        message: InstantMessage,
-    ) -> BusResult<()> {
-        self.sender.send(Message::InstantMessage(message))?;
-        Ok(())
-    }
-    pub fn user_connect(&mut self, user: User) -> BusResult<()> {
-        self.sender.send(Message::UserConnect(user))?;
-        Ok(())
-    }
-    pub fn user_update(&mut self, user: User) -> BusResult<()> {
-        self.sender.send(Message::UserUpdate(user))?;
-        Ok(())
-    }
-    pub fn user_disconnect(&mut self, user: User) -> BusResult<()> {
-        self.sender.send(Message::UserDisconnect(user))?;
-        Ok(())
-    }
-    pub fn chat_room_join(&mut self, chat: ChatId, user: User) -> BusResult<()> {
-        self.sender.send(Message::ChatRoomJoin(ChatRoomPresence(chat, user)))?;
-        Ok(())
-    }
-    pub fn chat_room_leave(&mut self, chat: ChatId, user: User) -> BusResult<()> {
-        self.sender.send(Message::ChatRoomLeave(ChatRoomPresence(chat, user)))?;
-        Ok(())
-    }
-    pub fn recv(&mut self) -> BusResult<Option<Message>> {
-        eprintln!("polling for messages");
-        match self.receiver.try_recv() {
-            Ok(message) => Ok(Some(message)),
-            Err(TryRecvError::Empty) => Ok(None),
-            Err(TryRecvError::Lagged(n)) => Err(BusError::Lagged(n)),
-            Err(TryRecvError::Closed) => Err(BusError::Closed),
-        }
-    }
-    pub fn messages(&mut self) -> impl Stream<Item = BusResult<Message>> {
-        let mut receiver = self.sender.subscribe();
-        stream! {
-            loop {
-                let result = match receiver.recv().await {
-                    Ok(message) => Ok(message),
-                    Err(RecvError::Lagged(n)) => Err(BusError::Lagged(n)),
-                    Err(RecvError::Closed) => Err(BusError::Closed),
-                };
-                yield result;
-            }
-        }
-    }
-}
 
 #[derive(Debug, Clone, From, Into)]
 pub struct Broadcast(pub Vec<u8>);
@@ -206,44 +121,44 @@ impl Into<ServerMessage> for Broadcast {
     }
 }
 
-impl Clone for Bus {
-    fn clone(&self) -> Self {
-        let Self { sender, .. } = self;
-        let sender = sender.clone();
-        let receiver = sender.subscribe();
-        Self { sender, receiver }
-    }
+pub enum Event {
+    Notification(Notification),
+    Frame(TransactionFrame),
 }
 
 #[derive(Debug, Error)]
 pub enum EventError {
-    #[error(transparent)]
-    Bus(#[from] BusError),
     #[error(transparent)]
     Protocol(#[from] ProtocolError),
 }
 
 pub struct ServerEvents<S> {
     frames: Frames<S>,
-    bus: Bus,
+    notifications: Notifications,
 }
 
-type EventItem = Result<Message, EventError>;
+type EventItem = Result<Event, EventError>;
 
 impl <S: AsyncRead + Unpin> ServerEvents<S> {
-    pub fn new(reader: S, bus: Bus) -> Self {
+    pub fn new(reader: S, notifications: Notifications) -> Self {
         Self {
             frames: Frames::new(reader),
-            bus,
+            notifications,
         }
     }
+    fn notifications(notifications: Notifications) -> impl Stream<Item = EventItem> {
+        notifications.incoming()
+            .map(|n| Ok(Event::Notification(n)))
+    }
+    fn frames<F: AsyncRead + Unpin>(frames: Frames<F>) -> impl Stream<Item = EventItem> {
+        frames.frames()
+            .map_ok(|f| Event::Frame(f))
+            .map_err(ProtocolError::into)
+    }
     pub fn events(self) -> impl Stream<Item = EventItem> {
-        let Self { mut bus, frames } = self;
-        let frames = frames.frames()
-            .map_ok(|f| Message::TransactionReceived(f))
-            .map_err(EventError::Protocol);
-        let messages = bus.messages()
-            .map_err(EventError::Bus);
-        select(frames, messages)
+        let Self { frames, notifications } = self;
+        let frames = Self::frames(frames);
+        let notifications = Self::notifications(notifications);
+        select(frames, notifications)
     }
 }
