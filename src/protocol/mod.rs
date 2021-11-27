@@ -669,6 +669,66 @@ impl Into<TransactionFrame> for GetMessagesReply {
 }
 
 #[derive(Debug, From, Into)]
+pub struct PostNews(Message);
+
+impl TryFrom<TransactionFrame> for PostNews {
+    type Error = ProtocolError;
+    fn try_from(frame: TransactionFrame) -> Result<Self, Self::Error> {
+        let TransactionFrame { body, .. } = frame.require_transaction_type(
+            TransactionType::OldPostNews
+        )?;
+        let TransactionBody { parameters } = body;
+        let post = parameters.iter()
+            .find(|p| p.field_matches(TransactionField::Data))
+            .ok_or(ProtocolError::MissingField(TransactionField::Data))
+            .map(Message::from)?;
+        Ok(Self(post))
+    }
+}
+
+impl Into<TransactionFrame> for PostNews {
+    fn into(self) -> TransactionFrame {
+        let header = TransactionHeader {
+            _type: TransactionType::Reply.into(),
+            ..Default::default()
+        };
+        let Self(post) = self;
+        let body = vec![post.into()].into();
+        TransactionFrame { header, body }
+    }
+}
+
+#[derive(Debug, Clone, From, Into)]
+pub struct NotifyNewsMessage(Message);
+
+impl TryFrom<TransactionFrame> for NotifyNewsMessage {
+    type Error = ProtocolError;
+    fn try_from(frame: TransactionFrame) -> Result<Self, Self::Error> {
+        let TransactionFrame { body, .. } = frame.require_transaction_type(
+            TransactionType::NewMessage
+        )?;
+        let TransactionBody { parameters } = body;
+        let post = parameters.iter()
+            .find(|p| p.field_matches(TransactionField::Data))
+            .ok_or(ProtocolError::MissingField(TransactionField::Data))
+            .map(Message::from)?;
+        Ok(Self(post))
+    }
+}
+
+impl Into<TransactionFrame> for NotifyNewsMessage {
+    fn into(self) -> TransactionFrame {
+        let header = TransactionHeader {
+            _type: TransactionType::NewMessage.into(),
+            ..Default::default()
+        };
+        let Self(post) = self;
+        let body = vec![post.into()].into();
+        TransactionFrame { header, body }
+    }
+}
+
+#[derive(Debug, From, Into)]
 pub struct GetFileNameList(pub FilePath);
 
 impl TryFrom<TransactionFrame> for GetFileNameList {
