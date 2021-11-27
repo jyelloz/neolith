@@ -6,6 +6,7 @@ use super::{
     Chat,
     ChatMessage,
     ChatRoomCreationRequest,
+    ChatRoomInvite,
     ChatRoomPresence,
     ChatRoomSubject,
     User,
@@ -32,6 +33,8 @@ pub enum Command {
 pub enum Notification {
     Empty,
     Chat(ChatMessage),
+    ChatRoomSubjectUpdate(ChatRoomSubject),
+    ChatRoomInvite(ChatRoomInvite),
     ChatRoomJoin(ChatRoomPresence),
     ChatRoomLeave(ChatRoomPresence),
     Broadcast(Broadcast),
@@ -41,13 +44,17 @@ pub enum Notification {
     UserDisconnect(User),
 }
 
-/// A middleware between the network server's connections and its backing state.
+impl From<ChatMessage> for Notification {
+    fn from(message: ChatMessage) -> Self {
+        Self::Chat(message)
+    }
+}
+
+/// A publish-subscribe node between connected peers and the backing state
+/// components of the server.
 ///
-/// It processes Commands using a set of configured filters which may mutate
-/// internal state based on the Command and also may react by submitting a
-/// Notification which is broadcast across the system, allowing connections to
-/// notify the client or some other internal component to begin a
-/// synchronization action.
+/// It provices capabilities for users broadcasting chat messages and the server
+/// notifying clients of user presence updates.
 #[derive(Debug, Clone)]
 pub struct Bus {
     tx: broadcast::Sender<Notification>,
