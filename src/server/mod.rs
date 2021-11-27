@@ -76,11 +76,11 @@ impl From<RecvError> for BusError {
 }
 
 #[derive(Debug, Clone)]
-pub struct Chat(pub User, pub Vec<u8>);
+pub struct Chat(pub Option<ChatId>, pub User, pub Vec<u8>);
 
 impl Into<ChatMessage> for Chat {
     fn into(self) -> ChatMessage {
-        let Self(user, text) = self;
+        let Self(chat_id, user, text) = self;
         let username = user.0.username.take();
         let message = [
             &b"\r "[..],
@@ -89,7 +89,7 @@ impl Into<ChatMessage> for Chat {
             &text[..],
         ].concat();
         ChatMessage {
-            chat_id: None,
+            chat_id,
             message,
         }
     }
