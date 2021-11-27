@@ -87,7 +87,7 @@ use neolith::server::{
     files::{DirEntry, OsFiles, FileInfo},
     transaction_stream::Frames,
     users::{Users, UserList},
-    chat::{Chats, ChatsList},
+    chat::{Chats, ChatsService},
     news::News,
 };
 
@@ -155,7 +155,7 @@ struct Globals {
     users: watch::Receiver<Users>,
     chats: watch::Receiver<Chats>,
     users_tx: UserList,
-    chats_tx: ChatsList,
+    chats_tx: ChatsService,
     bus: Bus,
     news: News<SingleByteEncoding>,
 }
@@ -282,7 +282,7 @@ async fn main() -> Result<()> {
     let bus = Bus::new();
 
     let (users_tx, users_rx) = UserList::new();
-    let (chats_tx, chats_rx) = ChatsList::new();
+    let (chats_tx, chats_rx) = ChatsService::new();
 
     let mut news = News::new(*MAC_ROMAN);
     news.post(include_bytes!("../../neolith.txt").to_vec());

@@ -151,14 +151,14 @@ pub struct ChatUpdateProcessor {
 }
 
 #[derive(Debug, Clone)]
-pub struct ChatsList(mpsc::Sender<Command>);
+pub struct ChatsService(mpsc::Sender<Command>);
 
-impl ChatsList {
+impl ChatsService {
     pub fn new() -> (Self, ChatUpdateProcessor) {
         let (tx, rx) = mpsc::channel(10);
-        let list = Self(tx);
-        let proc = ChatUpdateProcessor::new(rx);
-        (list, proc)
+        let service = Self(tx);
+        let process = ChatUpdateProcessor::new(rx);
+        (service, process)
     }
     pub async fn create(
         &mut self,
