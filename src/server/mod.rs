@@ -121,6 +121,9 @@ impl Into<ServerMessage> for Broadcast {
     }
 }
 
+#[derive(Debug, Clone, From, Into)]
+pub struct Article(pub Vec<u8>);
+
 pub enum Event {
     Notification(Notification),
     Frame(TransactionFrame),
