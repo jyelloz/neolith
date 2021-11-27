@@ -15,6 +15,7 @@ pub mod bus;
 pub mod files;
 pub mod users;
 pub mod chat;
+pub mod news;
 pub mod transaction_stream;
 
 use self::bus::{
