@@ -321,6 +321,51 @@ pub struct UserNameWithInfo {
     pub username: Nickname,
 }
 
+impl UserNameWithInfo {
+    fn user_id(bytes: &[u8]) -> BIResult<UserId> {
+        let (bytes, id) = be_i16(bytes)?;
+        Ok((bytes, id.into()))
+    }
+    fn icon_id(bytes: &[u8]) -> BIResult<IconId> {
+        let (bytes, id) = be_i16(bytes)?;
+        Ok((bytes, id.into()))
+    }
+    fn user_flags(bytes: &[u8]) -> BIResult<UserFlags> {
+        let (bytes, flags) = be_i16(bytes)?;
+        Ok((bytes, flags.into()))
+    }
+    fn username(bytes: &[u8]) -> BIResult<Nickname> {
+        let (bytes, len) = be_i16(bytes)?;
+        let (bytes, username) = take(len as usize)(bytes)?;
+        Ok((bytes, username.to_vec().into()))
+    }
+    fn from_bytes(bytes: &[u8]) -> BIResult<Self> {
+        let (bytes, user_id) = Self::user_id(bytes)?;
+        let (bytes, icon_id) = Self::icon_id(bytes)?;
+        let (bytes, user_flags) = Self::user_flags(bytes)?;
+        let (bytes, username) = Self::username(bytes)?;
+        Ok((
+            bytes,
+            Self {
+                user_id,
+                icon_id,
+                user_flags,
+                username,
+            },
+        ))
+    }
+}
+
+impl TryFrom<&Parameter> for UserNameWithInfo {
+    type Error = ProtocolError;
+    fn try_from(p: &Parameter) -> Result<Self, Self::Error> {
+        let bytes = p.borrow();
+        Self::from_bytes(bytes)
+            .map(|(_, user)| user)
+            .map_err(|_| ProtocolError::MalformedData(TransactionField::UserNameWithInfo))
+    }
+}
+
 impl Into<Parameter> for UserNameWithInfo {
     fn into(self) -> Parameter {
         let username = self.username.take();
