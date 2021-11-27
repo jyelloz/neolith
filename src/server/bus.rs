@@ -10,6 +10,7 @@ use super::{
     ChatRoomPresence,
     ChatRoomSubject,
     User,
+    Article,
     Broadcast,
     InstantMessage,
 };
@@ -38,6 +39,7 @@ pub enum Notification {
     ChatRoomJoin(ChatRoomPresence),
     ChatRoomLeave(ChatRoomPresence),
     Broadcast(Broadcast),
+    News(Article),
     InstantMessage(InstantMessage),
     UserConnect(User),
     UserUpdate(User),
