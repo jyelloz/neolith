@@ -98,6 +98,12 @@ impl Into<ChatMessage> for Chat {
 #[derive(Debug, Clone, From, Into)]
 pub struct User(pub UserNameWithInfo);
 
+impl Into<UserId> for User {
+    fn into(self) -> UserId {
+        self.0.user_id
+    }
+}
+
 #[derive(Debug, Clone, From, Into)]
 pub struct ChatRoomPresence(pub ChatId, pub User);
 
