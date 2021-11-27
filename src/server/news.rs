@@ -1,6 +1,6 @@
 use encoding::{Encoding, EncoderTrap, DecoderTrap};
 
-pub static SEPARATOR: &'static str = "\r--\r";
+pub static SEPARATOR: &str = "\r--\r";
 
 #[derive(Clone)]
 pub struct News<E> {
