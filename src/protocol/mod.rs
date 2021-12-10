@@ -117,10 +117,13 @@ pub use parameters::{
     Message,
     Nickname,
     Password,
+    ReferenceNumber,
+    TransferSize,
     UserFlags,
     UserId,
     UserLogin,
     UserNameWithInfo,
+    WaitingCount,
 };
 
 #[derive(Debug, PartialEq, Eq, PartialOrd, Ord)]
@@ -1570,6 +1573,89 @@ impl TryFrom<TransactionFrame> for GenericReply {
 impl Into<TransactionFrame> for GenericReply {
     fn into(self) -> TransactionFrame {
         TransactionFrame::empty(Default::default())
+    }
+}
+
+#[derive(Debug)]
+pub struct DownloadFile {
+    pub filename: FileName,
+    pub file_path: FilePath,
+    // TODO: resume
+    // TODO: options
+}
+
+impl TryFrom<TransactionFrame> for DownloadFile {
+    type Error = ProtocolError;
+    fn try_from(frame: TransactionFrame) -> Result<Self, Self::Error> {
+        let TransactionFrame {
+            body, ..
+        } = frame.require_transaction_type(TransactionType::DownloadFile)?;
+
+        let filename = body.require_field(TransactionField::FileName)
+            .map(FileName::from)?;
+        let file_path = body.borrow_field(TransactionField::FilePath)
+            .try_into()?;
+
+        Ok(Self { filename, file_path })
+    }
+}
+
+impl Into<TransactionFrame> for DownloadFile {
+    fn into(self) -> TransactionFrame {
+        let Self { filename, file_path } = self;
+        let header = TransactionType::DownloadFile.into();
+        let body = [
+            Some(filename.into()),
+            file_path.into(),
+        ]
+            .into_iter()
+            .flat_map(Option::into_iter)
+            .collect();
+        TransactionFrame { header, body }
+    }
+}
+
+#[derive(Debug)]
+pub struct DownloadFileReply {
+    pub transfer_size: TransferSize,
+    pub file_size: FileSize,
+    pub reference: ReferenceNumber,
+    pub waiting_count: Option<WaitingCount>,
+}
+
+impl TryFrom<TransactionFrame> for DownloadFileReply {
+    type Error = ProtocolError;
+    fn try_from(frame: TransactionFrame) -> Result<Self, Self::Error> {
+        let TransactionFrame { body, ..  } = frame;
+
+        let transfer_size = body.require_field(TransactionField::TransferSize)
+            .and_then(TransferSize::try_from)?;
+        let file_size = body.require_field(TransactionField::FileSize)
+            .and_then(FileSize::try_from)?;
+        let reference = body.require_field(TransactionField::ReferenceNumber)
+            .and_then(ReferenceNumber::try_from)?;
+        let waiting_count = body.borrow_field(TransactionField::WaitingCount)
+            .map(WaitingCount::try_from)
+            .transpose()?;
+
+        Ok(Self { transfer_size, file_size, reference, waiting_count })
+    }
+}
+
+impl Into<TransactionFrame> for DownloadFileReply {
+    fn into(self) -> TransactionFrame {
+        let Self { transfer_size, file_size, reference, waiting_count } = self;
+        let header = TransactionType::DownloadFile.into();
+        let body = [
+            Some(transfer_size.into()),
+            Some(file_size.into()),
+            Some(reference.into()),
+            waiting_count.map(WaitingCount::into),
+        ]
+            .into_iter()
+            .flat_map(Option::into_iter)
+            .collect();
+        TransactionFrame { header, body }
     }
 }
 
