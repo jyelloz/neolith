@@ -65,7 +65,7 @@ impl TryFrom<&Parameter> for Nickname {
 impl Into<Parameter> for Nickname {
     fn into(self) -> Parameter {
         let Self(field_data) = self;
-        Parameter::new(TransactionField::UserName.into(), field_data)
+        Parameter::new(TransactionField::UserName, field_data)
     }
 }
 
@@ -101,7 +101,7 @@ impl TryFrom<&Parameter> for UserLogin {
 impl Into<Parameter> for UserLogin {
     fn into(self) -> Parameter {
         let Self(field_data) = self;
-        Parameter::new(TransactionField::UserLogin.into(), field_data)
+        Parameter::new(TransactionField::UserLogin, field_data)
     }
 }
 
@@ -138,7 +138,7 @@ impl Into<Parameter> for Password {
     fn into(self) -> Parameter {
         let Self(password) = self;
         Parameter::new(
-            TransactionField::UserPassword.into(),
+            TransactionField::UserPassword,
             password,
         )
     }
@@ -179,8 +179,8 @@ impl Into<Parameter> for ChatOptions {
     fn into(self) -> Parameter {
         let Self(int) = self;
         Parameter::new_int(
-            TransactionField::ChatOptions.into(),
-            int.into(),
+            TransactionField::ChatOptions,
+            int,
         )
     }
 }
@@ -208,8 +208,8 @@ impl Into<Parameter> for ChatId {
     fn into(self) -> Parameter {
         let Self(int) = self;
         Parameter::new_int(
-            TransactionField::ChatId.into(),
-            int.into(),
+            TransactionField::ChatId,
+            int,
         )
     }
 }
@@ -232,7 +232,7 @@ impl Into<Parameter> for ChatSubject {
     fn into(self) -> Parameter {
         let Self(subject) = self;
         Parameter::new(
-            TransactionField::ChatSubject.into(),
+            TransactionField::ChatSubject,
             subject,
         )
     }
@@ -245,8 +245,8 @@ impl Into<Parameter> for IconId {
     fn into(self) -> Parameter {
         let Self(int) = self;
         Parameter::new_int(
-            TransactionField::UserIconId.into(),
-            int.into(),
+            TransactionField::UserIconId,
+            int,
         )
     }
 }
@@ -284,8 +284,8 @@ impl Into<Parameter> for UserId {
     fn into(self) -> Parameter {
         let Self(int) = self;
         Parameter::new_int(
-            TransactionField::UserId.into(),
-            int.into(),
+            TransactionField::UserId,
+            int,
         )
     }
 }
@@ -297,8 +297,8 @@ impl Into<Parameter> for UserFlags {
     fn into(self) -> Parameter {
         let Self(int) = self;
         Parameter::new_int(
-            TransactionField::UserFlags.into(),
-            int.into(),
+            TransactionField::UserFlags,
+            int,
         )
     }
 }
@@ -381,7 +381,7 @@ impl Into<Parameter> for UserNameWithInfo {
             .map(|b| *b)
             .collect();
         Parameter::new(
-            TransactionField::UserNameWithInfo.into(),
+            TransactionField::UserNameWithInfo,
             data,
         )
     }
@@ -405,7 +405,7 @@ impl From<&Parameter> for Message {
 impl Into<Parameter> for Message {
     fn into(self) -> Parameter {
         Parameter::new(
-            TransactionField::Data.into(),
+            TransactionField::Data,
             self.0,
         )
     }
@@ -423,7 +423,7 @@ impl From<&Parameter> for FileName {
 impl Into<Parameter> for FileName {
     fn into(self) -> Parameter {
         Parameter::new(
-            TransactionField::FileName.into(),
+            TransactionField::FileName,
             self.0,
         )
     }
@@ -444,8 +444,8 @@ impl TryFrom<&Parameter> for FileSize {
 impl Into<Parameter> for FileSize {
     fn into(self) -> Parameter {
         Parameter::new_int(
-            TransactionField::FileSize.into(),
-            self.0.into(),
+            TransactionField::FileSize,
+            self.0,
         )
     }
 }
@@ -498,7 +498,7 @@ impl FilePath {
             .flat_map(|b| b.into_iter())
             .collect();
         Parameter::new(
-            TransactionField::FilePath.into(),
+            TransactionField::FilePath,
             data,
         )
     }
@@ -568,7 +568,7 @@ impl TryFrom<&Parameter> for FileComment {
 impl Into<Parameter> for FileComment {
     fn into(self) -> Parameter {
         Parameter::new(
-            TransactionField::FileComment.into(),
+            TransactionField::FileComment,
             self.0
         )
     }
@@ -599,7 +599,7 @@ impl TryFrom<&Parameter> for FileType {
 impl Into<Parameter> for FileType {
     fn into(self) -> Parameter {
         Parameter::new(
-            TransactionField::FileType.into(),
+            TransactionField::FileType,
             self.0.to_vec()
         )
     }
@@ -631,7 +631,7 @@ impl TryFrom<&Parameter> for FileTypeString {
 impl Into<Parameter> for FileTypeString {
     fn into(self) -> Parameter {
         Parameter::new(
-            TransactionField::FileTypeString.into(),
+            TransactionField::FileTypeString,
             self.0.to_vec()
         )
     }
@@ -654,7 +654,7 @@ impl TryFrom<&Parameter> for FileCreatorString {
 impl Into<Parameter> for FileCreatorString {
     fn into(self) -> Parameter {
         Parameter::new(
-            TransactionField::FileCreatorString.into(),
+            TransactionField::FileCreatorString,
             self.0.to_vec()
         )
     }
@@ -689,7 +689,7 @@ impl Into<Parameter> for FileCreatedAt {
     fn into(self) -> Parameter {
         let Self(date) = self;
         Parameter::new(
-            TransactionField::FileCreateDate.into(),
+            TransactionField::FileCreateDate,
             date.pack(),
         )
     }
@@ -724,7 +724,7 @@ impl Into<Parameter> for FileModifiedAt {
     fn into(self) -> Parameter {
         let Self(date) = self;
         Parameter::new(
-            TransactionField::FileModifyDate.into(),
+            TransactionField::FileModifyDate,
             date.pack(),
         )
     }
