@@ -283,13 +283,21 @@ pub struct Parameter {
 }
 
 impl Parameter {
-    pub fn new(field_id: FieldId, field_data: Vec<u8>) -> Self {
-        Self { field_id, field_data }
+    pub fn new<F: Into<FieldId>>(field_id: F, field_data: Vec<u8>) -> Self {
+        Self {
+            field_id: field_id.into(),
+            field_data,
+        }
     }
-    pub fn new_int(field_id: FieldId, int: IntParameter) -> Self {
+    pub fn new_int<F, I>(field_id: F, int: I) -> Self
+        where F: Into<FieldId>,
+              I: Into<IntParameter> {
+        let field_id = field_id.into();
+        let param = int.into();
+        let field_data: Vec<u8> = param.into();
         Self {
             field_id,
-            field_data: int.into(),
+            field_data,
         }
     }
     pub fn field_matches(&self, field: TransactionField) -> bool {
