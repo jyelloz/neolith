@@ -168,8 +168,8 @@ pub struct ProtocolVersion(i16);
 impl Into<Parameter> for ProtocolVersion {
     fn into(self) -> Parameter {
         Parameter::new_int(
-            TransactionField::Version.into(),
-            self.0.into(),
+            TransactionField::Version,
+            self.0,
         )
     }
 }
@@ -186,7 +186,7 @@ pub struct ServerAgreement(pub Vec<u8>);
 impl Into<Parameter> for ServerAgreement {
     fn into(self) -> Parameter {
         Parameter::new(
-            TransactionField::Data.into(),
+            TransactionField::Data,
             self.0,
         )
     }
@@ -323,8 +323,8 @@ impl Into<TransactionBody> for ShowAgreement {
             agreement.into()
         } else {
             Parameter::new_int(
-                TransactionField::NoServerAgreement.into(),
-                1i16.into(),
+                TransactionField::NoServerAgreement,
+                1i16,
             )
         };
         TransactionBody { parameters: vec![parameter] }
@@ -816,7 +816,7 @@ impl Into<Parameter> for FileNameWithInfo {
             .map(|b| *b)
             .collect();
         Parameter::new(
-            TransactionField::FileNameWithInfo.into(),
+            TransactionField::FileNameWithInfo,
             data,
         )
     }
@@ -951,7 +951,7 @@ impl Into<TransactionFrame> for SendChat {
         };
         let Self { message, chat_id, options } = self;
         let body = vec![
-            Some(Parameter::new(TransactionField::Data.into(), message)),
+            Some(Parameter::new(TransactionField::Data, message)),
             chat_id.map(ChatId::into),
             Some(options.into()),
         ].into_iter()
@@ -999,7 +999,7 @@ impl Into<TransactionFrame> for ChatMessage {
         };
         let Self { message, chat_id } = self;
         let message = Parameter::new(
-            TransactionField::Data.into(),
+            TransactionField::Data,
             message,
         );
         let chat_id = chat_id.map(ChatId::into);
@@ -1028,7 +1028,7 @@ impl Into<TransactionFrame> for ServerMessage {
         };
         let Self { message, user_id, user_name } = self;
         let message = Parameter::new(
-            TransactionField::Data.into(),
+            TransactionField::Data,
             message,
         );
         let user_id = user_id.map(UserId::into);
@@ -1073,7 +1073,7 @@ impl Into<TransactionFrame> for DisconnectMessage {
         };
         let Self { message } = self;
         let message = Parameter::new(
-            TransactionField::Data.into(),
+            TransactionField::Data,
             message,
         );
         let body = vec![message].into();
@@ -1121,7 +1121,7 @@ impl Into<TransactionFrame> for SendInstantMessage {
         let Self { user_id, message } = self;
         let body = vec![
             user_id.into(),
-            Parameter::new(TransactionField::Data.into(), message),
+            Parameter::new(TransactionField::Data, message),
         ].into();
         TransactionFrame { header, body }
     }
@@ -1516,7 +1516,7 @@ impl Into<TransactionFrame> for GetClientInfoTextReply {
         let Self { user_name, text } = self;
         let body = vec![
             user_name.into(),
-            Parameter::new(TransactionField::Data.into(), text),
+            Parameter::new(TransactionField::Data, text),
         ].into();
         TransactionFrame { header, body }
     }
@@ -1554,7 +1554,7 @@ impl Into<TransactionFrame> for SendBroadcast {
         };
         let Self { message } = self;
         let body = vec![
-            Parameter::new(TransactionField::Data.into(), message),
+            Parameter::new(TransactionField::Data, message),
         ].into();
         TransactionFrame { header, body }
     }
