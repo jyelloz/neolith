@@ -719,6 +719,78 @@ impl Into<Parameter> for FileModifiedAt {
     }
 }
 
+#[derive(Debug, Default, Clone, Copy, From, Into, PartialEq, Eq)]
+pub struct TransferSize(i32);
+
+impl TryFrom<&Parameter> for TransferSize {
+    type Error = ProtocolError;
+    fn try_from(parameter: &Parameter) -> Result<Self, Self::Error> {
+        let size = parameter.int()
+            .map(i32::from)
+            .ok_or(ProtocolError::MalformedData(TransactionField::TransferSize))?
+            .into();
+        Ok(Self(size))
+    }
+}
+
+impl Into<Parameter> for TransferSize {
+    fn into(self) -> Parameter {
+        let Self(size) = self;
+        Parameter::new_int(
+            TransactionField::TransferSize,
+            size,
+        )
+    }
+}
+
+#[derive(Debug, Default, Clone, Copy, From, Into, PartialEq, Eq)]
+pub struct ReferenceNumber(i32);
+
+impl TryFrom<&Parameter> for ReferenceNumber {
+    type Error = ProtocolError;
+    fn try_from(parameter: &Parameter) -> Result<Self, Self::Error> {
+        let reference = parameter.int()
+            .map(i32::from)
+            .ok_or(ProtocolError::MalformedData(TransactionField::ReferenceNumber))?
+            .into();
+        Ok(Self(reference))
+    }
+}
+
+impl Into<Parameter> for ReferenceNumber {
+    fn into(self) -> Parameter {
+        let Self(reference) = self;
+        Parameter::new_int(
+            TransactionField::ReferenceNumber,
+            reference,
+        )
+    }
+}
+
+#[derive(Debug, Default, Clone, Copy, From, Into, PartialEq, Eq)]
+pub struct WaitingCount(i32);
+
+impl TryFrom<&Parameter> for WaitingCount {
+    type Error = ProtocolError;
+    fn try_from(parameter: &Parameter) -> Result<Self, Self::Error> {
+        let reference = parameter.int()
+            .map(i32::from)
+            .ok_or(ProtocolError::MalformedData(TransactionField::WaitingCount))?
+            .into();
+        Ok(Self(reference))
+    }
+}
+
+impl Into<Parameter> for WaitingCount {
+    fn into(self) -> Parameter {
+        let Self(count) = self;
+        Parameter::new_int(
+            TransactionField::WaitingCount,
+            count,
+        )
+    }
+}
+
 fn take_if_matches(
     parameter: Parameter,
     field: TransactionField,
