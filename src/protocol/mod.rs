@@ -197,13 +197,9 @@ impl Default for LoginReply {
 
 impl Into<TransactionFrame> for LoginReply {
     fn into(self) -> TransactionFrame {
-        let header = TransactionHeader {
-            _type: TransactionType::Login.into(),
-            ..Default::default()
-        };
         let Self(version) = self;
-        let parameters = vec![version.into()];
-        let body = TransactionBody { parameters };
+        let header = TransactionType::Login.into();
+        let body = vec![version.into()].into();
         TransactionFrame { header, body }
     }
 }
@@ -264,13 +260,12 @@ impl TryFrom<TransactionBody> for ShowAgreement {
     type Error = ProtocolError;
     fn try_from(body: TransactionBody) -> Result<Self, Self::Error> {
 
-        let TransactionBody { parameters, .. } = body;
+        let agreement = body.borrow_field(TransactionField::ServerAgreement)
+            .map(ServerAgreement::try_from)
+            .transpose()?;
 
-        let agreement = parameters.iter()
-            .find_map(|p| ServerAgreement::try_from(p).ok());
-
-        let no_agreement = parameters.iter()
-            .any(|p| p.field_matches(TransactionField::NoServerAgreement));
+        let no_agreement = body.borrow_field(TransactionField::NoServerAgreement)
+            .is_some();
 
         let agreement = if no_agreement {
             None
@@ -347,15 +342,11 @@ impl TryFrom<TransactionFrame> for SetClientUserInfo {
             body, ..
         } = frame.require_transaction_type(TransactionType::SetClientUserInfo)?;
 
-        let TransactionBody { parameters, .. } = body;
+        let username = body.require_field(TransactionField::UserName)
+            .and_then(Nickname::try_from)?;
 
-        let username = parameters.iter()
-            .find_map(|p| Nickname::try_from(p).ok())
-            .ok_or(ProtocolError::MissingField(TransactionField::UserName))?;
-
-        let icon_id = parameters.iter()
-            .find_map(|p| IconId::try_from(p).ok())
-            .ok_or(ProtocolError::MissingField(TransactionField::UserIconId))?;
+        let icon_id = body.require_field(TransactionField::UserIconId)
+            .and_then(IconId::try_from)?;
 
         Ok(Self { username, icon_id })
     }
@@ -564,15 +555,10 @@ impl TryFrom<TransactionFrame> for NotifyChatSubject {
     type Error = ProtocolError;
     fn try_from(frame: TransactionFrame) -> Result<Self, Self::Error> {
         let TransactionFrame { body, .. } = frame;
-        let TransactionBody { parameters } = body;
-        let chat_id = parameters.iter()
-            .find(|p| p.field_matches(TransactionField::ChatId))
-            .ok_or(ProtocolError::MissingField(TransactionField::ChatId))
-            .and_then(|p| ChatId::try_from(p))?;
-        let subject = parameters.iter()
-            .find(|p| p.field_matches(TransactionField::ChatSubject))
-            .ok_or(ProtocolError::MissingField(TransactionField::ChatSubject))
-            .and_then(|p| ChatSubject::try_from(p))?;
+        let chat_id = body.require_field(TransactionField::ChatId)
+            .and_then(ChatId::try_from)?;
+        let subject = body.require_field(TransactionField::ChatSubject)
+            .and_then(ChatSubject::try_from)?;
         Ok(Self { chat_id, subject })
     }
 }
@@ -636,11 +622,7 @@ impl TryFrom<TransactionFrame> for GetMessages {
 
 impl Into<TransactionFrame> for GetMessages {
     fn into(self) -> TransactionFrame {
-        let header = TransactionHeader {
-            _type: TransactionType::GetMessages.into(),
-            ..Default::default()
-        };
-        TransactionFrame::empty(header)
+        TransactionFrame::empty(TransactionType::GetMessages.into())
     }
 }
 
@@ -682,10 +664,7 @@ impl TryFrom<TransactionFrame> for PostNews {
         let TransactionFrame { body, .. } = frame.require_transaction_type(
             TransactionType::OldPostNews
         )?;
-        let TransactionBody { parameters } = body;
-        let post = parameters.iter()
-            .find(|p| p.field_matches(TransactionField::Data))
-            .ok_or(ProtocolError::MissingField(TransactionField::Data))
+        let post = body.require_field(TransactionField::Data)
             .map(Message::from)?;
         Ok(Self(post))
     }
@@ -693,10 +672,7 @@ impl TryFrom<TransactionFrame> for PostNews {
 
 impl Into<TransactionFrame> for PostNews {
     fn into(self) -> TransactionFrame {
-        let header = TransactionHeader {
-            _type: TransactionType::Reply.into(),
-            ..Default::default()
-        };
+        let header = TransactionType::Reply.into();
         let Self(post) = self;
         let body = vec![post.into()].into();
         TransactionFrame { header, body }
@@ -712,10 +688,7 @@ impl TryFrom<TransactionFrame> for NotifyNewsMessage {
         let TransactionFrame { body, .. } = frame.require_transaction_type(
             TransactionType::NewMessage
         )?;
-        let TransactionBody { parameters } = body;
-        let post = parameters.iter()
-            .find(|p| p.field_matches(TransactionField::Data))
-            .ok_or(ProtocolError::MissingField(TransactionField::Data))
+        let post = body.require_field(TransactionField::Data)
             .map(Message::from)?;
         Ok(Self(post))
     }
@@ -723,10 +696,7 @@ impl TryFrom<TransactionFrame> for NotifyNewsMessage {
 
 impl Into<TransactionFrame> for NotifyNewsMessage {
     fn into(self) -> TransactionFrame {
-        let header = TransactionHeader {
-            _type: TransactionType::NewMessage.into(),
-            ..Default::default()
-        };
+        let header = TransactionType::NewMessage.into();
         let Self(post) = self;
         let body = vec![post.into()].into();
         TransactionFrame { header, body }
@@ -744,11 +714,8 @@ impl TryFrom<TransactionFrame> for GetFileNameList {
             body, ..
         } = frame.require_transaction_type(TransactionType::GetFileNameList)?;
 
-        let TransactionBody { parameters, .. } = body;
-
-        let path = parameters.iter()
-            .find_map(|p| FilePath::try_from(p).ok())
-            .unwrap_or_default();
+        let path = body.borrow_field(TransactionField::FilePath)
+            .try_into()?;
 
         Ok(Self(path))
     }
@@ -756,11 +723,7 @@ impl TryFrom<TransactionFrame> for GetFileNameList {
 
 impl Into<TransactionFrame> for GetFileNameList {
     fn into(self) -> TransactionFrame {
-        let header = TransactionHeader {
-            _type: TransactionType::GetFileNameList.into(),
-            ..Default::default()
-        };
-        TransactionFrame::empty(header)
+        TransactionFrame::empty(TransactionType::GetFileNameList.into())
     }
 }
 
@@ -840,22 +803,11 @@ impl TryFrom<TransactionFrame> for GetFileInfo {
             body, ..
         } = frame.require_transaction_type(TransactionType::GetFileInfo)?;
 
-        let TransactionBody { parameters, .. } = body;
-
-        let filename = parameters.iter()
-            .find(|p| p.field_matches(TransactionField::FileName))
-            .ok_or(ProtocolError::MissingField(TransactionField::FileName))
+        let filename = body.require_field(TransactionField::FileName)
             .map(FileName::from)?;
 
-        let path = parameters.iter()
-            .find(|p| p.field_matches(TransactionField::FilePath))
-            .map(|p| FilePath::try_from(p));
-
-        let path = if let Some(path) = path {
-            path?
-        } else {
-            FilePath::Root
-        };
+        let path = body.borrow_field(TransactionField::FilePath)
+            .try_into()?;
 
         Ok(Self { filename, path })
     }
@@ -884,10 +836,7 @@ pub struct GetFileInfoReply {
 
 impl Into<TransactionFrame> for GetFileInfoReply {
     fn into(self) -> TransactionFrame {
-        let header = TransactionHeader {
-            _type: TransactionType::GetFileInfo.into(),
-            ..Default::default()
-        };
+        let header = TransactionType::GetFileInfo.into();
         let type_string = FileTypeString::from(&self.type_code);
         let body = vec![
             self.filename.into(),
@@ -918,22 +867,17 @@ impl TryFrom<TransactionFrame> for SendChat {
             body, ..
         } = frame.require_transaction_type(TransactionType::SendChat)?;
 
-        let TransactionBody { parameters, .. } = body;
-
-        let options = parameters.iter()
-            .filter(|p| p.field_matches(TransactionField::ChatOptions))
-            .find_map(|p| ChatOptions::try_from(p).ok())
+        let options = body.borrow_field(TransactionField::ChatOptions)
+            .map(ChatOptions::try_from)
+            .transpose()?
             .unwrap_or_default();
 
-        let chat_id = parameters.iter()
-            .filter(|p| p.field_matches(TransactionField::ChatId))
-            .find_map(|p| ChatId::try_from(p).ok());
+        let chat_id = body.borrow_field(TransactionField::ChatId)
+            .map(ChatId::try_from)
+            .transpose()?;
 
-        let message = parameters.into_iter()
-            .filter(|p| p.field_matches(TransactionField::Data))
-            .map(|p| p.take())
-            .next()
-            .ok_or(ProtocolError::MissingField(TransactionField::Data))?;
+        let message = body.require_field(TransactionField::Data)
+            .map(|p| p.clone().take())?;
 
         let chat = Self {
             options,
@@ -947,10 +891,7 @@ impl TryFrom<TransactionFrame> for SendChat {
 
 impl Into<TransactionFrame> for SendChat {
     fn into(self) -> TransactionFrame {
-        let header = TransactionHeader {
-            _type: TransactionType::SendChat.into(),
-            ..Default::default()
-        };
+        let header = TransactionType::SendChat.into();
         let Self { message, chat_id, options } = self;
         let body = vec![
             Some(Parameter::new(TransactionField::Data, message)),
@@ -977,17 +918,12 @@ impl TryFrom<TransactionFrame> for ChatMessage {
             body, ..
         } = frame.require_transaction_type(TransactionType::ChatMessage)?;
 
-        let TransactionBody { parameters, .. } = body;
+        let chat_id = body.borrow_field(TransactionField::ChatId)
+            .map(ChatId::try_from)
+            .transpose()?;
 
-        let chat_id = parameters.iter()
-            .filter(|p| p.field_matches(TransactionField::ChatId))
-            .find_map(|p| ChatId::try_from(p).ok());
-
-        let message = parameters.into_iter()
-            .filter(|p| p.field_matches(TransactionField::Data))
-            .map(|p| p.take())
-            .next()
-            .ok_or(ProtocolError::MissingField(TransactionField::Data))?;
+        let message = body.require_field(TransactionField::Data)
+            .map(|p| p.clone().take())?;
 
         Ok(Self { chat_id, message })
     }
@@ -995,10 +931,7 @@ impl TryFrom<TransactionFrame> for ChatMessage {
 
 impl Into<TransactionFrame> for ChatMessage {
     fn into(self) -> TransactionFrame {
-        let header = TransactionHeader {
-            _type: TransactionType::ChatMessage.into(),
-            ..Default::default()
-        };
+        let header = TransactionType::ChatMessage.into();
         let Self { message, chat_id } = self;
         let message = Parameter::new(
             TransactionField::Data,
@@ -1024,10 +957,7 @@ pub struct ServerMessage {
 
 impl Into<TransactionFrame> for ServerMessage {
     fn into(self) -> TransactionFrame {
-        let header = TransactionHeader {
-            _type: TransactionType::ServerMessage.into(),
-            ..Default::default()
-        };
+        let header = TransactionType::ServerMessage.into();
         let Self { message, user_id, user_name } = self;
         let message = Parameter::new(
             TransactionField::Data,
@@ -1057,22 +987,15 @@ impl TryFrom<TransactionFrame> for DisconnectMessage {
         let TransactionFrame {
             body, ..
         } = frame.require_transaction_type(TransactionType::SendInstantMessage)?;
-        let TransactionBody { parameters, .. } = body;
-        let message = parameters.into_iter()
-            .filter(|p| p.field_matches(TransactionField::Data))
-            .map(|p| p.take())
-            .next()
-            .ok_or(ProtocolError::MissingField(TransactionField::Data))?;
+        let message = body.require_field(TransactionField::Data)
+            .map(|p| p.clone().take())?;
         Ok(Self { message })
     }
 }
 
 impl Into<TransactionFrame> for DisconnectMessage {
     fn into(self) -> TransactionFrame {
-        let header = TransactionHeader {
-            _type: TransactionType::DisconnectMessage.into(),
-            ..Default::default()
-        };
+        let header = TransactionType::DisconnectMessage.into();
         let Self { message } = self;
         let message = Parameter::new(
             TransactionField::Data,
@@ -1097,18 +1020,11 @@ impl TryFrom<TransactionFrame> for SendInstantMessage {
             body, ..
         } = frame.require_transaction_type(TransactionType::SendInstantMessage)?;
 
-        let TransactionBody { parameters, .. } = body;
-
-        let user_id = parameters.iter()
-            .find(|p| p.field_matches(TransactionField::UserId))
-            .ok_or(ProtocolError::MissingField(TransactionField::UserId))
+        let user_id = body.require_field(TransactionField::UserId)
             .and_then(UserId::try_from)?;
 
-        let message = parameters.into_iter()
-            .filter(|p| p.field_matches(TransactionField::Data))
-            .map(|p| p.take())
-            .next()
-            .ok_or(ProtocolError::MissingField(TransactionField::Data))?;
+        let message = body.require_field(TransactionField::Data)
+            .map(|p| p.clone().take())?;
 
         Ok(Self { user_id, message })
     }
@@ -1116,10 +1032,7 @@ impl TryFrom<TransactionFrame> for SendInstantMessage {
 
 impl Into<TransactionFrame> for SendInstantMessage {
     fn into(self) -> TransactionFrame {
-        let header = TransactionHeader {
-            _type: TransactionType::SendChat.into(),
-            ..Default::default()
-        };
+        let header = TransactionType::SendChat.into();
         let Self { user_id, message } = self;
         let body = vec![
             user_id.into(),
@@ -1153,10 +1066,9 @@ impl TryFrom<TransactionFrame> for InviteToNewChat {
     fn try_from(frame: TransactionFrame) -> Result<Self, Self::Error> {
         let frame = frame.require_transaction_type(TransactionType::InviteToNewChat)?;
         let TransactionFrame { body, .. } = frame;
-        let TransactionBody { parameters } = body;
 
-        let user_ids: Result<_, _> = parameters.iter()
-            .filter(|p| p.field_matches(TransactionField::UserId))
+        let user_ids: Result<_, _> = body.borrow_fields(TransactionField::UserId)
+            .into_iter()
             .map(UserId::try_from)
             .collect();
 
@@ -1166,10 +1078,7 @@ impl TryFrom<TransactionFrame> for InviteToNewChat {
 
 impl Into<TransactionFrame> for InviteToNewChat {
     fn into(self) -> TransactionFrame {
-        let header = TransactionHeader {
-            _type: TransactionType::InviteToNewChat.into(),
-            ..Default::default()
-        };
+        let header = TransactionType::InviteToNewChat.into();
         let Self(user_ids) = self;
         let body = user_ids.into_iter()
             .map(UserId::into)
@@ -1192,31 +1101,20 @@ impl TryFrom<TransactionFrame> for InviteToNewChatReply {
     fn try_from(frame: TransactionFrame) -> Result<Self, Self::Error> {
         let frame = frame.require_transaction_type(TransactionType::Reply)?;
         let TransactionFrame { body, .. } = frame;
-        let TransactionBody { parameters } = body;
 
-        let chat_id = parameters.iter()
-            .find(|p| p.field_matches(TransactionField::ChatId))
-            .ok_or(ProtocolError::MissingField(TransactionField::ChatId))
+        let chat_id = body.require_field(TransactionField::ChatId)
             .and_then(ChatId::try_from)?;
 
-        let user_id = parameters.iter()
-            .find(|p| p.field_matches(TransactionField::UserId))
-            .ok_or(ProtocolError::MissingField(TransactionField::UserId))
+        let user_id = body.require_field(TransactionField::UserId)
             .and_then(UserId::try_from)?;
 
-        let icon_id = parameters.iter()
-            .find(|p| p.field_matches(TransactionField::UserIconId))
-            .ok_or(ProtocolError::MissingField(TransactionField::UserIconId))
+        let icon_id = body.require_field(TransactionField::UserIconId)
             .and_then(IconId::try_from)?;
 
-        let flags = parameters.iter()
-            .find(|p| p.field_matches(TransactionField::UserFlags))
-            .ok_or(ProtocolError::MissingField(TransactionField::UserFlags))
+        let flags = body.require_field(TransactionField::UserFlags)
             .and_then(UserFlags::try_from)?;
 
-        let user_name = parameters.iter()
-            .find(|p| p.field_matches(TransactionField::UserName))
-            .ok_or(ProtocolError::MissingField(TransactionField::UserName))
+        let user_name = body.require_field(TransactionField::UserName)
             .and_then(Nickname::try_from)?;
 
         Ok(
@@ -1233,10 +1131,7 @@ impl TryFrom<TransactionFrame> for InviteToNewChatReply {
 
 impl Into<TransactionFrame> for InviteToNewChatReply {
     fn into(self) -> TransactionFrame {
-        let header = TransactionHeader {
-            _type: TransactionType::InviteToNewChat.into(),
-            ..Default::default()
-        };
+        let header = TransactionType::InviteToNewChat.into();
         let Self {
             chat_id,
             user_id,
@@ -1266,16 +1161,11 @@ impl TryFrom<TransactionFrame> for InviteToChat {
     fn try_from(frame: TransactionFrame) -> Result<Self, Self::Error> {
         let frame = frame.require_transaction_type(TransactionType::InviteToChat)?;
         let TransactionFrame { body, .. } = frame;
-        let TransactionBody { parameters } = body;
 
-        let user_id = parameters.iter()
-            .find(|p| p.field_matches(TransactionField::UserId))
-            .ok_or(ProtocolError::MissingField(TransactionField::UserId))
+        let user_id = body.require_field(TransactionField::UserId)
             .and_then(UserId::try_from)?;
 
-        let chat_id = parameters.iter()
-            .find(|p| p.field_matches(TransactionField::ChatId))
-            .ok_or(ProtocolError::MissingField(TransactionField::ChatId))
+        let chat_id = body.require_field(TransactionField::ChatId)
             .and_then(ChatId::try_from)?;
 
         Ok(Self { user_id, chat_id })
@@ -1284,10 +1174,7 @@ impl TryFrom<TransactionFrame> for InviteToChat {
 
 impl Into<TransactionFrame> for InviteToChat {
     fn into(self) -> TransactionFrame {
-        let header = TransactionHeader {
-            _type: TransactionType::InviteToChat.into(),
-            ..Default::default()
-        };
+        let header = TransactionType::InviteToChat.into();
         let Self { user_id, chat_id } = self;
         let body = vec![
             user_id.into(),
@@ -1305,11 +1192,8 @@ impl TryFrom<TransactionFrame> for JoinChat {
     fn try_from(frame: TransactionFrame) -> Result<Self, Self::Error> {
         let frame = frame.require_transaction_type(TransactionType::JoinChat)?;
         let TransactionFrame { body, .. } = frame;
-        let TransactionBody { parameters } = body;
 
-        let chat_id = parameters.iter()
-            .find(|p| p.field_matches(TransactionField::ChatId))
-            .ok_or(ProtocolError::MissingField(TransactionField::ChatId))
+        let chat_id = body.require_field(TransactionField::ChatId)
             .and_then(ChatId::try_from)?;
 
         Ok(Self(chat_id))
@@ -1318,10 +1202,7 @@ impl TryFrom<TransactionFrame> for JoinChat {
 
 impl Into<TransactionFrame> for JoinChat {
     fn into(self) -> TransactionFrame {
-        let header = TransactionHeader {
-            _type: TransactionType::JoinChat.into(),
-            ..Default::default()
-        };
+        let header = TransactionType::JoinChat.into();
         let Self(chat_id) = self;
         let body = vec![chat_id.into()].into();
         TransactionFrame { header, body }
@@ -1339,14 +1220,13 @@ impl TryFrom<TransactionFrame> for JoinChatReply {
     fn try_from(frame: TransactionFrame) -> Result<Self, Self::Error> {
         let frame = frame.require_transaction_type(TransactionType::JoinChat)?;
         let TransactionFrame { body, .. } = frame;
-        let TransactionBody { parameters } = body;
 
-        let subject = parameters.iter()
-            .find(|p| p.field_matches(TransactionField::ChatSubject))
-            .and_then(|p| ChatSubject::try_from(p).ok());
+        let subject = body.borrow_field(TransactionField::ChatSubject)
+            .map(ChatSubject::try_from)
+            .transpose()?;
 
-        let users = parameters.iter()
-            .filter(|p| p.field_matches(TransactionField::UserNameWithInfo))
+        let users = body.borrow_fields(TransactionField::UserNameWithInfo)
+            .into_iter()
             .map(UserNameWithInfo::try_from)
             .collect::<Result<_, _>>()?;
 
@@ -1356,10 +1236,7 @@ impl TryFrom<TransactionFrame> for JoinChatReply {
 
 impl Into<TransactionFrame> for JoinChatReply {
     fn into(self) -> TransactionFrame {
-        let header = TransactionHeader {
-            _type: TransactionType::Reply.into(),
-            ..Default::default()
-        };
+        let header = TransactionType::Reply.into();
         let Self { subject, users } = self;
         let subject = subject.map(ChatSubject::into);
         let users: Vec<Parameter> = users.into_iter()
@@ -1380,11 +1257,8 @@ impl TryFrom<TransactionFrame> for LeaveChat {
     fn try_from(frame: TransactionFrame) -> Result<Self, Self::Error> {
         let frame = frame.require_transaction_type(TransactionType::LeaveChat)?;
         let TransactionFrame { body, .. } = frame;
-        let TransactionBody { parameters } = body;
 
-        let chat_id = parameters.iter()
-            .find(|p| p.field_matches(TransactionField::ChatId))
-            .ok_or(ProtocolError::MissingField(TransactionField::ChatId))
+        let chat_id = body.require_field(TransactionField::ChatId)
             .and_then(ChatId::try_from)?;
 
         Ok(Self(chat_id))
@@ -1393,10 +1267,7 @@ impl TryFrom<TransactionFrame> for LeaveChat {
 
 impl Into<TransactionFrame> for LeaveChat {
     fn into(self) -> TransactionFrame {
-        let header = TransactionHeader {
-            _type: TransactionType::LeaveChat.into(),
-            ..Default::default()
-        };
+        let header = TransactionType::LeaveChat.into();
         let Self(chat_id) = self;
         let body = vec![chat_id.into()].into();
         TransactionFrame { header, body }
@@ -1411,16 +1282,11 @@ impl TryFrom<TransactionFrame> for SetChatSubject {
     fn try_from(frame: TransactionFrame) -> Result<Self, Self::Error> {
         let frame = frame.require_transaction_type(TransactionType::SetChatSubject)?;
         let TransactionFrame { body, .. } = frame;
-        let TransactionBody { parameters } = body;
 
-        let chat_id = parameters.iter()
-            .find(|p| p.field_matches(TransactionField::ChatId))
-            .ok_or(ProtocolError::MissingField(TransactionField::ChatId))
+        let chat_id = body.require_field(TransactionField::ChatId)
             .and_then(ChatId::try_from)?;
 
-        let subject = parameters.iter()
-            .find(|p| p.field_matches(TransactionField::ChatSubject))
-            .ok_or(ProtocolError::MissingField(TransactionField::ChatSubject))
+        let subject = body.require_field(TransactionField::ChatSubject)
             .and_then(ChatSubject::try_from)?;
 
         Ok(Self(chat_id, subject))
@@ -1429,10 +1295,7 @@ impl TryFrom<TransactionFrame> for SetChatSubject {
 
 impl Into<TransactionFrame> for SetChatSubject {
     fn into(self) -> TransactionFrame {
-        let header = TransactionHeader {
-            _type: TransactionType::SetChatSubject.into(),
-            ..Default::default()
-        };
+        let header = TransactionType::SetChatSubject.into();
         let Self(chat_id, subject) = self;
         let body = vec![
             chat_id.into(),
@@ -1455,11 +1318,7 @@ impl TryFrom<TransactionFrame> for GetClientInfoTextRequest {
             body, ..
         } = frame.require_transaction_type(TransactionType::GetClientInfoText)?;
 
-        let TransactionBody { parameters, .. } = body;
-
-        let user_id = parameters.iter()
-            .find(|p| p.field_matches(TransactionField::UserId))
-            .ok_or(ProtocolError::MissingField(TransactionField::UserId))
+        let user_id = body.require_field(TransactionField::UserId)
             .and_then(UserId::try_from)?;
 
         Ok(Self { user_id })
@@ -1468,10 +1327,7 @@ impl TryFrom<TransactionFrame> for GetClientInfoTextRequest {
 
 impl Into<TransactionFrame> for GetClientInfoTextRequest {
     fn into(self) -> TransactionFrame {
-        let header = TransactionHeader {
-            _type: TransactionType::GetClientInfoText.into(),
-            ..Default::default()
-        };
+        let header = TransactionType::GetClientInfoText.into();
         let Self { user_id, .. } = self;
         let body = vec![user_id.into()].into();
         TransactionFrame { header, body }
@@ -1492,18 +1348,11 @@ impl TryFrom<TransactionFrame> for GetClientInfoTextReply {
             body, ..
         } = frame.require_transaction_type(TransactionType::GetClientInfoText)?;
 
-        let TransactionBody { parameters, .. } = body;
-
-        let user_name = parameters.iter()
-            .find(|p| p.field_matches(TransactionField::UserName))
-            .ok_or(ProtocolError::MissingField(TransactionField::UserName))
+        let user_name = body.require_field(TransactionField::UserName)
             .and_then(Nickname::try_from)?;
 
-        let text = parameters.iter()
-            .cloned()
-            .find(|p| p.field_matches(TransactionField::Data))
-            .map(Parameter::take)
-            .ok_or(ProtocolError::MissingField(TransactionField::Data))?;
+        let text = body.require_field(TransactionField::Data)
+            .map(|p| p.clone().take())?;
 
         Ok(Self { user_name, text })
     }
@@ -1511,10 +1360,7 @@ impl TryFrom<TransactionFrame> for GetClientInfoTextReply {
 
 impl Into<TransactionFrame> for GetClientInfoTextReply {
     fn into(self) -> TransactionFrame {
-        let header = TransactionHeader {
-            _type: TransactionType::GetClientInfoText.into(),
-            ..Default::default()
-        };
+        let header = TransactionType::GetClientInfoText.into();
         let Self { user_name, text } = self;
         let body = vec![
             user_name.into(),
@@ -1536,13 +1382,8 @@ impl TryFrom<TransactionFrame> for SendBroadcast {
             body, ..
         } = frame.require_transaction_type(TransactionType::UserBroadcast)?;
 
-        let TransactionBody { parameters, .. } = body;
-
-        let message = parameters.into_iter()
-            .filter(|p| p.field_matches(TransactionField::Data))
-            .map(|p| p.take())
-            .next()
-            .ok_or(ProtocolError::MissingField(TransactionField::Data))?;
+        let message = body.require_field(TransactionField::Data)
+            .map(|p| p.clone().take())?;
 
         Ok(Self { message })
     }
@@ -1550,10 +1391,7 @@ impl TryFrom<TransactionFrame> for SendBroadcast {
 
 impl Into<TransactionFrame> for SendBroadcast {
     fn into(self) -> TransactionFrame {
-        let header = TransactionHeader {
-            _type: TransactionType::GetClientInfoText.into(),
-            ..Default::default()
-        };
+        let header = TransactionType::GetClientInfoText.into();
         let Self { message } = self;
         let body = vec![
             Parameter::new(TransactionField::Data, message),
