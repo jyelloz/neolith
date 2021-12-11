@@ -185,6 +185,15 @@ impl Default for TransactionHeader {
     }
 }
 
+impl From<TransactionType> for TransactionHeader {
+    fn from(_type: TransactionType) -> Self {
+        Self {
+            _type: _type.into(),
+            ..Default::default()
+        }
+    }
+}
+
 impl HotlineProtocol for TransactionHeader {
     fn into_bytes(self) -> Vec<u8> {
         let flags = self.flags.into_bytes();
