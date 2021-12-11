@@ -533,6 +533,17 @@ impl TryFrom<&Parameter> for FilePath {
     }
 }
 
+impl TryFrom<Option<&Parameter>> for FilePath {
+    type Error = ProtocolError;
+    fn try_from(parameter: Option<&Parameter>) -> Result<Self, Self::Error> {
+        if let Some(parameter) = parameter {
+            parameter.try_into()
+        } else {
+            Ok(Self::Root)
+        }
+    }
+}
+
 impl Into<Option<Parameter>> for FilePath {
     fn into(self) -> Option<Parameter> {
         if let Self::Directory(path) = self {
