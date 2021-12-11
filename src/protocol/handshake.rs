@@ -129,7 +129,7 @@ impl HotlineProtocol for ServerHandshakeReply {
     fn from_bytes(bytes: &[u8]) -> BIResult<Self> {
         let (bytes, _) = bytes::streaming::tag(b"TRTP")(bytes)?;
         let (bytes, error_code) = ErrorCode::from_bytes(bytes)?;
-        Ok((bytes, ServerHandshakeReply { error_code }))
+        Ok((bytes, Self { error_code }))
     }
 }
 
