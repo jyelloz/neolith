@@ -134,6 +134,52 @@ pub struct LoginRequest {
     pub icon_id: Option<IconId>,
 }
 
+impl TryFrom<TransactionFrame> for LoginRequest {
+    type Error = ProtocolError;
+    fn try_from(frame: TransactionFrame) -> Result<Self, Self::Error> {
+
+        let TransactionFrame {
+            body, ..
+        } = frame.require_transaction_type(TransactionType::Login)?;
+
+        let login = body.borrow_field(TransactionField::UserLogin)
+            .map(UserLogin::try_from)
+            .transpose()?;
+
+        let nickname = body.borrow_field(TransactionField::UserName)
+            .map(Nickname::try_from)
+            .transpose()?;
+
+        let password = body.borrow_field(TransactionField::UserPassword)
+            .map(Password::try_from)
+            .transpose()?;
+
+        let icon_id = body.borrow_field(TransactionField::UserIconId)
+            .map(IconId::try_from)
+            .transpose()?;
+
+        Ok(Self { login, nickname, password, icon_id })
+    }
+}
+
+impl Into<TransactionBody> for LoginRequest {
+    fn into(self) -> TransactionBody {
+
+        let Self { login, nickname, password, icon_id } = self;
+
+        let login = login.map(UserLogin::into);
+        let password = password.map(Password::into);
+        let nickname = nickname.map(Nickname::into);
+        let icon_id = icon_id.map(IconId::into);
+
+        let parameters = [login, nickname, password, icon_id].into_iter()
+            .flat_map(Option::into_iter)
+            .collect();
+
+        TransactionBody { parameters }
+    }
+}
+
 #[derive(Debug, PartialEq, Eq, PartialOrd, Ord)]
 pub struct LoginReply(ProtocolVersion);
 
@@ -214,32 +260,6 @@ pub enum ServerBanner {
     Data(Vec<u8>),
 }
 
-impl TryFrom<TransactionFrame> for LoginRequest {
-    type Error = ProtocolError;
-    fn try_from(frame: TransactionFrame) -> Result<Self, Self::Error> {
-
-        let TransactionFrame {
-            body, ..
-        } = frame.require_transaction_type(TransactionType::Login)?;
-
-        let TransactionBody { parameters, .. } = body;
-
-        let login = parameters.iter()
-            .find_map(|p| UserLogin::try_from(p).ok());
-
-        let nickname = parameters.iter()
-            .find_map(|p| Nickname::try_from(p).ok());
-
-        let password = parameters.iter()
-            .find_map(|p| Password::try_from(p).ok());
-
-        let icon_id = parameters.iter()
-            .find_map(|p| IconId::try_from(p).ok());
-
-        Ok(Self { login, nickname, password, icon_id })
-    }
-}
-
 impl TryFrom<TransactionBody> for ShowAgreement {
     type Error = ProtocolError;
     fn try_from(body: TransactionBody) -> Result<Self, Self::Error> {
@@ -296,24 +316,6 @@ impl From<TransactionType> for Type {
 impl From<TransactionField> for FieldId {
     fn from(field: TransactionField) -> Self {
         Self::from(field as i16)
-    }
-}
-
-impl Into<TransactionBody> for LoginRequest {
-    fn into(self) -> TransactionBody {
-
-        let Self { login, nickname, password, icon_id } = self;
-
-        let login = login.map(UserLogin::into);
-        let password = password.map(Password::into);
-        let nickname = nickname.map(Nickname::into);
-        let icon_id = icon_id.map(IconId::into);
-
-        let parameters = [login, nickname, password, icon_id].into_iter()
-            .flat_map(Option::into_iter)
-            .collect();
-
-        TransactionBody { parameters }
     }
 }
 
