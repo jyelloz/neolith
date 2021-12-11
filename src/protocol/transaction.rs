@@ -421,6 +421,21 @@ impl TransactionBody {
     fn parameter_list(bytes: &[u8], count: usize) -> BIResult<Vec<Parameter>> {
         multi::count(Parameter::from_bytes, count)(bytes)
     }
+    pub fn borrow_field(&self, field: TransactionField) -> Option<&Parameter> {
+        let Self { parameters } = self;
+        parameters.iter()
+            .find(|p| p.field_matches(field))
+    }
+    pub fn borrow_fields(&self, field: TransactionField) -> Vec<&Parameter> {
+        let Self { parameters } = self;
+        parameters.iter()
+            .filter(|p| p.field_matches(field))
+            .collect()
+    }
+    pub fn require_field(&self, field: TransactionField) -> Result<&Parameter, ProtocolError> {
+        self.borrow_field(field)
+            .ok_or(ProtocolError::MissingField(field))
+    }
 }
 
 impl Default for TransactionBody {
