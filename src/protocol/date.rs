@@ -3,6 +3,7 @@ use super::{
     be_i32,
     BIResult,
     ProtocolError,
+    HotlineProtocol,
 };
 
 use std::time::SystemTime;
@@ -82,5 +83,14 @@ impl DateParameter {
 impl From<SystemTime> for DateParameter {
     fn from(time: SystemTime) -> Self {
         Self::try_from(time).unwrap_or_default()
+    }
+}
+
+impl HotlineProtocol for DateParameter {
+    fn into_bytes(self) -> Vec<u8> {
+        self.pack()
+    }
+    fn from_bytes(bytes: &[u8]) -> BIResult<Self> {
+        Self::parse(bytes)
     }
 }
