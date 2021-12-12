@@ -411,7 +411,7 @@ impl Into<Parameter> for Message {
     }
 }
 
-#[derive(Debug, Clone, From, Into, PartialEq, Eq, PartialOrd, Ord)]
+#[derive(Clone, From, Into, PartialEq, Eq, PartialOrd, Ord)]
 pub struct FileName(Vec<u8>);
 
 impl From<&Parameter> for FileName {
@@ -426,6 +426,15 @@ impl Into<Parameter> for FileName {
             TransactionField::FileName,
             self.0,
         )
+    }
+}
+
+impl std::fmt::Debug for FileName {
+    fn fmt(&self, f: &mut std::fmt::Formatter<'_>) -> std::fmt::Result {
+        let text = String::from_utf8_lossy(self.0.as_slice());
+        f.debug_tuple("FileName")
+            .field(&text)
+            .finish()
     }
 }
 
