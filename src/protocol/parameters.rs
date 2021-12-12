@@ -1,4 +1,5 @@
 use super::{
+    HotlineProtocol,
     ProtocolError,
     transaction::Parameter,
     transaction_field::TransactionField,
@@ -6,6 +7,7 @@ use super::{
     take,
     be_i8,
     be_i16,
+    be_i32,
     BIResult,
     date::DateParameter,
 };
@@ -784,6 +786,17 @@ impl Into<Parameter> for ReferenceNumber {
             TransactionField::ReferenceNumber,
             reference,
         )
+    }
+}
+
+impl HotlineProtocol for ReferenceNumber {
+    fn into_bytes(self) -> Vec<u8> {
+        let Self(value) = self;
+        value.to_be_bytes().into()
+    }
+    fn from_bytes(bytes: &[u8]) -> BIResult<Self> {
+        let (bytes, value) = be_i32(bytes)?;
+        Ok((bytes, Self(value)))
     }
 }
 
