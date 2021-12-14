@@ -128,6 +128,7 @@ pub use parameters::{
     UserNameWithInfo,
     WaitingCount,
 };
+use date::DateParameter;
 
 #[derive(Debug, PartialEq, Eq, PartialOrd, Ord)]
 pub struct LoginRequest {
@@ -1724,6 +1725,87 @@ impl HotlineProtocol for ForkHeader {
             self.compression_type.into_bytes(),
             vec![0u8; 4],
             self.data_size.into_bytes(),
+        ].concat()
+    }
+}
+
+#[derive(Debug, Clone)]
+pub struct InfoFork {
+    pub platform: PlatformType,
+    pub type_code: FileType,
+    pub creator_code: Creator,
+    pub flags: FileFlags,
+    pub platform_flags: PlatformFlags,
+    pub created_at: FileCreatedAt,
+    pub modified_at: FileModifiedAt,
+    pub name_script: NameScript,
+    pub file_name: Vec<u8>,
+    pub comment: Option<Vec<u8>>,
+}
+
+impl InfoFork {
+    fn comment_len(&self) -> usize {
+        self.comment.as_ref()
+            .map(Vec::len)
+            .unwrap_or_default()
+    }
+    pub fn size(&self) -> usize {
+        74 + self.file_name.len() + self.comment_len()
+    }
+}
+
+impl HotlineProtocol for InfoFork {
+    fn from_bytes(bytes: &[u8]) -> BIResult<Self> {
+        let (bytes, platform) = PlatformType::from_bytes(bytes)?;
+        let (bytes, type_code) = FileType::from_bytes(bytes)?;
+        let (bytes, creator_code) = Creator::from_bytes(bytes)?;
+        let (bytes, flags) = FileFlags::from_bytes(bytes)?;
+        let (bytes, platform_flags) = PlatformFlags::from_bytes(bytes)?;
+        let (bytes, _reserved) = take(32usize)(bytes)?;
+        let (bytes, created_at) = DateParameter::from_bytes(bytes)?;
+        let (bytes, modified_at) = DateParameter::from_bytes(bytes)?;
+        let (bytes, name_script) = NameScript::from_bytes(bytes)?;
+        let (bytes, name_len) = be_i16(bytes)?;
+        let (bytes, file_name) = take(name_len as usize)(bytes)?;
+        let (bytes, comment_len) = be_i16(bytes)?;
+        let (bytes, comment) = take(comment_len as usize)(bytes)?;
+        let comment = Some(comment.to_vec())
+            .filter(|v| !v.is_empty());
+        let body = Self {
+            platform,
+            type_code,
+            creator_code,
+            flags,
+            platform_flags,
+            created_at: created_at.into(),
+            modified_at: modified_at.into(),
+            name_script,
+            file_name: file_name.to_vec(),
+            comment,
+        };
+        Ok((bytes, body))
+    }
+    fn into_bytes(self) -> Vec<u8> {
+        let created_at: DateParameter = self.created_at.into();
+        let modified_at: DateParameter = self.modified_at.into();
+        let file_name = self.file_name;
+        let name_len = file_name.len() as i16;
+        let comment = self.comment.unwrap_or_default();
+        let comment_len = comment.len() as i16;
+        vec![
+            self.platform.into_bytes(),
+            self.type_code.into_bytes(),
+            self.creator_code.into_bytes(),
+            self.flags.into_bytes(),
+            self.platform_flags.into_bytes(),
+            vec![0u8; 32],
+            created_at.into_bytes(),
+            modified_at.into_bytes(),
+            self.name_script.into_bytes(),
+            name_len.to_be_bytes().to_vec(),
+            file_name,
+            comment_len.to_be_bytes().to_vec(),
+            comment,
         ].concat()
     }
 }
