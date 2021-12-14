@@ -1686,6 +1686,19 @@ impl HotlineProtocol for FileFlags {
     }
 }
 
+#[derive(Debug, Default, Clone, Copy, PartialEq, Eq, PartialOrd, Ord, From, Into)]
+pub struct PlatformFlags(i32);
+
+impl HotlineProtocol for PlatformFlags {
+    fn from_bytes(bytes: &[u8]) -> BIResult<Self> {
+        let (bytes, flags) = be_i32(bytes)?;
+        Ok((bytes, flags.into()))
+    }
+    fn into_bytes(self) -> Vec<u8> {
+        self.0.to_be_bytes().to_vec()
+    }
+}
+
 fn take_if_matches(
     parameter: Parameter,
     field: TransactionField,
