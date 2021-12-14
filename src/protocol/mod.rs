@@ -14,11 +14,16 @@ use nom::{
     },
 };
 
+use maplit::hashmap;
+
 use derive_more::{From, Into};
 
 use thiserror::Error;
 
-use std::num::NonZeroU32;
+use std::{
+    collections::HashMap,
+    num::NonZeroU32,
+};
 
 mod handshake;
 mod transaction;
@@ -1538,6 +1543,65 @@ impl HotlineProtocol for FlattenedFileHeader {
             vec![0u8; 16],
             fork_count.0.to_be_bytes().to_vec(),
         ].concat()
+    }
+}
+
+pub struct FlattenedFileObject {
+    pub version: crate::protocol::handshake::Version,
+    pub info: InfoFork,
+    pub contents: HashMap<ForkType, Vec<u8>>,
+}
+
+impl FlattenedFileObject {
+    pub fn with_data(info: InfoFork, data: Vec<u8>) -> Self {
+        Self {
+            version: 1.into(),
+            info,
+            contents: hashmap! { ForkType::Data => data },
+        }
+    }
+    pub fn with_forks(
+        info: InfoFork,
+        data: Vec<u8>,
+        rsrc: Vec<u8>,
+    ) -> Self {
+        Self {
+            version: 1.into(),
+            info,
+            contents: hashmap! {
+                ForkType::Data => data,
+                ForkType::Resource => rsrc,
+            },
+        }
+    }
+    pub fn header(&self) -> FlattenedFileHeader {
+        let fork_count = (self.contents.len() + 1) as i16;
+        FlattenedFileHeader(fork_count.into())
+    }
+    pub fn info(&self) -> (ForkHeader, InfoFork) {
+        let data_size = (self.info.size() as i32).into();
+        (
+            ForkHeader {
+                fork_type: ForkType::Info,
+                compression_type: Default::default(),
+                data_size,
+            },
+            self.info.clone(),
+        )
+    }
+    pub fn fork(&self, fork_type: ForkType) -> Option<(ForkHeader, &[u8])> {
+        if let Some(fork) = self.contents.get(&fork_type) {
+            Some((
+                ForkHeader {
+                    fork_type,
+                    compression_type: Default::default(),
+                    data_size: fork.len().into(),
+                },
+                fork,
+            ))
+        } else {
+            None
+        }
     }
 }
 
