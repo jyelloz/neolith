@@ -37,6 +37,18 @@ pub trait HotlineProtocol: Sized {
     fn from_bytes(bytes: &[u8]) -> BIResult<Self>;
 }
 
+impl <H: Into<[u8; 4]> + From<[u8; 4]>> HotlineProtocol for H {
+    fn from_bytes(bytes: &[u8]) -> BIResult<Self> {
+        let (bytes, data) = bytes::streaming::take(4usize)(bytes)?;
+        let data: [u8; 4] = data.try_into()
+            .expect("array size mismatch");
+        Ok((bytes, data.into()))
+    }
+    fn into_bytes(self) -> Vec<u8> {
+        self.into().to_vec()
+    }
+}
+
 type BIResult<'a, T> = IResult<&'a [u8], T>;
 
 #[derive(Debug, Error)]
@@ -1616,9 +1628,9 @@ impl Default for CompressionType {
     }
 }
 
-impl From<&[u8; 4]> for CompressionType {
-    fn from(code: &[u8; 4]) -> Self {
-        let code = u32::from_be_bytes(*code);
+impl From<[u8; 4]> for CompressionType {
+    fn from(code: [u8; 4]) -> Self {
+        let code = u32::from_be_bytes(code);
         match NonZeroU32::new(code) {
             None => Self::None,
             Some(code) => Self::Other(code),
@@ -1635,19 +1647,6 @@ impl Into<[u8; 4]> for CompressionType {
     }
 }
 
-impl HotlineProtocol for CompressionType {
-    fn from_bytes(bytes: &[u8]) -> BIResult<Self> {
-        let (bytes, data) = bytes::streaming::take(4usize)(bytes)?;
-        let data: &[u8; 4] = data.try_into()
-            .expect("system error: array size mismatch");
-        Ok((bytes, data.into()))
-    }
-    fn into_bytes(self) -> Vec<u8> {
-        let bytes: [u8; 4] = self.into();
-        bytes.to_vec()
-    }
-}
-
 #[derive(Debug, Clone)]
 pub enum PlatformType {
     AppleMac,
@@ -1658,12 +1657,12 @@ pub enum PlatformType {
 const AMAC: &[u8; 4] = b"AMAC";
 const MWIN: &[u8; 4] = b"MWIN";
 
-impl From<&[u8; 4]> for PlatformType {
-    fn from(code: &[u8; 4]) -> Self {
-        match code {
+impl From<[u8; 4]> for PlatformType {
+    fn from(code: [u8; 4]) -> Self {
+        match &code {
             AMAC => Self::AppleMac,
             MWIN => Self::MicrosoftWin,
-            _ => Self::Other(*code),
+            _ => Self::Other(code),
         }
     }
 }
@@ -1675,19 +1674,6 @@ impl Into<[u8; 4]> for PlatformType {
             Self::MicrosoftWin => *MWIN,
             Self::Other(code) => code,
         }
-    }
-}
-
-impl HotlineProtocol for PlatformType {
-    fn from_bytes(bytes: &[u8]) -> BIResult<Self> {
-        let (bytes, platform) = bytes::streaming::take(4usize)(bytes)?;
-        let platform: &[u8; 4] = platform.try_into()
-            .expect("system error: array size mismatch");
-        Ok((bytes, platform.into()))
-    }
-    fn into_bytes(self) -> Vec<u8> {
-        let bytes: [u8; 4] = self.into();
-        bytes.to_vec()
     }
 }
 
@@ -1703,13 +1689,13 @@ pub enum ForkType {
     Other([u8; 4]),
 }
 
-impl From<&[u8; 4]> for ForkType {
-    fn from(code: &[u8; 4]) -> Self {
-        match code {
+impl From<[u8; 4]> for ForkType {
+    fn from(code: [u8; 4]) -> Self {
+        match &code {
             INFO => Self::Info,
             DATA => Self::Data,
             MRES => Self::Resource,
-            _ => Self::Other(*code),
+            _ => Self::Other(code),
         }
     }
 }
@@ -1722,19 +1708,6 @@ impl Into<[u8; 4]> for ForkType {
             Self::Resource => *MRES,
             Self::Other(code) => code,
         }
-    }
-}
-
-impl HotlineProtocol for ForkType {
-    fn from_bytes(bytes: &[u8]) -> BIResult<Self> {
-        let (bytes, fork) = bytes::streaming::take(4usize)(bytes)?;
-        let fork: &[u8; 4] = fork.try_into()
-            .expect("system error: array size mismatch");
-        Ok((bytes, fork.into()))
-    }
-    fn into_bytes(self) -> Vec<u8> {
-        let bytes: [u8; 4] = self.into();
-        bytes.to_vec()
     }
 }
 
