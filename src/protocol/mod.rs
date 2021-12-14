@@ -773,7 +773,7 @@ impl Into<Parameter> for FileNameWithInfo {
             &self.creator.0[..],
             &(i32::from(self.file_size)).to_be_bytes()[..],
             &[0u8; 4][..],
-            &self.name_script.0.to_be_bytes()[..],
+            &self.name_script.into_bytes(),
             &filename_size.to_be_bytes()[..],
             &self.file_name[..],
         ].into_iter()
@@ -787,8 +787,18 @@ impl Into<Parameter> for FileNameWithInfo {
     }
 }
 
-#[derive(Debug, From, Into)]
+#[derive(Debug, Default, Clone, Copy, From, Into)]
 pub struct NameScript(i16);
+
+impl HotlineProtocol for NameScript {
+    fn from_bytes(bytes: &[u8]) -> BIResult<Self> {
+        let (bytes, data) = be_i16(bytes)?;
+        Ok((bytes, data.into()))
+    }
+    fn into_bytes(self) -> Vec<u8> {
+        self.0.to_be_bytes().to_vec()
+    }
+}
 
 #[derive(Debug, Clone)]
 pub struct GetFileInfo {
