@@ -1583,6 +1583,49 @@ impl HotlineProtocol for CompressionType {
     }
 }
 
+#[derive(Debug, Clone)]
+pub enum PlatformType {
+    AppleMac,
+    MicrosoftWin,
+    Other([u8; 4]),
+}
+
+const AMAC: &[u8; 4] = b"AMAC";
+const MWIN: &[u8; 4] = b"MWIN";
+
+impl From<&[u8; 4]> for PlatformType {
+    fn from(code: &[u8; 4]) -> Self {
+        match code {
+            AMAC => Self::AppleMac,
+            MWIN => Self::MicrosoftWin,
+            _ => Self::Other(*code),
+        }
+    }
+}
+
+impl Into<[u8; 4]> for PlatformType {
+    fn into(self) -> [u8; 4] {
+        match self {
+            Self::AppleMac => *AMAC,
+            Self::MicrosoftWin => *MWIN,
+            Self::Other(code) => code,
+        }
+    }
+}
+
+impl HotlineProtocol for PlatformType {
+    fn from_bytes(bytes: &[u8]) -> BIResult<Self> {
+        let (bytes, platform) = bytes::streaming::take(4usize)(bytes)?;
+        let platform: &[u8; 4] = platform.try_into()
+            .expect("system error: array size mismatch");
+        Ok((bytes, platform.into()))
+    }
+    fn into_bytes(self) -> Vec<u8> {
+        let bytes: [u8; 4] = self.into();
+        bytes.to_vec()
+    }
+}
+
 fn take_if_matches(
     parameter: Parameter,
     field: TransactionField,
