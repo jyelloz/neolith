@@ -7,6 +7,8 @@ use super::{
     bytes,
 };
 
+use derive_more::{From, Into};
+
 #[derive(Debug, PartialEq, Eq, PartialOrd, Ord)]
 pub struct ProtocolId(i32);
 
@@ -35,7 +37,7 @@ impl HotlineProtocol for SubProtocolId {
     }
 }
 
-#[derive(Debug, PartialEq, Eq, PartialOrd, Ord)]
+#[derive(Debug, PartialEq, Eq, PartialOrd, Ord, From, Into)]
 pub struct Version(pub i16);
 
 impl HotlineProtocol for Version {
