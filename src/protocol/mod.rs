@@ -2,6 +2,7 @@ use nom::{
     self,
     IResult,
     multi,
+    combinator::{map, verify},
     bytes::{
         self,
         streaming::take,
@@ -1506,6 +1507,34 @@ impl Into<TransactionFrame> for DownloadFileReply {
             .flat_map(Option::into_iter)
             .collect();
         TransactionFrame { header, body }
+    }
+}
+
+#[derive(Debug, PartialEq, Eq, PartialOrd, Ord, Clone, Copy, From, Into)]
+struct ForkCount(i16);
+
+const FILP: &[u8; 4] = b"FILP";
+
+#[derive(Debug, PartialEq, Eq, PartialOrd, Ord, Clone, Copy, From, Into)]
+pub struct FlattenedFileHeader(ForkCount);
+
+impl HotlineProtocol for FlattenedFileHeader {
+    fn from_bytes(bytes: &[u8]) -> BIResult<Self> {
+        let (bytes, _format) = bytes::streaming::tag(FILP)(bytes)?;
+        let (bytes, _version) = verify(be_i16, |i: &i16| *i == 1,)(bytes)?;
+        let (bytes, _reserved) = bytes::streaming::take(16usize)(bytes)?;
+        let (bytes, fork_count) = map(be_i16, ForkCount::from)(bytes)?;
+        let header = Self(fork_count);
+        Ok((bytes, header))
+    }
+    fn into_bytes(self) -> Vec<u8> {
+        let Self(fork_count) = self;
+        vec![
+            FILP.to_vec(),
+            1i16.to_be_bytes().to_vec(),
+            vec![0u8; 16],
+            fork_count.0.to_be_bytes().to_vec(),
+        ].concat()
     }
 }
 
