@@ -619,6 +619,12 @@ impl Into<Parameter> for FileType {
 #[derive(Debug, Clone, Copy, From, Into)]
 pub struct Creator(pub [u8; 4]);
 
+impl From<&[u8; 4]> for Creator {
+    fn from(data: &[u8; 4]) -> Self {
+        data.to_owned().into()
+    }
+}
+
 #[derive(Debug, Clone, From, Into)]
 pub struct FileTypeString(Vec<u8>);
 
