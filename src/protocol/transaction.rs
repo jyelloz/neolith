@@ -117,6 +117,12 @@ impl HotlineProtocol for TotalSize {
 #[derive(Debug, Clone, Copy, Default, From, Into)]
 pub struct DataSize(i32);
 
+impl From<usize> for DataSize {
+    fn from(size: usize) -> Self {
+        (size as i32).into()
+    }
+}
+
 impl HotlineProtocol for DataSize {
     fn into_bytes(self) -> Vec<u8> {
         let Self(value) = self;
