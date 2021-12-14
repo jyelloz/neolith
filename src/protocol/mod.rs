@@ -294,11 +294,6 @@ impl TryFrom<TransactionBody> for ShowAgreement {
             agreement
         };
 
-        let banner_type = parameters.iter()
-            .filter(|p| p.field_matches(TransactionField::ServerBannerType))
-            .map(ServerBannerType::try_from)
-            .next();
-
         let banner = None;
 
         Ok(Self { agreement, banner })
