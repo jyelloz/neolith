@@ -1674,7 +1674,7 @@ impl Into<[u8; 4]> for PlatformType {
 
 const INFO: &[u8; 4] = b"INFO";
 const DATA: &[u8; 4] = b"DATA";
-const MRES: &[u8; 4] = b"MRES";
+const MACR: &[u8; 4] = b"MACR";
 
 #[derive(Debug, Clone, Copy, Hash, PartialEq, Eq, PartialOrd, Ord)]
 pub enum ForkType {
@@ -1689,7 +1689,7 @@ impl From<[u8; 4]> for ForkType {
         match &code {
             INFO => Self::Info,
             DATA => Self::Data,
-            MRES => Self::Resource,
+            MACR => Self::Resource,
             _ => Self::Other(code),
         }
     }
@@ -1700,7 +1700,7 @@ impl Into<[u8; 4]> for ForkType {
         match self {
             Self::Info => *INFO,
             Self::Data => *DATA,
-            Self::Resource => *MRES,
+            Self::Resource => *MACR,
             Self::Other(code) => code,
         }
     }
