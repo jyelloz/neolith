@@ -1699,6 +1699,35 @@ impl HotlineProtocol for PlatformFlags {
     }
 }
 
+pub struct ForkHeader {
+    pub fork_type: ForkType,
+    pub compression_type: CompressionType,
+    pub data_size: DataSize,
+}
+
+impl HotlineProtocol for ForkHeader {
+    fn from_bytes(bytes: &[u8]) -> BIResult<Self> {
+        let (bytes, fork_type) = ForkType::from_bytes(bytes)?;
+        let (bytes, compression_type) = CompressionType::from_bytes(bytes)?;
+        let (bytes, _) = take(4usize)(bytes)?;
+        let (bytes, data_size) = map(be_i32, DataSize::from)(bytes)?;
+        let body = Self {
+            fork_type,
+            compression_type,
+            data_size,
+        };
+        Ok((bytes, body))
+    }
+    fn into_bytes(self) -> Vec<u8> {
+        vec![
+            self.fork_type.into_bytes(),
+            self.compression_type.into_bytes(),
+            vec![0u8; 4],
+            self.data_size.into_bytes(),
+        ].concat()
+    }
+}
+
 fn take_if_matches(
     parameter: Parameter,
     field: TransactionField,
