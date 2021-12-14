@@ -91,10 +91,7 @@ impl HotlineProtocol for ClientHandshakeRequest {
             sub_protocol_id,
             version,
             sub_version,
-        ].into_iter()
-            .flat_map(|bytes| bytes.iter())
-            .map(|b| *b)
-            .collect()
+        ].concat()
     }
     fn from_bytes(bytes: &[u8]) -> BIResult<Self> {
         let (bytes, _) = bytes::streaming::tag(b"TRTP")(bytes)?;
@@ -121,17 +118,15 @@ impl ServerHandshakeReply {
     }
 }
 
+const TRTP: &[u8] = b"TRTP";
+
 impl HotlineProtocol for ServerHandshakeReply {
     fn into_bytes(self) -> Vec<u8> {
-        let head = &b"TRTP"[..];
         let error = &self.error_code.into_bytes();
-        [head, error].into_iter()
-            .flat_map(|bytes| bytes.iter())
-            .map(|b| *b)
-            .collect()
+        [TRTP, error].concat()
     }
     fn from_bytes(bytes: &[u8]) -> BIResult<Self> {
-        let (bytes, _) = bytes::streaming::tag(b"TRTP")(bytes)?;
+        let (bytes, _) = bytes::streaming::tag(TRTP)(bytes)?;
         let (bytes, error_code) = ErrorCode::from_bytes(bytes)?;
         Ok((bytes, Self { error_code }))
     }
