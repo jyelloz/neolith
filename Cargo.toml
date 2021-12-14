@@ -24,6 +24,7 @@ time = "0.3"
 encoding = "0.2"
 four-cc = "*"
 magic = "0.12"
+maplit = "1.0"
 
 [dependencies.nom]
 version = "*"
