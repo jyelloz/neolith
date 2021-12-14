@@ -18,6 +18,8 @@ use derive_more::{From, Into};
 
 use thiserror::Error;
 
+use std::num::NonZeroU32;
+
 mod handshake;
 mod transaction;
 mod transaction_type;
@@ -1535,6 +1537,49 @@ impl HotlineProtocol for FlattenedFileHeader {
             vec![0u8; 16],
             fork_count.0.to_be_bytes().to_vec(),
         ].concat()
+    }
+}
+
+pub enum CompressionType {
+    None,
+    Other(NonZeroU32),
+}
+
+impl Default for CompressionType {
+    fn default() -> Self {
+        Self::None
+    }
+}
+
+impl From<&[u8; 4]> for CompressionType {
+    fn from(code: &[u8; 4]) -> Self {
+        let code = u32::from_be_bytes(*code);
+        match NonZeroU32::new(code) {
+            None => Self::None,
+            Some(code) => Self::Other(code),
+        }
+    }
+}
+
+impl Into<[u8; 4]> for CompressionType {
+    fn into(self) -> [u8; 4] {
+        match self {
+            Self::None => [0u8; 4],
+            Self::Other(code) => code.get().to_be_bytes(),
+        }
+    }
+}
+
+impl HotlineProtocol for CompressionType {
+    fn from_bytes(bytes: &[u8]) -> BIResult<Self> {
+        let (bytes, data) = bytes::streaming::take(4usize)(bytes)?;
+        let data: &[u8; 4] = data.try_into()
+            .expect("system error: array size mismatch");
+        Ok((bytes, data.into()))
+    }
+    fn into_bytes(self) -> Vec<u8> {
+        let bytes: [u8; 4] = self.into();
+        bytes.to_vec()
     }
 }
 
