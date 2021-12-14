@@ -1,5 +1,7 @@
 use super::{
     ErrorCode,
+    ReferenceNumber,
+    DataSize,
     HotlineProtocol,
     BIResult,
     be_i16,
@@ -132,6 +134,37 @@ impl HotlineProtocol for ServerHandshakeReply {
         let (bytes, _) = bytes::streaming::tag(b"TRTP")(bytes)?;
         let (bytes, error_code) = ErrorCode::from_bytes(bytes)?;
         Ok((bytes, Self { error_code }))
+    }
+}
+
+#[derive(Debug)]
+pub struct DownloadHandshakeRequest {
+    pub reference: ReferenceNumber,
+    pub size: DataSize,
+}
+
+const HTXF: &[u8; 4] = b"HTXF";
+
+impl HotlineProtocol for DownloadHandshakeRequest {
+    fn into_bytes(self) -> Vec<u8> {
+        let Self { reference, size } = self;
+        let reference: i32 = reference.into();
+        let reference = reference.to_be_bytes();
+        let size: i32 = size.into();
+        let size = size.to_be_bytes();
+        [
+            &HTXF[..],
+            &reference[..],
+            &size[..],
+            &[0u8; 4][..],
+        ].concat()
+    }
+    fn from_bytes(bytes: &[u8]) -> BIResult<Self> {
+        let (bytes, _) = bytes::streaming::tag(HTXF)(bytes)?;
+        let (bytes, reference) = ReferenceNumber::from_bytes(bytes)?;
+        let (bytes, size) = DataSize::from_bytes(bytes)?;
+        let (bytes, _) = bytes::streaming::take(4usize)(bytes)?;
+        Ok((bytes, Self { reference, size }))
     }
 }
 
