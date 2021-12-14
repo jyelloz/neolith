@@ -1626,6 +1626,53 @@ impl HotlineProtocol for PlatformType {
     }
 }
 
+const INFO: &[u8; 4] = b"INFO";
+const DATA: &[u8; 4] = b"DATA";
+const MRES: &[u8; 4] = b"MRES";
+
+#[derive(Debug, Clone, Copy, Hash, PartialEq, Eq, PartialOrd, Ord)]
+pub enum ForkType {
+    Info,
+    Data,
+    Resource,
+    Other([u8; 4]),
+}
+
+impl From<&[u8; 4]> for ForkType {
+    fn from(code: &[u8; 4]) -> Self {
+        match code {
+            INFO => Self::Info,
+            DATA => Self::Data,
+            MRES => Self::Resource,
+            _ => Self::Other(*code),
+        }
+    }
+}
+
+impl Into<[u8; 4]> for ForkType {
+    fn into(self) -> [u8; 4] {
+        match self {
+            Self::Info => *INFO,
+            Self::Data => *DATA,
+            Self::Resource => *MRES,
+            Self::Other(code) => code,
+        }
+    }
+}
+
+impl HotlineProtocol for ForkType {
+    fn from_bytes(bytes: &[u8]) -> BIResult<Self> {
+        let (bytes, fork) = bytes::streaming::take(4usize)(bytes)?;
+        let fork: &[u8; 4] = fork.try_into()
+            .expect("system error: array size mismatch");
+        Ok((bytes, fork.into()))
+    }
+    fn into_bytes(self) -> Vec<u8> {
+        let bytes: [u8; 4] = self.into();
+        bytes.to_vec()
+    }
+}
+
 fn take_if_matches(
     parameter: Parameter,
     field: TransactionField,
