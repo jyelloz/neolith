@@ -133,20 +133,21 @@ impl HotlineProtocol for ServerHandshakeReply {
 }
 
 #[derive(Debug)]
-pub struct DownloadHandshakeRequest {
+pub struct TransferHandshake {
     pub reference: ReferenceNumber,
-    pub size: DataSize,
+    pub size: Option<DataSize>,
 }
 
 const HTXF: &[u8; 4] = b"HTXF";
 
-impl HotlineProtocol for DownloadHandshakeRequest {
+impl HotlineProtocol for TransferHandshake {
     fn into_bytes(self) -> Vec<u8> {
         let Self { reference, size } = self;
         let reference: i32 = reference.into();
         let reference = reference.to_be_bytes();
-        let size: i32 = size.into();
-        let size = size.to_be_bytes();
+        let size = size.map(i32::from)
+            .unwrap_or_default()
+            .to_be_bytes();
         [
             &HTXF[..],
             &reference[..],
@@ -158,6 +159,7 @@ impl HotlineProtocol for DownloadHandshakeRequest {
         let (bytes, _) = bytes::streaming::tag(HTXF)(bytes)?;
         let (bytes, reference) = ReferenceNumber::from_bytes(bytes)?;
         let (bytes, size) = DataSize::from_bytes(bytes)?;
+        let size = Some(size).filter(|s| i32::from(*s) != 0);
         let (bytes, _) = bytes::streaming::take(4usize)(bytes)?;
         Ok((bytes, Self { reference, size }))
     }
