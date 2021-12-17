@@ -17,6 +17,7 @@ pub mod users;
 pub mod chat;
 pub mod news;
 pub mod transaction_stream;
+pub mod transfers;
 
 use self::bus::{
     Notification,
