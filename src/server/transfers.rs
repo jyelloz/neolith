@@ -13,6 +13,7 @@ use tokio::{
         AsyncWriteExt,
         AsyncSeekExt,
     },
+    sync::mpsc,
 };
 
 use thiserror::Error;
@@ -60,7 +61,7 @@ enum Request {
 }
 
 #[derive(Debug, Default)]
-struct Requests {
+pub struct Requests {
     requests: HashMap<RequestId, Request>,
 }
 
@@ -269,5 +270,13 @@ impl <S: AsyncRead + AsyncWrite + Unpin + Send> TransferConnection<S> {
             Ok((_, info)) => Ok(info),
             _ => Err(ProtocolError::ParseHeader.into()),
         }
+    }
+}
+
+#[derive(Debug, Clone)]
+pub struct TransfersService(mpsc::Sender<Request>);
+
+impl TransfersService {
+    pub async fn file_download(&mut self, path: PathBuf) {
     }
 }
