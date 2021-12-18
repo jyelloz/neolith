@@ -33,6 +33,7 @@ use neolith::protocol::{
     GetFileInfoReply,
     GetFileNameList,
     GetFileNameListReply,
+    FileName,
     FilePath,
     FileNameWithInfo,
     GetClientInfoTextRequest,
@@ -120,9 +121,10 @@ impl Files {
             .collect();
         Some(files)
     }
-    pub fn info(path: FilePath) -> Option<FileInfo> {
+    pub fn info(path: FilePath, filename: FileName) -> Option<FileInfo> {
         let tmp = Self::files();
-        let path = os_path(path);
+        let filename = String::from_utf8(filename.into()).ok()?;
+        let path = os_path(path).join(filename);
         let info = tmp.get_info(&path).ok()?;
         Some(info)
     }
@@ -519,15 +521,7 @@ impl <R: AsyncRead + Unpin, W: AsyncWrite + Unpin> Established<R, W> {
 
         if let Ok(info) = GetFileInfo::try_from(frame.clone()) {
             let GetFileInfo { path, filename } = info;
-            let filename: Vec<u8> = filename.into();
-            let path: Vec<Vec<u8>> = path.path()
-                .unwrap_or_default()
-                .to_vec()
-                .into_iter()
-                .chain(vec![filename.clone()].into_iter())
-                .collect();
-            let path = FilePath::Directory(path);
-            let info = Files::info(path.clone())
+            let info = Files::info(path.clone(), filename.clone())
                 .expect(&format!("missing file: {:?}", &path));
             let reply: TransactionFrame = GetFileInfoReply {
                 filename: filename.into(),
