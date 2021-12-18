@@ -1618,6 +1618,7 @@ impl FlattenedFileObject {
     }
 }
 
+#[derive(Debug, Clone)]
 pub enum CompressionType {
     None,
     Other(NonZeroU32),
@@ -1738,6 +1739,7 @@ impl HotlineProtocol for PlatformFlags {
     }
 }
 
+#[derive(Debug, Clone)]
 pub struct ForkHeader {
     pub fork_type: ForkType,
     pub compression_type: CompressionType,
