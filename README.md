@@ -21,24 +21,28 @@ implementation along with a reference client and server.
     - Login
     - Set user name info
     - Send/receive chat
-    - Read non-threaded news
+    - Read/post non-threaded news
     - many more...
 - A very simple, insecure, and incoherent [demo server](src/bin/nlserver.rs).
     - Unrestricted logins
     - Read-only file browsing backed by a UNIX filesystem subtree
+    - Single-file downloads without resume support
     - Chat messaging
     - Broadcast messaging
     - Private chat rooms
     - Instant messaging
+
+### What is in progress?
+
+- Server-side
+    - File/folder transfer
 
 ### What is not implemented?
 
 - Server-side
     - Permissions
     - User administration
-    - File/folder transfer
     - File manipulation (move/delete/set info)
-    - News posting
     - Well-designed state machines for connections
     - A good dispatch mechanism for transaction receipt.
     - A good model for request-reply sequences.
