@@ -101,6 +101,7 @@ pub use handshake::{
     ClientHandshakeRequest,
     ServerHandshakeReply,
     SubProtocolId,
+    TransferHandshake,
 };
 use transaction_field::TransactionField;
 pub use transaction_type::TransactionType;
