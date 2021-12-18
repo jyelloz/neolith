@@ -89,7 +89,7 @@ use neolith::server::{
     transaction_stream::Frames,
     users::{Users, UsersService},
     chat::{Chats, ChatsService},
-    news::News,
+    news::{News, NewsService},
 };
 
 fn os_path(path: FilePath) -> PathBuf {
@@ -156,10 +156,11 @@ struct Globals {
     user_id: Option<UserId>,
     users: watch::Receiver<Users>,
     chats: watch::Receiver<Chats>,
+    news: watch::Receiver<News<SingleByteEncoding>>,
     users_tx: UsersService,
     chats_tx: ChatsService,
+    news_tx: NewsService,
     bus: Bus,
-    news: News<SingleByteEncoding>,
 }
 
 impl Globals {
@@ -268,11 +269,14 @@ impl Globals {
         let broadcast = Notification::Broadcast(broadcast);
         self.bus.publish(broadcast);
     }
-    fn post_news(&mut self, message: Message) {
-        self.news.post(message.clone().into());
+    async fn post_news(&mut self, message: Message) {
+        self.news_tx.post(message.clone().into()).await;
         let message: Vec<u8> = message.into();
         let news = Notification::News(message.into());
         self.bus.publish(news);
+    }
+    fn news(&mut self) -> News<SingleByteEncoding> {
+        self.news.borrow().clone()
     }
 }
 
@@ -285,22 +289,22 @@ async fn main() -> Result<()> {
 
     let (users_tx, users_rx) = UsersService::new();
     let (chats_tx, chats_rx) = ChatsService::new();
-
-    let mut news = News::new(*MAC_ROMAN);
-    news.post(include_bytes!("../../neolith.txt").to_vec());
+    let (news_tx, news_rx) = NewsService::new(*MAC_ROMAN);
 
     let globals = Globals {
         user_id: None,
         users: users_rx.subscribe(),
         chats: chats_rx.subscribe(),
+        news: news_rx.subscribe(),
         users_tx,
         chats_tx,
+        news_tx,
         bus,
-        news,
     };
 
     tokio::spawn(users_rx.run());
     tokio::spawn(chats_rx.run());
+    tokio::spawn(news_rx.run());
 
     loop {
         let (socket, addr) = listener.accept().await?;
@@ -487,7 +491,7 @@ impl <R: AsyncRead + Unpin, W: AsyncWrite + Unpin> Established<R, W> {
         if let Ok(_) = GetMessages::try_from(frame.clone()) {
             eprintln!("get messages");
             let reply = GetMessagesReply::single(
-                Message::new(globals.news.all())
+                Message::new(globals.news().all())
             ).reply_to(&header);
             write_frame(w, reply).await?;
             return Ok(())
@@ -498,7 +502,7 @@ impl <R: AsyncRead + Unpin, W: AsyncWrite + Unpin> Established<R, W> {
             let message = Message::from(req);
             let reply = GenericReply.reply_to(&header);
             write_frame(w, reply).await?;
-            globals.post_news(message);
+            globals.post_news(message).await;
             return Ok(())
         }
 
