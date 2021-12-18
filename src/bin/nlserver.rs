@@ -109,7 +109,7 @@ struct Files;
 
 impl Files {
     fn files() -> OsFiles {
-        OsFiles::with_root("/tmp".into())
+        OsFiles::with_root("files".into())
             .expect("bad root directory")
     }
     pub fn list(path: FilePath) -> Option<Vec<FileNameWithInfo>> {
