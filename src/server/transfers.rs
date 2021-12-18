@@ -13,7 +13,7 @@ use tokio::{
         AsyncWriteExt,
         AsyncSeekExt,
     },
-    sync::mpsc,
+    sync::{oneshot, mpsc, watch},
 };
 
 use thiserror::Error;
@@ -163,13 +163,14 @@ impl Files {
 
 pub struct TransferConnection<S> {
     files: Files,
-    requests: Requests,
+    requests: watch::Receiver<Requests>,
     socket: S,
 }
 
 impl <S> TransferConnection<S> {
     fn get_request(&self, id: RequestId) -> Result<Request> {
-        self.requests.get(id)
+        self.requests.borrow()
+            .get(id)
             .cloned()
             .ok_or(TransferError::InvalidRequest)
     }
@@ -188,9 +189,12 @@ impl <S> TransferConnection<S> {
 }
 
 impl <S: AsyncRead + AsyncWrite + Unpin + Send> TransferConnection<S> {
-    pub fn new(socket: S, root: PathBuf) -> Self {
+    pub fn new(
+        socket: S,
+        root: PathBuf,
+        requests: watch::Receiver<Requests>,
+    ) -> Self {
         let files = Files(root);
-        let requests = Requests::default();
         Self {
             socket,
             files,
@@ -297,10 +301,68 @@ impl <S: AsyncRead + AsyncWrite + Unpin + Send> TransferConnection<S> {
     }
 }
 
+enum Command {
+    Transfer(Request, oneshot::Sender<RequestId>),
+}
+
 #[derive(Debug, Clone)]
-pub struct TransfersService(mpsc::Sender<Request>);
+pub struct TransfersService(mpsc::Sender<Command>);
 
 impl TransfersService {
-    pub async fn file_download(&mut self, path: PathBuf) {
+    pub fn new() -> (Self, TransfersUpdateProcessor) {
+        let (tx, rx) = mpsc::channel(10);
+        let service = Self(tx);
+        let process = TransfersUpdateProcessor::new(rx);
+        (service, process)
+    }
+    pub async fn file_download(&mut self, path: PathBuf) ->
+        ReferenceNumber {
+        let Self(queue) = self;
+        let (tx, rx) = oneshot::channel();
+        let cmd = Command::Transfer(Request::FileDownload(path), tx);
+        queue.send(cmd).await.ok();
+        rx.await.unwrap().into()
+    }
+    pub async fn file_upload(&mut self, path: PathBuf) {
+        let Self(queue) = self;
+        let (tx, rx) = oneshot::channel();
+        let cmd = Command::Transfer(Request::FileUpload(path), tx);
+        queue.send(cmd).await.ok();
+        rx.await.ok();
+    }
+}
+
+pub struct TransfersUpdateProcessor {
+    queue: mpsc::Receiver<Command>,
+    requests: Requests,
+    updates: watch::Sender<Requests>,
+}
+
+impl TransfersUpdateProcessor {
+    fn new(queue: mpsc::Receiver<Command>) -> Self {
+        let requests = Requests::new();
+        let (updates, _) = watch::channel(requests.clone());
+        Self { queue, requests, updates }
+    }
+    pub async fn run(self) -> Result<()> {
+        let Self { mut queue, mut requests, updates } = self;
+        while let Some(command) = queue.recv().await {
+            let (id, tx) = match command {
+                Command::Transfer(Request::FileDownload(path), tx) => {
+                    let id = requests.add_download(path);
+                    (id, tx)
+                },
+                Command::Transfer(Request::FileUpload(path), tx) => {
+                    let id = requests.add_upload(path);
+                    (id, tx)
+                },
+            };
+            tx.send(id).ok();
+            updates.send(requests.clone()).ok();
+        }
+        Ok(())
+    }
+    pub fn subscribe(&self) -> watch::Receiver<Requests> {
+        self.updates.subscribe()
     }
 }
