@@ -25,6 +25,8 @@ use std::{
     num::NonZeroU32,
 };
 
+use tokio::io::AsyncRead;
+
 mod handshake;
 mod transaction;
 mod transaction_type;
@@ -1554,14 +1556,17 @@ impl HotlineProtocol for FlattenedFileHeader {
     }
 }
 
+#[derive(From, Into)]
+pub struct AsyncDataSource(u64, Box<dyn AsyncRead + Unpin + Send>);
+
 pub struct FlattenedFileObject {
     pub version: crate::protocol::handshake::Version,
     pub info: InfoFork,
-    pub contents: HashMap<ForkType, Vec<u8>>,
+    pub contents: HashMap<ForkType, AsyncDataSource>,
 }
 
 impl FlattenedFileObject {
-    pub fn with_data(info: InfoFork, data: Vec<u8>) -> Self {
+    pub fn with_data(info: InfoFork, data: AsyncDataSource) -> Self {
         Self {
             version: 1.into(),
             info,
@@ -1570,8 +1575,8 @@ impl FlattenedFileObject {
     }
     pub fn with_forks(
         info: InfoFork,
-        data: Vec<u8>,
-        rsrc: Vec<u8>,
+        data: AsyncDataSource,
+        rsrc: AsyncDataSource,
     ) -> Self {
         Self {
             version: 1.into(),
@@ -1597,13 +1602,13 @@ impl FlattenedFileObject {
             self.info.clone(),
         )
     }
-    pub fn fork(&self, fork_type: ForkType) -> Option<(ForkHeader, &[u8])> {
-        if let Some(fork) = self.contents.get(&fork_type) {
+    pub fn take_fork(&mut self, fork_type: ForkType) -> Option<(ForkHeader, AsyncDataSource)> {
+        if let Some(fork) = self.contents.remove(&fork_type) {
             Some((
                 ForkHeader {
                     fork_type,
                     compression_type: Default::default(),
-                    data_size: fork.len().into(),
+                    data_size: (fork.0 as usize).into(),
                 },
                 fork,
             ))
