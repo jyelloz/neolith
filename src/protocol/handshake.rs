@@ -138,6 +138,12 @@ pub struct TransferHandshake {
     pub size: Option<DataSize>,
 }
 
+impl TransferHandshake {
+    pub fn is_upload(&self) -> bool {
+        self.size.is_some()
+    }
+}
+
 const HTXF: &[u8; 4] = b"HTXF";
 
 impl HotlineProtocol for TransferHandshake {
