@@ -29,6 +29,8 @@ use neolith::protocol::{
     ChatId,
     ChatSubject,
     ClientHandshakeRequest,
+    DownloadFile,
+    DownloadFileReply,
     GetFileInfo,
     GetFileInfoReply,
     GetFileNameList,
@@ -87,6 +89,7 @@ use neolith::server::{
     bus::{Bus, Notification},
     files::{DirEntry, OsFiles, FileInfo},
     transaction_stream::Frames,
+    transfers::{TransferConnection, TransfersService, Requests},
     users::{Users, UsersService},
     chat::{Chats, ChatsService},
     news::{News, NewsService},
@@ -160,6 +163,7 @@ struct Globals {
     users_tx: UsersService,
     chats_tx: ChatsService,
     news_tx: NewsService,
+    transfers_tx: TransfersService,
     bus: Bus,
 }
 
@@ -290,6 +294,7 @@ async fn main() -> Result<()> {
     let (users_tx, users_rx) = UsersService::new();
     let (chats_tx, chats_rx) = ChatsService::new();
     let (news_tx, news_rx) = NewsService::new(*MAC_ROMAN);
+    let (transfers_tx, transfers_rx) = TransfersService::new();
 
     let globals = Globals {
         user_id: None,
@@ -299,12 +304,14 @@ async fn main() -> Result<()> {
         users_tx,
         chats_tx,
         news_tx,
+        transfers_tx,
         bus,
     };
 
     tokio::spawn(users_rx.run());
     tokio::spawn(chats_rx.run());
     tokio::spawn(news_rx.run());
+    tokio::spawn(transfers_rx.run());
 
     loop {
         let (socket, addr) = listener.accept().await?;
@@ -535,6 +542,26 @@ impl <R: AsyncRead + Unpin, W: AsyncWrite + Unpin> Established<R, W> {
                 comment: info.comment.as_bytes().to_vec().into(),
                 created_at: info.modified_at.into(),
                 modified_at: info.modified_at.into(),
+            }.reply_to(&header);
+            write_frame(w, reply).await?;
+            return Ok(())
+        }
+
+        if let Ok(download) = DownloadFile::try_from(frame.clone()) {
+            let DownloadFile { filename, file_path, .. } = download;
+            let download_path = {
+                let mut p = os_path(file_path.clone());
+                p.push(String::from_utf8(filename.clone().into()).unwrap());
+                p
+            };
+            let info = Files::info(file_path.clone(), filename)
+                .expect(&format!("missing file: {:?}", &file_path));
+            let reference = globals.transfers_tx.file_download(download_path).await;
+            let reply: TransactionFrame = DownloadFileReply {
+                transfer_size: (info.size as i32).into(),
+                file_size: (info.size as i32).into(),
+                reference,
+                waiting_count: None,
             }.reply_to(&header);
             write_frame(w, reply).await?;
             return Ok(())
