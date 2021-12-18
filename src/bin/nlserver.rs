@@ -287,7 +287,9 @@ impl Globals {
 #[tokio::main]
 async fn main() -> Result<()> {
 
-    let listener = TcpListener::bind("0.0.0.0:5500").await?;
+    let host = "0.0.0.0";
+    let listener = TcpListener::bind((host, 5500)).await?;
+    let transfer_listener = TcpListener::bind((host, 5501)).await?;
 
     let bus = Bus::new();
 
@@ -308,6 +310,7 @@ async fn main() -> Result<()> {
         bus,
     };
 
+    tokio::spawn(transfers(transfer_listener, transfers_rx.subscribe()));
     tokio::spawn(users_rx.run());
     tokio::spawn(chats_rx.run());
     tokio::spawn(news_rx.run());
@@ -323,6 +326,21 @@ async fn main() -> Result<()> {
         });
     }
 
+}
+
+async fn transfers(
+    listener: TcpListener,
+    transfers: watch::Receiver<Requests>,
+) -> Result<()> {
+    loop {
+        let (socket, _addr) = listener.accept().await?;
+        let conn = TransferConnection::new(
+            socket,
+            "files".into(),
+            transfers.clone(),
+        );
+        tokio::spawn(conn.run());
+    }
 }
 
 enum State<R, W> {
