@@ -54,25 +54,49 @@ impl From<ReferenceNumber> for RequestId {
     }
 }
 
+impl Into<ReferenceNumber> for RequestId {
+    fn into(self: Self) -> ReferenceNumber {
+        let Self(value) = self;
+        value.into()
+    }
+}
+
 #[derive(Debug, Clone, PartialEq, Eq, PartialOrd, Ord)]
 enum Request {
     FileDownload(PathBuf),
     FileUpload(PathBuf),
 }
 
-#[derive(Debug, Default)]
+#[derive(Debug, Default, Clone)]
 pub struct Requests {
     requests: HashMap<RequestId, Request>,
+    next_id: i32,
 }
 
 impl Requests {
     fn new() -> Self {
         Self {
             requests: Default::default(),
+            next_id: i32::MIN,
         }
+    }
+    fn add_download(&mut self, path: PathBuf) -> RequestId {
+        let id = self.next_id();
+        self.requests.insert(id, Request::FileDownload(path));
+        id
+    }
+    fn add_upload(&mut self, path: PathBuf) -> RequestId {
+        let id = self.next_id();
+        self.requests.insert(id, Request::FileUpload(path));
+        id
     }
     fn get(&self, id: RequestId) -> Option<&Request> {
         self.requests.get(&id)
+    }
+    fn next_id(&mut self) -> RequestId {
+        let id = self.next_id.into();
+        self.next_id += 1;
+        id
     }
 }
 
