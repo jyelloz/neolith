@@ -21,6 +21,8 @@ use std::path::PathBuf;
 
 use anyhow::{anyhow, bail};
 
+use tracing::debug;
+
 type Result<T> = anyhow::Result<T>;
 
 use neolith::protocol::{
@@ -322,7 +324,7 @@ async fn main() -> Result<()> {
         let mut conn = Connection::new(r, w, globals.clone());
         tokio::spawn(async move {
             while let Ok(_) = conn.process().await { }
-            eprintln!("disconnect from {:?}", addr);
+            debug!("disconnect from {:?}", addr);
         });
     }
 
@@ -420,7 +422,7 @@ struct Unauthenticated<R, W>(R, W, Globals);
 impl <R: AsyncRead + Unpin, W: AsyncWrite + Unpin> Unauthenticated<R, W> {
     pub async fn login(&mut self) -> Result<LoginRequest> {
 
-        eprintln!("login attempt");
+        debug!("login attempt");
 
         let Self(r, w, globals) = self;
 
@@ -463,14 +465,14 @@ struct Established<R, W> {
 
 impl <R: AsyncRead + Unpin, W: AsyncWrite + Unpin> Established<R, W> {
     pub fn new(r: R, w: W, globals: Globals) -> Self {
-        eprintln!("connection established");
+        debug!("connection established");
         Self { r, w, globals }
     }
     pub async fn handle(mut self) -> Result<()> {
         match self.handle_inner().await {
             Ok(ok) => Ok(ok),
             Err(err) => {
-                eprintln!("error");
+                debug!("error: {:?}", &err);
                 self.disconnect().await;
                 Err(err)
             },
@@ -506,7 +508,7 @@ impl <R: AsyncRead + Unpin, W: AsyncWrite + Unpin> Established<R, W> {
         let TransactionFrame { header, body } = frame.clone();
 
         if let Ok(_) = GetUserNameList::try_from(frame.clone()) {
-            eprintln!("get user name list");
+            debug!("get user name list");
             let reply = GetUserNameListReply::with_users(globals.user_list())
                 .reply_to(&header);
             write_frame(w, reply).await?;
@@ -514,7 +516,7 @@ impl <R: AsyncRead + Unpin, W: AsyncWrite + Unpin> Established<R, W> {
         }
 
         if let Ok(_) = GetMessages::try_from(frame.clone()) {
-            eprintln!("get messages");
+            debug!("get messages");
             let reply = GetMessagesReply::single(
                 Message::new(globals.news().all())
             ).reply_to(&header);
@@ -523,7 +525,7 @@ impl <R: AsyncRead + Unpin, W: AsyncWrite + Unpin> Established<R, W> {
         }
 
         if let Ok(req) = PostNews::try_from(frame.clone()) {
-            eprintln!("post news");
+            debug!("post news");
             let message = Message::from(req);
             let reply = GenericReply.reply_to(&header);
             write_frame(w, reply).await?;
@@ -537,9 +539,9 @@ impl <R: AsyncRead + Unpin, W: AsyncWrite + Unpin> Established<R, W> {
                     .map(|component| MAC_ROMAN.decode(&component, DecoderTrap::Replace).unwrap())
                     .collect::<Vec<String>>()
                     .join(":");
-                eprintln!("get files: {:?}", &pathname);
+                debug!("get files: {:?}", &pathname);
             } else {
-                eprintln!("get files: {:?}", &path);
+                debug!("get files: {:?}", &path);
             }
             let reply = GetFileNameListReply::with_files(
                 Files::list(path).unwrap_or(vec![])
@@ -640,9 +642,9 @@ impl <R: AsyncRead + Unpin, W: AsyncWrite + Unpin> Established<R, W> {
                 users.push(user.user_id);
                 users
             };
-            eprintln!("users {:?}, ", &users);
+            debug!("users {:?}, ", &users);
             let chat_id = globals.chat_create(user.user_id, users).await;
-            eprintln!("created {:?}, ", &chat_id);
+            debug!("created {:?}, ", &chat_id);
             let reply = InviteToNewChatReply {
                 chat_id,
                 user_id: user.user_id,
@@ -655,7 +657,7 @@ impl <R: AsyncRead + Unpin, W: AsyncWrite + Unpin> Established<R, W> {
         }
 
         if let Ok(req) = InviteToChat::try_from(frame.clone()) {
-            eprintln!("invite: {:?}", &req);
+            debug!("invite: {:?}", &req);
             let user = globals.require_user()?.clone();
             let InviteToChat { chat_id, user_id } = req;
             let reply = InviteToNewChatReply {
@@ -671,7 +673,7 @@ impl <R: AsyncRead + Unpin, W: AsyncWrite + Unpin> Established<R, W> {
         }
 
         if let Ok(req) = JoinChat::try_from(frame.clone()) {
-            eprintln!("join: {:?}", &req);
+            debug!("join: {:?}", &req);
             let chat_id: ChatId = req.into();
             let user = globals.require_user()?;
             let subject = globals.chat_get_subject(chat_id);
@@ -684,21 +686,21 @@ impl <R: AsyncRead + Unpin, W: AsyncWrite + Unpin> Established<R, W> {
         }
 
         if let Ok(req) = LeaveChat::try_from(frame.clone()) {
-            eprintln!("leave: {:?}", &req);
+            debug!("leave: {:?}", &req);
             let user = globals.require_user()?;
             globals.chat_leave(req.into(), &user).await;
             return Ok(())
         }
 
         if let Ok(req) = SetChatSubject::try_from(frame.clone()) {
-            eprintln!("leave: {:?}", &req);
+            debug!("leave: {:?}", &req);
             let (chat_id, subject) = req.into();
             globals.chat_subject_change(chat_id, subject.into()).await;
             return Ok(())
         }
 
         if let Ok(req) = GetMessages::try_from(frame.clone()) {
-            eprintln!("get messages: {:?}", &req);
+            debug!("get messages: {:?}", &req);
             let reply = GetMessagesReply::empty().reply_to(&header);
             write_frame(w, reply).await?;
             return Ok(())
@@ -717,7 +719,7 @@ impl <R: AsyncRead + Unpin, W: AsyncWrite + Unpin> Established<R, W> {
             return Ok(())
         }
 
-        eprintln!("established: unhandled request {:?} {:?}", header, body);
+        debug!("established: unhandled request {:?} {:?}", header, body);
 
         Ok(())
     }
@@ -730,7 +732,7 @@ impl <R: AsyncRead + Unpin, W: AsyncWrite + Unpin> Established<R, W> {
         match notification {
             Notification::Empty => {},
             Notification::Chat(chat) => {
-                eprintln!("chat notification: {:?}", &chat);
+                debug!("chat notification: {:?}", &chat);
                 let chat: ChatMessage = chat.into();
                 write_frame(w, chat.framed()).await?;
             },
@@ -790,12 +792,12 @@ impl <R: AsyncRead + Unpin, W: AsyncWrite + Unpin> Established<R, W> {
         Ok(())
     }
     async fn disconnect(&mut self) {
-        eprintln!("disconnecting");
+        debug!("disconnecting");
         let Self { globals, .. } = self;
         if let Some(user) = globals.user() {
             globals.user_remove(&user).await;
         } else {
-            eprintln!("no user to remove");
+            debug!("no user to remove");
         };
     }
 }
