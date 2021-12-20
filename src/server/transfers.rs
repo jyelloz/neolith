@@ -20,6 +20,8 @@ use thiserror::Error;
 
 use derive_more::{From, Into};
 
+use tracing::debug;
+
 use crate::protocol::{
     HotlineProtocol as _,
     ProtocolError,
@@ -203,7 +205,7 @@ impl <S: AsyncRead + AsyncWrite + Unpin + Send> TransferConnection<S> {
     }
     pub async fn run(mut self) -> Result<()> {
         let handshake = self.read_handshake().await?;
-        eprintln!("handshake={:?}", &handshake);
+        debug!("handshake={:?}", &handshake);
         let TransferHandshake { reference, size } = handshake;
         let id = reference.into();
         if let Some(size) = size {
@@ -223,7 +225,7 @@ impl <S: AsyncRead + AsyncWrite + Unpin + Send> TransferConnection<S> {
     }
     async fn handle_file_download(self, id: RequestId) -> Result<()> {
         let path = self.get_file_download(id)?;
-        eprintln!("{:?}", &path);
+        debug!("{:?}", &path);
         let Self { mut socket, files, .. } = self;
         let (len, info) = files.info(&path).await?;
         let file = files.read(&path, 0).await?;
@@ -241,7 +243,7 @@ impl <S: AsyncRead + AsyncWrite + Unpin + Send> TransferConnection<S> {
             socket.write_all(&rsrc_header.into_bytes()).await?;
             let (_, mut fork) = rsrc.into();
             match tokio::io::copy(&mut fork, &mut socket).await {
-                Err(e) => eprintln!("failed to send file: {:?}", e),
+                Err(e) => debug!("failed to send file: {:?}", e),
                 _ => {},
             }
         }
@@ -249,7 +251,7 @@ impl <S: AsyncRead + AsyncWrite + Unpin + Send> TransferConnection<S> {
             socket.write_all(&data_header.into_bytes()).await?;
             let (_, mut fork) = data.into();
             match tokio::io::copy(&mut fork, &mut socket).await {
-                Err(e) => eprintln!("failed to send file: {:?}", e),
+                Err(e) => debug!("failed to send file: {:?}", e),
                 _ => {},
             }
         }
