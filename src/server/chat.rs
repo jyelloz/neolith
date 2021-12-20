@@ -14,6 +14,8 @@ use derive_more::{From, Into};
 use std::collections::HashSet;
 use tokio::sync::{mpsc, oneshot, watch};
 
+use tracing::debug;
+
 #[derive(Debug, Error)]
 pub enum ChatError {
     #[error("execution error")]
@@ -220,7 +222,7 @@ impl ChatUpdateProcessor {
     pub async fn run(self) -> Result<()> {
         let Self { mut chats, mut queue, updates } = self;
         while let Some(command) = queue.recv().await {
-            eprintln!("handling update: {:?}", &command);
+            debug!("handling update: {:?}", &command);
             match command {
                 Command::ChatRoomCreate(users, tx) => {
                     let id = chats.create(users.clone().into());
@@ -256,7 +258,7 @@ impl ChatUpdateProcessor {
                 }
             }
             if updates.send(chats.clone()).is_err() {
-                eprintln!("ChatUpdateProcessor: shutting down");
+                debug!("ChatUpdateProcessor: shutting down");
                 break;
             }
         }
