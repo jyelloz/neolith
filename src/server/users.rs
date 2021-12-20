@@ -10,6 +10,8 @@ use std::collections::HashSet;
 
 use tokio::sync::{mpsc, oneshot, watch};
 
+use tracing::debug;
+
 #[derive(Debug, Error)]
 pub enum UsersError {
     #[error("execution error")]
@@ -152,7 +154,7 @@ impl UserUpdateProcessor {
     pub async fn run(self) -> Result<()> {
         let Self { mut users, mut queue, updates } = self;
         while let Some(command) = queue.recv().await {
-            eprintln!("handling update: {:?}", &command);
+            debug!("handling update: {:?}", &command);
             match command {
                 Command::Connect(user, tx) => {
                     let id = users.add(&mut user.into());
@@ -168,7 +170,7 @@ impl UserUpdateProcessor {
                 },
             }
             if updates.send(users.clone()).is_err() {
-                eprintln!("UserUpdateProcessor: shutting down");
+                debug!("UserUpdateProcessor: shutting down");
                 break;
             }
         }
