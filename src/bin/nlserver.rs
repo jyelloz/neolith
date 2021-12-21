@@ -308,11 +308,17 @@ async fn main() -> Result<()> {
         users_tx,
         chats_tx,
         news_tx,
-        transfers_tx,
+        transfers_tx: transfers_tx.clone(),
         bus,
     };
 
-    tokio::spawn(transfers(transfer_listener, transfers_rx.subscribe()));
+    tokio::spawn(
+        transfers(
+            transfer_listener,
+            transfers_tx.clone(),
+            transfers_rx.subscribe(),
+        )
+    );
     tokio::spawn(users_rx.run());
     tokio::spawn(chats_rx.run());
     tokio::spawn(news_rx.run());
@@ -332,6 +338,7 @@ async fn main() -> Result<()> {
 
 async fn transfers(
     listener: TcpListener,
+    transfers_tx: TransfersService,
     transfers: watch::Receiver<Requests>,
 ) -> Result<()> {
     loop {
@@ -339,6 +346,7 @@ async fn transfers(
         let conn = TransferConnection::new(
             socket,
             "files".into(),
+            transfers_tx.clone(),
             transfers.clone(),
         );
         tokio::spawn(conn.run());
