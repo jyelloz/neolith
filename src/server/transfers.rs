@@ -251,18 +251,12 @@ impl <S: AsyncRead + AsyncWrite + Unpin + Send> TransferConnection<S> {
         if let Some((rsrc_header, rsrc)) = file.take_fork(ForkType::Resource) {
             socket.write_all(&rsrc_header.into_bytes()).await?;
             let (_, mut fork) = rsrc.into();
-            match tokio::io::copy(&mut fork, &mut socket).await {
-                Err(e) => debug!("failed to send file: {:?}", e),
-                _ => {},
-            }
+            tokio::io::copy(&mut fork, &mut socket).await?;
         }
         if let Some((data_header, data)) = file.take_fork(ForkType::Data) {
             socket.write_all(&data_header.into_bytes()).await?;
             let (_, mut fork) = data.into();
-            match tokio::io::copy(&mut fork, &mut socket).await {
-                Err(e) => debug!("failed to send file: {:?}", e),
-                _ => {},
-            }
+            tokio::io::copy(&mut fork, &mut socket).await?;
         }
         Ok(())
     }
