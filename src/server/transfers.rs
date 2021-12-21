@@ -317,8 +317,7 @@ impl TransfersService {
         let process = TransfersUpdateProcessor::new(rx);
         (service, process)
     }
-    pub async fn file_download(&mut self, path: PathBuf) ->
-        ReferenceNumber {
+    pub async fn file_download(&mut self, path: PathBuf) -> ReferenceNumber {
         let Self(queue) = self;
         let (tx, rx) = oneshot::channel();
         let cmd = Command::Transfer(Request::FileDownload(path), tx);
