@@ -168,6 +168,7 @@ impl Files {
 
 pub struct TransferConnection<S> {
     files: Files,
+    transfers: TransfersService,
     requests: watch::Receiver<Requests>,
     socket: S,
 }
@@ -197,25 +198,30 @@ impl <S: AsyncRead + AsyncWrite + Unpin + Send> TransferConnection<S> {
     pub fn new(
         socket: S,
         root: PathBuf,
+        transfers: TransfersService,
         requests: watch::Receiver<Requests>,
     ) -> Self {
         let files = Files(root);
         Self {
             socket,
             files,
+            transfers,
             requests,
         }
     }
     pub async fn run(mut self) -> Result<()> {
         let handshake = self.read_handshake().await?;
+        let mut transfers = self.transfers.clone();
         debug!("handshake={:?}", &handshake);
         let TransferHandshake { reference, size } = handshake;
-        let id = reference.into();
-        if let Some(size) = size {
-            self.handle_file_upload(id, size).await?;
+        let id = reference.clone().into();
+        let result = if let Some(size) = size {
+            self.handle_file_upload(id, size).await
         } else {
-            self.handle_file_download(id).await?;
-        }
+            self.handle_file_download(id).await
+        };
+        transfers.complete(reference).await?;
+        result?;
         Ok(())
     }
     async fn read_handshake(&mut self) -> Result<TransferHandshake> {
