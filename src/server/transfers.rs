@@ -95,6 +95,9 @@ impl Requests {
     fn get(&self, id: RequestId) -> Option<&Request> {
         self.requests.get(&id)
     }
+    fn remove(&mut self, id: RequestId) {
+        self.requests.remove(&id);
+    }
     fn next_id(&mut self) -> RequestId {
         let id = self.next_id.into();
         self.next_id += 1;
@@ -305,6 +308,7 @@ impl <S: AsyncRead + AsyncWrite + Unpin + Send> TransferConnection<S> {
 
 enum Command {
     Transfer(Request, oneshot::Sender<RequestId>),
+    Complete(RequestId, oneshot::Sender<()>),
 }
 
 #[derive(Debug, Clone)]
@@ -331,6 +335,15 @@ impl TransfersService {
         queue.send(cmd).await.ok();
         rx.await.ok();
     }
+    pub async fn complete(&mut self, reference: ReferenceNumber) -> Result<()> {
+        let Self(queue) = self;
+        let (tx, rx) = oneshot::channel();
+        let id = i32::from(reference);
+        let cmd = Command::Complete(id.into(), tx);
+        queue.send(cmd).await.ok();
+        rx.await.ok();
+        Ok(())
+    }
 }
 
 pub struct TransfersUpdateProcessor {
@@ -348,17 +361,20 @@ impl TransfersUpdateProcessor {
     pub async fn run(self) -> Result<()> {
         let Self { mut queue, mut requests, updates } = self;
         while let Some(command) = queue.recv().await {
-            let (id, tx) = match command {
+            match command {
                 Command::Transfer(Request::FileDownload(path), tx) => {
                     let id = requests.add_download(path);
-                    (id, tx)
+                    tx.send(id).ok();
                 },
                 Command::Transfer(Request::FileUpload(path), tx) => {
                     let id = requests.add_upload(path);
-                    (id, tx)
+                    tx.send(id).ok();
                 },
+                Command::Complete(id, tx) => {
+                    requests.remove(id);
+                    tx.send(()).ok();
+                }
             };
-            tx.send(id).ok();
             updates.send(requests.clone()).ok();
         }
         Ok(())
