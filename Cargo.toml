@@ -13,20 +13,28 @@ default-run = "nlserver"
 
 [dependencies]
 anyhow = "*"
-thiserror = "*"
-num_enum = "0.5"
-derive_more = "*"
-tokio = { version = "1", features = ["full", "tracing"] }
-tracing = "0.1"
-tracing-subscriber = "0.3"
-futures = "0.3"
 async-stream = "0.3"
 bytes = "1"
-time = "0.3"
+console-subscriber = "0.1"
+derive_more = "*"
+dialoguer = "*"
 encoding = "0.2"
+enumset = { version = "*", features = ["serde"] }
 four-cc = "*"
-magic = "0.12"
-maplit = "1.0"
+futures = "0.3"
+magic = "0.13"
+maplit = "1"
+num_enum = "0.5"
+pwhash = "1"
+regex = "1"
+serde = "*"
+strum = { version = "*", features = ["derive"] }
+thiserror = "*"
+time = "0.3"
+tokio = { version = "1", features = ["full", "tracing"] }
+toml = "*"
+tracing = "0.1"
+tracing-subscriber = "0.3"
 
 [dependencies.nom]
 version = "*"
