@@ -11,6 +11,7 @@ use derive_more::{From, Into};
 
 use thiserror::Error;
 
+pub mod application;
 pub mod bus;
 pub mod files;
 pub mod users;
