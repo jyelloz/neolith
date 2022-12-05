@@ -1,27 +1,8 @@
-use std::future::Future;
-use std::pin::Pin;
-use console::{
-    pad_str_with,
-    Alignment,
-};
-use derive_more::Display;
-use enumset::{EnumSetType, EnumSet, enum_set};
-use tui::{
-    Terminal,
-    backend::CrosstermBackend,
-    buffer::Buffer,
-    layout::Rect,
-    widgets::{
-        Block,
-        BorderType,
-        Borders,
-        Widget,
-    },
-    style::{
-        Style,
-        self,
-    },
-};
+use std::{future::Future, fmt, marker::PhantomData, pin::Pin};
+use derive_more::{From, Into};
+use enumset::{EnumSetType, EnumSet, EnumSetIter, enum_set};
+use serde::{de::Visitor, ser::SerializeMap, Serialize, Deserialize, Serializer, Deserializer};
+use strum::{EnumIter, Display, IntoEnumIterator, EnumString};
 
 type PBDF<O> = Pin<Box<dyn Future<Output=O>>>;
 type PBDFR<O> = PBDF<Result<O, Error>>;
@@ -30,12 +11,13 @@ type PBDFR<O> = PBDF<Result<O, Error>>;
 pub enum Error {
     #[error("Authentication Failure")]
     AuthenticationFailure,
+    #[error("Authorization Failure")]
+    AuthorizationFailure,
 }
 
 pub trait Identity {}
-
-pub enum Operation {
-    File(FileOperation),
+pub trait Permissions<O> {
+    fn can(&self, op: O) -> bool;
 }
 
 #[derive(Debug, PartialEq, Eq, PartialOrd, Ord)]
@@ -44,7 +26,9 @@ pub struct Credentials {
     password: String,
 }
 
-#[derive(Debug, Display, PartialOrd, Ord, EnumSetType)]
+#[derive(Debug, Serialize, Deserialize, Display, PartialOrd, Ord, EnumIter, EnumString, EnumSetType)]
+#[strum(serialize_all = "snake_case")]
+#[serde(try_from = "&str")]
 pub enum FileOperation {
     Download,
     UploadToDropbox,
@@ -62,7 +46,9 @@ pub enum FileOperation {
     CreateAlias,
 }
 
-#[derive(Debug, Display, PartialOrd, Ord, EnumSetType)]
+#[derive(Debug, Serialize, Deserialize, Display, PartialOrd, Ord, EnumIter, EnumString, EnumSetType)]
+#[strum(serialize_all = "snake_case")]
+#[serde(try_from = "&str")]
 pub enum UserOperation {
     CanCreateUsers,
     CanDeleteUsers,
@@ -73,208 +59,291 @@ pub enum UserOperation {
     CannotBeDisconnected,
 }
 
-#[derive(Debug, Display, PartialOrd, Ord, EnumSetType)]
+#[derive(Debug, Serialize, Deserialize, Display, PartialOrd, Ord, EnumIter, EnumString, EnumSetType)]
+#[strum(serialize_all = "snake_case")]
+#[serde(try_from = "&str")]
 pub enum NewsOperation {
     ReadNews,
     PostNews,
 }
 
-#[derive(Debug, Display, PartialOrd, Ord, EnumSetType)]
+#[derive(Debug, Serialize, Deserialize, Display, PartialOrd, Ord, EnumIter, EnumString, EnumSetType)]
+#[strum(serialize_all = "snake_case")]
+#[serde(try_from = "&str")]
 pub enum ChatOperation {
     ReadChat,
     SendChat,
 }
 
-#[derive(Debug, Display, PartialOrd, Ord, EnumSetType)]
+#[derive(Debug, Serialize, Deserialize, Display, PartialOrd, Ord, EnumIter, EnumString, EnumSetType)]
+#[strum(serialize_all = "snake_case")]
+#[serde(try_from = "&str")]
 pub enum MiscOperation {
     CanUseAnyName,
     DontShowAgreement,
 }
 
-#[derive(Debug, PartialEq, Eq, PartialOrd, Ord)]
-pub struct FilePermissions(EnumSet<FileOperation>);
+#[derive(Debug, Clone, From, Into, PartialOrd, Ord, PartialEq, Eq)]
+struct FlagSet<T: EnumSetType + IntoEnumIterator + fmt::Display>(EnumSet<T>);
 
-#[derive(Debug, PartialEq, Eq, PartialOrd, Ord)]
-pub struct UserPermissions(EnumSet<UserOperation>);
+impl <F> FromIterator<F> for FlagSet<F>
+    where F: EnumSetType + IntoEnumIterator + fmt::Display {
+    fn from_iter<T: IntoIterator<Item = F>>(iter: T) -> Self {
+        iter.into_iter().collect::<EnumSet<F>>().into()
+    }
+}
 
-#[derive(Debug, PartialEq, Eq, PartialOrd, Ord)]
-pub struct NewsPermissions(EnumSet<NewsOperation>);
+impl <T> Serialize for FlagSet<T>
+    where T: EnumSetType + IntoEnumIterator + fmt::Display {
+    fn serialize<S: Serializer>(&self, ser: S) -> Result<S::Ok, S::Error> {
+        let Self(flags) = self;
+        let mut map = ser.serialize_map(None)?;
+        for flag in T::iter() {
+            map.serialize_entry(&flag.to_string(), &flags.contains(flag))?;
+        }
+        map.end()
+    }
+}
 
-#[derive(Debug, PartialEq, Eq, PartialOrd, Ord)]
-pub struct ChatPermissions(EnumSet<ChatOperation>);
+struct FlagSetVisitor<T>(PhantomData<T>);
 
-#[derive(Debug, PartialEq, Eq, PartialOrd, Ord)]
-pub struct MiscPermissions(EnumSet<MiscOperation>);
+impl <T> FlagSetVisitor<T> {
+    fn new() -> Self { Self(PhantomData) }
+}
+
+impl <'de, E> Visitor<'de> for FlagSetVisitor<FlagSet<E>>
+    where E: EnumSetType + IntoEnumIterator + Deserialize<'de> + fmt::Display {
+    type Value = FlagSet<E>;
+
+    fn expecting(&self, formatter: &mut fmt::Formatter) -> fmt::Result {
+        write!(formatter, "flag set")
+    }
+
+    fn visit_map<A>(self, mut map: A) -> Result<Self::Value, A::Error>
+        where A: serde::de::MapAccess<'de> {
+        let mut flags = EnumSet::empty();
+        while let Some((key, value)) = map.next_entry::<E, bool>()? {
+            if value {
+                flags.insert(key);
+            }
+        }
+        Ok(flags.into())
+    }
+}
+
+impl <'de, T> Deserialize<'de> for FlagSet<T>
+    where T: EnumSetType + IntoEnumIterator + Deserialize<'de> + fmt::Display {
+    fn deserialize<D: Deserializer<'de>>(deserializer: D) -> Result<Self, D::Error> {
+        deserializer.deserialize_map(FlagSetVisitor::new())
+    }
+}
+
+#[derive(Debug, Clone, Serialize, Deserialize, PartialEq, Eq, PartialOrd, Ord, From)]
+#[serde(transparent)]
+pub struct FilePermissions(FlagSet<FileOperation>);
+
+impl Permissions<FileOperation> for FilePermissions {
+    fn can(&self, op: FileOperation) -> bool {
+        self.0.0.contains(op)
+    }
+}
+
+impl IntoIterator for FilePermissions {
+    type Item = FileOperation;
+    type IntoIter = EnumSetIter<Self::Item>;
+
+    fn into_iter(self) -> Self::IntoIter {
+        self.0.0.into_iter()
+    }
+}
+
+impl FromIterator<FileOperation> for FilePermissions {
+    fn from_iter<T: IntoIterator<Item = FileOperation>>(iter: T) -> Self {
+        let flags: FlagSet<_> = iter.into_iter().collect();
+        flags.into()
+    }
+}
+
+#[derive(Debug, Clone, Serialize, Deserialize, PartialEq, Eq, PartialOrd, Ord, From)]
+#[serde(transparent)]
+pub struct UserPermissions(FlagSet<UserOperation>);
+
+impl Permissions<UserOperation> for UserPermissions {
+    fn can(&self, op: UserOperation) -> bool {
+        self.0.0.contains(op)
+    }
+}
+
+impl IntoIterator for UserPermissions {
+    type Item = UserOperation;
+    type IntoIter = EnumSetIter<Self::Item>;
+
+    fn into_iter(self) -> Self::IntoIter {
+        self.0.0.into_iter()
+    }
+}
+
+impl FromIterator<UserOperation> for UserPermissions {
+    fn from_iter<T: IntoIterator<Item = UserOperation>>(iter: T) -> Self {
+        let flags: FlagSet<_> = iter.into_iter().collect();
+        flags.into()
+    }
+}
+
+#[derive(Debug, Clone, Serialize, Deserialize, PartialEq, Eq, PartialOrd, Ord, From)]
+#[serde(transparent)]
+pub struct NewsPermissions(FlagSet<NewsOperation>);
+
+impl Permissions<NewsOperation> for NewsPermissions {
+    fn can(&self, op: NewsOperation) -> bool {
+        self.0.0.contains(op)
+    }
+}
+
+impl IntoIterator for NewsPermissions {
+    type Item = NewsOperation;
+    type IntoIter = EnumSetIter<Self::Item>;
+
+    fn into_iter(self) -> Self::IntoIter {
+        self.0.0.into_iter()
+    }
+}
+
+impl FromIterator<NewsOperation> for NewsPermissions {
+    fn from_iter<T: IntoIterator<Item = NewsOperation>>(iter: T) -> Self {
+        let flags: FlagSet<_> = iter.into_iter().collect();
+        flags.into()
+    }
+}
+
+#[derive(Debug, Clone, Serialize, Deserialize, PartialEq, Eq, PartialOrd, Ord, From)]
+#[serde(transparent)]
+pub struct ChatPermissions(FlagSet<ChatOperation>);
+
+impl Permissions<ChatOperation> for ChatPermissions {
+    fn can(&self, op: ChatOperation) -> bool {
+        self.0.0.contains(op)
+    }
+}
+
+impl IntoIterator for ChatPermissions {
+    type Item = ChatOperation;
+    type IntoIter = EnumSetIter<Self::Item>;
+    fn into_iter(self) -> Self::IntoIter {
+        self.0.0.into_iter()
+    }
+}
+
+impl FromIterator<ChatOperation> for ChatPermissions {
+    fn from_iter<T: IntoIterator<Item = ChatOperation>>(iter: T) -> Self {
+        let flags: FlagSet<_> = iter.into_iter().collect();
+        flags.into()
+    }
+}
+
+#[derive(Debug, Clone, Serialize, Deserialize, PartialEq, Eq, PartialOrd, Ord, From)]
+#[serde(transparent)]
+pub struct MiscPermissions(FlagSet<MiscOperation>);
+impl Permissions<MiscOperation> for MiscPermissions {
+    fn can(&self, op: MiscOperation) -> bool {
+        self.0.0.contains(op)
+    }
+}
+
+impl IntoIterator for MiscPermissions {
+    type Item = MiscOperation;
+    type IntoIter = EnumSetIter<Self::Item>;
+    fn into_iter(self) -> Self::IntoIter {
+        self.0.0.into_iter()
+    }
+}
+
+impl FromIterator<MiscOperation> for MiscPermissions {
+    fn from_iter<T: IntoIterator<Item = MiscOperation>>(iter: T) -> Self {
+        let flags: FlagSet<_> = iter.into_iter().collect();
+        flags.into()
+    }
+}
 
 impl Default for FilePermissions {
     fn default() -> Self {
-        Self(enum_set!(FileOperation::Download | FileOperation::UploadToDropbox))
+        Self(enum_set!(FileOperation::Download | FileOperation::UploadToDropbox).into())
     }
 }
 
 impl Default for UserPermissions {
     fn default() -> Self {
-        Self(enum_set!(UserOperation::CanGetUserInfo))
+        Self(enum_set!(UserOperation::CanGetUserInfo).into())
     }
 }
 
 impl Default for NewsPermissions {
     fn default() -> Self {
-        Self(enum_set!(NewsOperation::ReadNews))
+        Self(enum_set!(NewsOperation::ReadNews).into())
     }
 }
 
 impl Default for ChatPermissions {
     fn default() -> Self {
-        Self(enum_set!(ChatOperation::ReadChat | ChatOperation::SendChat))
+        Self(enum_set!(ChatOperation::ReadChat | ChatOperation::SendChat).into())
     }
 }
 
 impl Default for MiscPermissions {
     fn default() -> Self {
-        Self(enum_set!(MiscOperation::CanUseAnyName))
+        Self(enum_set!(MiscOperation::CanUseAnyName).into())
     }
 }
 
-#[derive(Debug, PartialEq, Eq, PartialOrd, Ord, Default)]
+#[derive(Debug, Clone, Default, Serialize, Deserialize, PartialEq, Eq, PartialOrd, Ord)]
 pub struct UserAccountPermissions {
-    file: FilePermissions,
-    user: UserPermissions,
-    news: NewsPermissions,
-    chat: ChatPermissions,
-    misc: MiscPermissions,
+    pub file: FilePermissions,
+    pub user: UserPermissions,
+    pub news: NewsPermissions,
+    pub chat: ChatPermissions,
+    pub misc: MiscPermissions,
 }
 
-#[derive(Debug, PartialEq, Eq, PartialOrd, Ord, Default)]
+#[derive(Debug, Clone, Serialize, Deserialize, PartialEq, Eq, PartialOrd, Ord, Default)]
+#[serde(transparent)]
+pub struct Password(String);
+
+impl Password {
+    pub fn verify(&self, password: &str) -> bool {
+        pwhash::bcrypt::verify(password, &self.0)
+    }
+}
+impl TryFrom<&str> for Password {
+    type Error = pwhash::error::Error;
+    fn try_from(value: &str) -> Result<Self, Self::Error> {
+        let hash = pwhash::bcrypt::hash(value)?;
+        Ok(Self(hash))
+    }
+}
+
+impl TryFrom<String> for Password {
+    type Error = pwhash::error::Error;
+    fn try_from(value: String) -> Result<Self, Self::Error> {
+        Self::try_from(value.as_str())
+    }
+}
+
+#[derive(Debug, Clone, Serialize, Deserialize, PartialEq, Eq, PartialOrd, Ord, Default)]
+pub struct UserAccountIdentity {
+    pub name: String,
+    pub login: String,
+    pub password: Password,
+}
+
+#[derive(Debug, Clone, Serialize, Deserialize, PartialEq, Eq, PartialOrd, Ord, Default)]
 pub struct UserAccount {
-    name: String,
-    login: String,
-    password: String,
-
-    // permissions: UserAccountPermissions,
-
-    // File Flags
-    can_download_files: bool,
-    can_upload_files: bool,
-    can_upload_anywhere: bool,
-    can_delete_files: bool,
-    can_rename_files: bool,
-    can_move_files: bool,
-    can_comment_files: bool,
-    can_create_folders: bool,
-    can_delete_folders: bool,
-    can_rename_folders: bool,
-    can_move_folders: bool,
-    can_comment_folders: bool,
-    can_view_drop_boxes: bool,
-    can_make_aliases: bool,
-
-    // User Flags
-    can_create_users: bool,
-    can_delete_users: bool,
-    can_read_users: bool,
-    can_modify_users: bool,
-    can_get_user_info: bool,
-    can_disconnect_users: bool,
-    cannot_be_disconnected: bool,
-
-    // News Flags
-    can_read_news: bool,
-    can_post_news: bool,
-
-    // Chat Flags
-    can_read_chat: bool,
-    can_send_chat: bool,
-
-    // Misc. Flags
-    can_use_any_name: bool,
-    dont_show_agreement: bool,
+    pub identity: UserAccountIdentity,
+    pub permissions: UserAccountPermissions,
 }
 
-impl UserAccount {
-    // const INTERIOR_WIDTH: usize = 32;
-    pub fn display(&self) {
-        fn checkbox(value: bool) -> String {
-            if value {
-                "[*]"
-            } else {
-                "[ ]"
-            }.into()
-        }
-        let al = Alignment::Left;
-        let ar = Alignment::Right;
-        let field_names = [
-            ("Name", self.name.clone()),
-            ("Login", self.login.clone()),
-            ("Password", self.password.clone()),
-            ("Can Download Files", checkbox(self.can_download_files)),
-            ("Can Upload Files", checkbox(self.can_upload_files)),
-            ("Can Upload Anywhere", checkbox(self.can_upload_anywhere)),
-            ("Can Delete Files", checkbox(self.can_delete_files)),
-            ("Can Rename Files", checkbox(self.can_rename_files)),
-            ("Can Move Files", checkbox(self.can_move_files)),
-            ("Can Comment Files", checkbox(self.can_comment_files)),
-            ("Can Create Folders", checkbox(self.can_create_folders)),
-            ("Can Delete Folders", checkbox(self.can_delete_folders)),
-            ("Can Rename Folders", checkbox(self.can_rename_folders)),
-            ("Can Move Folders", checkbox(self.can_move_folders)),
-            ("Can Comment Folders", checkbox(self.can_comment_folders)),
-            ("Can View Drop Boxes", checkbox(self.can_view_drop_boxes)),
-            ("Can Make Aliases", checkbox(self.can_make_aliases)),
-            ("Can Create Users", checkbox(self.can_create_users)),
-            ("Can Delete Users", checkbox(self.can_delete_users)),
-            ("Can Read Users", checkbox(self.can_read_users)),
-            ("Can Modify Users", checkbox(self.can_modify_users)),
-            ("Can Get User Info", checkbox(self.can_get_user_info)),
-            ("Can Disconnect Users", checkbox(self.can_disconnect_users)),
-            ("Cannot Be Disconnected", checkbox(self.cannot_be_disconnected)),
-            ("Can Read News", checkbox(self.can_read_news)),
-            ("Can Post News", checkbox(self.can_post_news)),
-            ("Can Read Chat", checkbox(self.can_read_chat)),
-            ("Can Send Chat", checkbox(self.can_send_chat)),
-            ("Can Use Any Name", checkbox(self.can_use_any_name)),
-            ("Don't Show Agreement", checkbox(self.dont_show_agreement)),
-        ];
-        let lw = field_names.iter().map(|s| s.0.len()).max().unwrap_or(1);
-        let lr = field_names.iter().map(|s| s.1.len()).max().unwrap_or(1);
-        println!("╭{}┬{}╮", pad_str_with("─User Account", lw, al, None, '─'), pad_str_with("",
-                lr, al, None, '─'));
-        for (label, value) in field_names {
-            println!("│{}│{}│", pad_str_with(label, lw, al, None, ' '), pad_str_with(&value, lr, ar, None, ' '));
-            println!("├{}┼{}┤", pad_str_with("", lw, al, None, '╌'), pad_str_with("", lr, al, None, '╌'));
-        }
-        // println!("│{}│", pad_str_with(&self.name, w, al, None, ' '));
-        println!("╰{}┴{}╯", pad_str_with("", lw, ar, None, '─'), pad_str_with("",
-                lr, al, None, '─'));
-    }
-}
-
-struct Field {
-}
-
-struct Section {
-}
-
-struct Card {
-    title: String,
-    sections: Vec<Section>,
-}
-
-impl Card {
-    fn render(&self) {
-        let lw = 0;
-        let lr = 0;
-        let ar = Alignment::Right;
-        let al = Alignment::Left;
-        println!("╭{}┬{}╮", pad_str_with("", lw, ar, None, '─'), pad_str_with("", lr, al, None, '─'));
-        // println!("├{}┤", pad_str_with("", w, al, None, '╌'));
-        // println!("│{}│", pad_str_with(&self.name, w, al, None, ' '));
-        println!("╰{}┴{}╯",
-            pad_str_with("", lw, ar, None, '─'),
-            pad_str_with("", lw, ar, None, '─'),
-        )
-    }
-}
+#[derive(Debug, Clone, Serialize, Deserialize, PartialEq, Eq, PartialOrd, Ord, Default, From, Into)]
+#[serde(transparent)]
+pub struct UserDataFile(UserAccount);
 
 pub struct OnlineUser;
 
@@ -415,4 +484,31 @@ mod tests {
         Ok(())
     }
 
+    #[test]
+    fn test_userdata() -> Result<()> {
+        let u = UserAccount {
+            identity: UserAccountIdentity {
+                name: "test account".into(),
+                login: "test".into(),
+                password: "password".into(),
+            },
+            ..Default::default()
+        };
+        let user_data = UserDataFile(u.clone());
+        let s = toml::to_string(&user_data).unwrap();
+        println!("{}", s);
+        let UserDataFile(from) = toml::from_str::<UserDataFile>(&s)?;
+        println!("{:?}", &from);
+        assert_eq!(u, from);
+        Ok(())
+    }
+
+    #[test]
+    fn deserialize_news_permissions() -> Result<()> {
+        let d = NewsPermissions::default();
+        let toml = toml::to_string(&d)?;
+        let perms: NewsPermissions = toml::from_str(&toml)?;
+        assert_eq!(d, perms);
+        Ok(())
+    }
 }
