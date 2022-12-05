@@ -136,7 +136,7 @@ impl OsFiles {
     pub fn with_root(root: PathBuf) -> Result<Self> {
         let root = root.canonicalize()?;
         let metadata = fs::metadata(&root)?;
-        let magic = Cookie::open(magic::flags::APPLE)
+        let magic = Cookie::open(magic::CookieFlags::APPLE)
             .or::<io::Error>(Err(ErrorKind::Other.into()))?;
         magic.load::<String>(&[])
             .or::<io::Error>(Err(ErrorKind::Other.into()))?;
