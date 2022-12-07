@@ -15,6 +15,7 @@ pub mod application;
 pub mod bus;
 pub mod files;
 pub mod users;
+pub mod user_editor;
 pub mod chat;
 pub mod news;
 pub mod transaction_stream;
