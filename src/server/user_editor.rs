@@ -34,7 +34,8 @@ fn input_permissions<F, P>(prompt: &str, perms: &mut P) -> Result<()>
 pub struct InteractiveUserEditor(UserAccount);
 impl InteractiveUserEditor {
     pub fn deserialize(input: &[u8]) -> Result<Self> {
-        let account: UserDataFile = toml::from_slice(input)?;
+        let s = std::str::from_utf8(input)?;
+        let account: UserDataFile = toml::from_str(s)?;
         Ok(Self(account.into()))
     }
 

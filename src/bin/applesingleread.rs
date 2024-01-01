@@ -37,10 +37,10 @@ fn main() -> io::Result<()> {
     let data_bytes = &applesingle_data[data_offset..][..data_fork.length as usize];
     let rsrc_bytes = &applesingle_data[rsrc_offset..][..rsrc_fork.length as usize];
 
-    let mut rsrc = std::fs::File::create(&rsrc)?;
+    let mut rsrc = std::fs::File::create(rsrc)?;
     rsrc.write_all(rsrc_bytes)?;
 
-    let mut data = std::fs::File::create(&data)?;
+    let mut data = std::fs::File::create(data)?;
     data.write_all(data_bytes)?;
 
     Ok(())

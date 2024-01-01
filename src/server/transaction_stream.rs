@@ -1,9 +1,6 @@
 use crate::protocol::{
+    self as proto,
     HotlineProtocol as _,
-    TransactionHeader,
-    TransactionBody,
-    TransactionFrame,
-    ProtocolError,
 };
 
 use tokio::io::{
@@ -13,7 +10,7 @@ use tokio::io::{
 use futures::stream::Stream;
 use async_stream::stream;
 
-pub type Result<T> = core::result::Result<T, ProtocolError>;
+pub type Result<T> = core::result::Result<T, proto::ProtocolError>;
 
 pub struct Frames<R>(R);
 
@@ -24,35 +21,37 @@ impl <R: AsyncRead + Unpin> Frames<R> {
     pub fn take(self) -> R {
         self.0
     }
-    pub fn frames(mut self) -> impl Stream<Item = Result<TransactionFrame>>{
+    pub fn frames(
+        mut self
+    ) -> impl Stream<Item = Result<proto::TransactionFrame>> {
         stream! {
             loop {
                 yield self.next_frame().await;
             }
         }
     }
-    pub async fn next_frame(&mut self) -> Result<TransactionFrame> {
+    pub async fn next_frame(&mut self) -> Result<proto::TransactionFrame> {
         let header = self.header().await?;
         let size = header.body_len();
         let body = self.body(size).await?;
-        Ok(TransactionFrame { header, body })
+        Ok(proto::TransactionFrame { header, body })
     }
-    async fn header(&mut self) -> Result<TransactionHeader> {
+    async fn header(&mut self) -> Result<proto::TransactionHeader> {
         let Self(reader) = self;
         let mut buf = [0u8; 20];
         reader.read_exact(&mut buf).await?;
-        match TransactionHeader::from_bytes(&buf) {
+        match proto::TransactionHeader::from_bytes(&buf) {
             Ok((_, header)) => Ok(header),
-            Err(_) => Err(ProtocolError::ParseHeader),
+            Err(_) => Err(proto::ProtocolError::ParseHeader),
         }
     }
-    async fn body(&mut self, size: usize) -> Result<TransactionBody> {
+    async fn body(&mut self, size: usize) -> Result<proto::TransactionBody> {
         let Self(reader) = self;
-        let mut buf = &mut vec![0u8; size][..size];
-        reader.read_exact(&mut buf).await?;
-        match TransactionBody::from_bytes(&buf) {
+        let buf = &mut vec![0u8; size][..size];
+        reader.read_exact(buf).await?;
+        match proto::TransactionBody::from_bytes(buf) {
             Ok((_, body)) => Ok(body),
-            Err(_) => Err(ProtocolError::ParseBody),
+            Err(_) => Err(proto::ProtocolError::ParseBody),
         }
     }
 }

@@ -8,6 +8,7 @@ use super::{
     be_i8,
     be_i16,
     be_i32,
+    be_i64,
     take,
     multi,
 };
@@ -55,9 +56,9 @@ impl IsReply {
     }
 }
 
-impl Into<bool> for IsReply {
-    fn into(self) -> bool {
-        self.0 == 1
+impl From<IsReply> for bool {
+    fn from(val: IsReply) -> Self {
+        val.0 == 1
     }
 }
 
@@ -219,7 +220,7 @@ impl HotlineProtocol for TransactionHeader {
             &data_size[..],
         ].into_iter()
             .flat_map(|bytes| bytes.iter())
-            .map(|b| *b)
+            .copied()
             .collect()
     }
     fn from_bytes(bytes: &[u8]) -> BIResult<Self> {
@@ -304,6 +305,18 @@ impl Parameter {
             field_data,
         }
     }
+    pub fn new_i16<F: Into<FieldId>>(field_id: F, int: i16) -> Self {
+        Self {
+            field_id: field_id.into(),
+            field_data: int.to_be_bytes().to_vec(),
+        }
+    }
+    pub fn new_i32<F: Into<FieldId>>(field_id: F, int: i32) -> Self {
+        Self {
+            field_id: field_id.into(),
+            field_data: int.to_be_bytes().to_vec(),
+        }
+    }
     pub fn new_int<F, I>(field_id: F, int: I) -> Self
         where F: Into<FieldId>,
               I: Into<IntParameter> {
@@ -315,11 +328,11 @@ impl Parameter {
             field_data,
         }
     }
+    pub fn new_error<S: AsRef<str>>(message: S) -> Self {
+        Self::new(TransactionField::ErrorText, message.as_ref().into())
+    }
     pub fn field_matches(&self, field: TransactionField) -> bool {
         self.field_id.0 == field as i16
-    }
-    pub fn borrow(&self) -> &[u8] {
-        &self.field_data
     }
     pub fn take(self) -> Vec<u8> {
         self.field_data
@@ -330,6 +343,12 @@ impl Parameter {
     }
     pub fn int(&self) -> Option<IntParameter> {
         self.into()
+    }
+}
+
+impl std::borrow::Borrow<[u8]> for Parameter {
+    fn borrow(&self) -> &[u8] {
+        &self.field_data
     }
 }
 
@@ -344,7 +363,7 @@ impl HotlineProtocol for Parameter {
             &field_data[..],
         ].into_iter()
             .flat_map(|bytes| bytes.iter())
-            .map(|b| *b)
+            .copied()
             .collect()
     }
     fn from_bytes(bytes: &[u8]) -> BIResult<Self> {
@@ -358,26 +377,33 @@ impl HotlineProtocol for Parameter {
 }
 
 #[derive(Debug, Clone, Copy, From, Into)]
-#[from(types(i8, i16))]
-pub struct IntParameter(i32);
+#[from(types(i8, i16, i32))]
+pub struct IntParameter(i64);
 
 impl IntParameter {
-    fn from_i8(data: &[u8]) -> Option<i32> {
+    pub fn from_i8(data: &[u8]) -> Option<i64> {
         if let Ok((b"", i)) = be_i8::<_, nom::error::Error<_>>(data) {
-            Some(i as i32)
+            Some(i as i64)
         } else {
             None
         }
     }
-    fn from_i16(data: &[u8]) -> Option<i32> {
+    pub fn from_i16(data: &[u8]) -> Option<i64> {
         if let Ok((b"", i)) = be_i16::<_, nom::error::Error<_>>(data) {
-            Some(i as i32)
+            Some(i as i64)
         } else {
             None
         }
     }
-    fn from_i32(data: &[u8]) -> Option<i32> {
+    pub fn from_i32(data: &[u8]) -> Option<i64> {
         if let Ok((b"", i)) = be_i32::<_, nom::error::Error<_>>(data) {
+            Some(i as i64)
+        } else {
+            None
+        }
+    }
+    pub fn from_i64(data: &[u8]) -> Option<i64> {
+        if let Ok((b"", i)) = be_i64::<_, nom::error::Error<_>>(data) {
             Some(i)
         } else {
             None
@@ -391,6 +417,10 @@ impl IntParameter {
         let Self(int) = self;
         i16::try_from(*int).ok()
     }
+    pub fn i32(&self) -> Option<i32> {
+        let Self(int) = self;
+        i32::try_from(*int).ok()
+    }
 }
 
 impl From<&Parameter> for Option<IntParameter> {
@@ -400,22 +430,23 @@ impl From<&Parameter> for Option<IntParameter> {
             1 => IntParameter::from_i8(data),
             2 => IntParameter::from_i16(data),
             4 => IntParameter::from_i32(data),
+            8 => IntParameter::from_i64(data),
             _ => None,
         };
-        value.map(|v| IntParameter(v))
+        value.map(IntParameter)
     }
 }
 
-impl Into<Vec<u8>> for IntParameter {
-    fn into(self) -> Vec<u8> {
-        let Self(int) = self;
-        if int < (i16::MIN as i32) {
+impl From<IntParameter> for Vec<u8> {
+    fn from(val: IntParameter) -> Self {
+        let IntParameter(int) = val;
+        if int < (i16::MIN as i64) {
             int.to_be_bytes().to_vec()
-        } else if int < (i8::MIN as i32) {
+        } else if int < (i8::MIN as i64) {
             (int as i16).to_be_bytes().to_vec()
-        } else if int <= (i8::MAX as i32) {
+        } else if int <= (i8::MAX as i64) {
             (int as i8).to_be_bytes().to_vec()
-        } else if int <= (i16::MAX as i32) {
+        } else if int <= (i16::MAX as i64) {
             (int as i16).to_be_bytes().to_vec()
         } else {
             int.to_be_bytes().to_vec()
@@ -423,7 +454,7 @@ impl Into<Vec<u8>> for IntParameter {
     }
 }
 
-#[derive(Debug, Clone)]
+#[derive(Debug, Clone, Default)]
 pub struct TransactionBody {
     pub parameters: Vec<Parameter>,
 }
@@ -453,12 +484,6 @@ impl TransactionBody {
     }
 }
 
-impl Default for TransactionBody {
-    fn default() -> Self {
-        Self { parameters: vec![] }
-    }
-}
-
 impl FromIterator<Parameter> for TransactionBody {
     fn from_iter<I: IntoIterator<Item=Parameter>>(iter: I) -> Self {
         Vec::from_iter(iter).into()
@@ -480,11 +505,11 @@ impl HotlineProtocol for TransactionBody {
             .flat_map(|bytes| bytes.into_iter())
             .collect();
         [
-            &parameter_count[..],
-            &parameters.as_slice()[..],
+            parameter_count.as_slice(),
+            parameters.as_slice(),
         ].into_iter()
             .flat_map(|bytes| bytes.iter())
-            .map(|b| *b)
+            .copied()
             .collect()
     }
     fn from_bytes(bytes: &[u8]) -> BIResult<Self> {
@@ -502,10 +527,19 @@ pub struct TransactionFrame {
 }
 
 impl TransactionFrame {
-    pub fn empty(header: TransactionHeader) -> Self {
+    pub fn empty<H: Into<TransactionHeader>>(header: H) -> Self {
         Self {
-            header,
+            header: header.into(),
             body: Default::default(),
+        }
+    }
+    pub fn new<H: Into<TransactionHeader>, B: Into<TransactionBody>>(
+        header: H,
+        body: B,
+    ) -> Self {
+        Self {
+            header: header.into(),
+            body: body.into(),
         }
     }
     pub fn require_transaction_type(self, expected: TransactionType) -> Result<Self, ProtocolError> {
@@ -518,6 +552,13 @@ impl TransactionFrame {
             header: header.reply_to(request),
             body,
         }
+    }
+}
+
+impl From<(TransactionHeader, TransactionBody)> for TransactionFrame {
+    fn from(val: (TransactionHeader, TransactionBody)) -> Self {
+        let (header, body) = val;
+        Self { header, body }
     }
 }
 

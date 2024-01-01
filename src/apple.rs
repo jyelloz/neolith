@@ -49,7 +49,7 @@ pub struct EntryDescriptor {
 }
 
 impl EntryDescriptor {
-    fn to_bytes(&self) -> Vec<u8> {
+    fn to_bytes(self) -> Vec<u8> {
         [
             self.id.to_be_bytes(),
             self.offset.to_be_bytes(),
@@ -85,7 +85,7 @@ impl AppleSingleHeader {
     pub fn to_bytes(&self) -> Vec<u8> {
         let Self { descriptors } = self;
         let n_descriptors = descriptors.len() as u16;
-        let entry_descriptors = descriptors.into_iter()
+        let entry_descriptors = descriptors.iter()
             .map(|d| d.to_bytes())
             .flat_map(|bytes| bytes.into_iter());
         [
@@ -94,8 +94,8 @@ impl AppleSingleHeader {
             &[0u8; 16][..],
             &n_descriptors.to_be_bytes()[..],
         ].into_iter()
-            .flat_map(|bytes| bytes.into_iter())
-            .map(|b| *b)
+            .flat_map(|bytes| bytes.iter())
+            .copied()
             .chain(entry_descriptors)
             .collect()
     }

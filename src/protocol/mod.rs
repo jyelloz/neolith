@@ -3,28 +3,17 @@ use nom::{
     IResult,
     multi,
     combinator::{map, verify},
-    bytes::{
-        self,
-        streaming::take,
-    },
-    number::streaming::{
-        be_i16,
-        be_i32,
-        be_i8,
-    },
+    bytes::{self, streaming::take},
+    number::streaming::{be_i16, be_i32, be_i64, be_i8},
 };
-
 use maplit::hashmap;
-
 use derive_more::{From, Into};
-
 use thiserror::Error;
-
 use std::{
+    borrow::Borrow,
     collections::HashMap,
     num::NonZeroU32,
 };
-
 use tokio::io::AsyncRead;
 
 mod handshake;
@@ -73,7 +62,7 @@ pub enum ProtocolError {
     SystemError,
 }
 
-#[derive(Debug, PartialEq, Eq, PartialOrd, Ord, Clone, Copy)]
+#[derive(Debug, PartialEq, Eq, PartialOrd, Ord, Clone, Copy, From, Into)]
 pub struct ErrorCode(i32);
 
 impl ErrorCode {
@@ -145,6 +134,7 @@ pub use parameters::{
     UserFlags,
     UserId,
     UserLogin,
+    UserAccess,
     UserNameWithInfo,
     WaitingCount,
 };
@@ -186,10 +176,9 @@ impl TryFrom<TransactionFrame> for LoginRequest {
     }
 }
 
-impl Into<TransactionBody> for LoginRequest {
-    fn into(self) -> TransactionBody {
-
-        let Self { login, nickname, password, icon_id } = self;
+impl From<LoginRequest> for TransactionBody {
+    fn from(val: LoginRequest) -> Self {
+        let LoginRequest { login, nickname, password, icon_id } = val;
 
         let login = login.map(UserLogin::into);
         let password = password.map(Password::into);
@@ -219,23 +208,23 @@ impl Default for LoginReply {
     }
 }
 
-impl Into<TransactionFrame> for LoginReply {
-    fn into(self) -> TransactionFrame {
-        let Self(version) = self;
+impl From<LoginReply> for TransactionFrame {
+    fn from(val: LoginReply) -> Self {
+        let LoginReply(version) = val;
         let header = TransactionType::Login.into();
         let body = vec![version.into()].into();
-        TransactionFrame { header, body }
+        Self { header, body }
     }
 }
 
 #[derive(Debug, Clone, Copy, From, Into, PartialEq, Eq, PartialOrd, Ord)]
 pub struct ProtocolVersion(i16);
 
-impl Into<Parameter> for ProtocolVersion {
-    fn into(self) -> Parameter {
+impl From<ProtocolVersion> for Parameter {
+    fn from(val: ProtocolVersion) -> Self {
         Parameter::new_int(
             TransactionField::Version,
-            self.0,
+            val.0,
         )
     }
 }
@@ -249,11 +238,11 @@ pub struct ShowAgreement {
 #[derive(Debug, PartialEq, Eq, PartialOrd, Ord)]
 pub struct ServerAgreement(pub Vec<u8>);
 
-impl Into<Parameter> for ServerAgreement {
-    fn into(self) -> Parameter {
+impl From<ServerAgreement> for Parameter {
+    fn from(val: ServerAgreement) -> Self {
         Parameter::new(
             TransactionField::Data,
-            self.0,
+            val.0,
         )
     }
 }
@@ -270,7 +259,7 @@ impl TryFrom<&Parameter> for ServerAgreement {
 }
 
 enum ServerBannerType {
-    URL,
+    Url,
     Data,
 }
 
@@ -306,12 +295,12 @@ impl TryFrom<TransactionBody> for ShowAgreement {
 impl TryFrom<&Parameter> for ServerBannerType {
     type Error = ProtocolError;
     fn try_from(parameter: &Parameter) -> Result<Self, Self::Error> {
-        let field_data = parameter.borrow();
-        match &field_data[..] {
-            &[1] => {
-                Ok(ServerBannerType::URL)
+        let field_data: &[u8] = parameter.borrow();
+        match *field_data {
+            [1] => {
+                Ok(ServerBannerType::Url)
             },
-            &[0] => {
+            [0] => {
                 Ok(ServerBannerType::Data)
             },
             _ => {
@@ -333,9 +322,9 @@ impl From<TransactionField> for FieldId {
     }
 }
 
-impl Into<TransactionBody> for ShowAgreement {
-    fn into(self) -> TransactionBody {
-        let parameter = if let Some(agreement) = self.agreement {
+impl From<ShowAgreement> for TransactionBody {
+    fn from(val: ShowAgreement) -> Self {
+        let parameter = if let Some(agreement) = val.agreement {
             agreement.into()
         } else {
             Parameter::new_int(
@@ -379,25 +368,25 @@ pub struct NotifyUserChange {
     pub icon_id: IconId,
 }
 
-impl Into<TransactionFrame> for NotifyUserChange {
-    fn into(self) -> TransactionFrame {
+impl From<NotifyUserChange> for TransactionFrame {
+    fn from(val: NotifyUserChange) -> Self {
         let header = TransactionHeader {
             _type: TransactionType::NotifyUserChange.into(),
             ..Default::default()
         };
-        let Self {
+        let NotifyUserChange {
             user_id,
             username,
             icon_id,
             user_flags,
-        } = self;
+        } = val;
         let body = vec![
             user_id.into(),
             icon_id.into(),
             user_flags.into(),
             username.into(),
         ].into();
-        TransactionFrame { header, body }
+        Self { header, body }
     }
 }
 
@@ -423,15 +412,15 @@ pub struct NotifyUserDelete {
     pub user_id: UserId,
 }
 
-impl Into<TransactionFrame> for NotifyUserDelete {
-    fn into(self) -> TransactionFrame {
+impl From<NotifyUserDelete> for TransactionFrame {
+    fn from(val: NotifyUserDelete) -> Self {
         let header = TransactionHeader {
             _type: TransactionType::NotifyUserDelete.into(),
             ..Default::default()
         };
-        let Self { user_id } = self;
+        let NotifyUserDelete { user_id } = val;
         let body = vec![user_id.into()].into();
-        TransactionFrame { header, body }
+        Self { header, body }
     }
 }
 
@@ -456,19 +445,19 @@ pub struct NotifyChatUserChange {
     pub user_name: Nickname,
 }
 
-impl Into<TransactionFrame> for NotifyChatUserChange {
-    fn into(self) -> TransactionFrame {
+impl From<NotifyChatUserChange> for TransactionFrame {
+    fn from(val: NotifyChatUserChange) -> Self {
         let header = TransactionHeader {
             _type: TransactionType::NotifyChatUserChange.into(),
             ..Default::default()
         };
-        let Self {
+        let NotifyChatUserChange {
             chat_id,
             user_id,
             icon_id,
             user_flags,
             user_name,
-        } = self;
+        } = val;
         let body = vec![
             chat_id.into(),
             user_id.into(),
@@ -476,7 +465,7 @@ impl Into<TransactionFrame> for NotifyChatUserChange {
             user_flags.into(),
             user_name.into(),
         ].into();
-        TransactionFrame { header, body }
+        Self { header, body }
     }
 }
 
@@ -507,19 +496,19 @@ pub struct NotifyChatUserDelete {
     pub user_name: Nickname,
 }
 
-impl Into<TransactionFrame> for NotifyChatUserDelete {
-    fn into(self) -> TransactionFrame {
+impl From<NotifyChatUserDelete> for TransactionFrame {
+    fn from(val: NotifyChatUserDelete) -> Self {
         let header = TransactionHeader {
             _type: TransactionType::NotifyChatUserDelete.into(),
             ..Default::default()
         };
-        let Self {
+        let NotifyChatUserDelete {
             chat_id,
             user_id,
             icon_id,
             user_flags,
             user_name,
-        } = self;
+        } = val;
         let body = vec![
             chat_id.into(),
             user_id.into(),
@@ -527,7 +516,7 @@ impl Into<TransactionFrame> for NotifyChatUserDelete {
             user_flags.into(),
             user_name.into(),
         ].into();
-        TransactionFrame { header, body }
+        Self { header, body }
     }
 }
 
@@ -555,18 +544,18 @@ pub struct NotifyChatSubject {
     pub subject: ChatSubject,
 }
 
-impl Into<TransactionFrame> for NotifyChatSubject {
-    fn into(self) -> TransactionFrame {
+impl From<NotifyChatSubject> for TransactionFrame {
+    fn from(val: NotifyChatSubject) -> Self {
         let header = TransactionHeader {
             _type: TransactionType::NotifyChatSubject.into(),
             ..Default::default()
         };
-        let Self { chat_id, subject } = self;
+        let NotifyChatSubject { chat_id, subject } = val;
         let body = vec![
             chat_id.into(),
             subject.into(),
         ].into();
-        TransactionFrame { header, body }
+        Self { header, body }
     }
 }
 
@@ -593,12 +582,13 @@ impl TryFrom<TransactionFrame> for GetUserNameList {
     }
 }
 
-impl Into<TransactionBody> for GetUserNameList {
-    fn into(self) -> TransactionBody {
+impl From<GetUserNameList> for TransactionBody {
+    fn from(_: GetUserNameList) -> Self {
         Default::default()
     }
 }
 
+#[derive(Debug, Default)]
 pub struct GetUserNameListReply(Vec<UserNameWithInfo>);
 
 impl GetUserNameListReply {
@@ -613,18 +603,18 @@ impl GetUserNameListReply {
     }
 }
 
-impl Into<TransactionFrame> for GetUserNameListReply {
-    fn into(self) -> TransactionFrame {
+impl From<GetUserNameListReply> for TransactionFrame {
+    fn from(val: GetUserNameListReply) -> Self {
         let header = TransactionHeader {
             _type: TransactionType::GetUserNameList.into(),
             is_reply: IsReply::reply(),
             ..Default::default()
         };
-        let Self(users) = self;
+        let GetUserNameListReply(users) = val;
         let body = users.into_iter()
             .map(UserNameWithInfo::into)
             .collect();
-        TransactionFrame { header, body }
+        Self { header, body }
     }
 }
 
@@ -639,12 +629,13 @@ impl TryFrom<TransactionFrame> for GetMessages {
     }
 }
 
-impl Into<TransactionFrame> for GetMessages {
-    fn into(self) -> TransactionFrame {
-        TransactionFrame::empty(TransactionType::GetMessages.into())
+impl From<GetMessages> for TransactionFrame {
+    fn from(_: GetMessages) -> Self {
+        Self::empty(TransactionType::GetMessages)
     }
 }
 
+#[derive(Debug)]
 pub struct GetMessagesReply(Vec<Message>);
 
 impl GetMessagesReply {
@@ -659,18 +650,18 @@ impl GetMessagesReply {
     }
 }
 
-impl Into<TransactionFrame> for GetMessagesReply {
-    fn into(self) -> TransactionFrame {
+impl From<GetMessagesReply> for TransactionFrame {
+    fn from(val: GetMessagesReply) -> Self {
         let header = TransactionHeader {
             _type: TransactionType::GetMessages.into(),
             is_reply: IsReply::reply(),
             ..Default::default()
         };
-        let Self(messages) = self;
+        let GetMessagesReply(messages) = val;
         let body = messages.into_iter()
             .map(Message::into)
             .collect();
-        TransactionFrame { header, body }
+        Self { header, body }
     }
 }
 
@@ -689,12 +680,12 @@ impl TryFrom<TransactionFrame> for PostNews {
     }
 }
 
-impl Into<TransactionFrame> for PostNews {
-    fn into(self) -> TransactionFrame {
+impl From<PostNews> for TransactionFrame {
+    fn from(val: PostNews) -> Self {
         let header = TransactionType::Reply.into();
-        let Self(post) = self;
+        let PostNews(post) = val;
         let body = vec![post.into()].into();
-        TransactionFrame { header, body }
+        Self { header, body }
     }
 }
 
@@ -713,12 +704,12 @@ impl TryFrom<TransactionFrame> for NotifyNewsMessage {
     }
 }
 
-impl Into<TransactionFrame> for NotifyNewsMessage {
-    fn into(self) -> TransactionFrame {
+impl From<NotifyNewsMessage> for TransactionFrame {
+    fn from(val: NotifyNewsMessage) -> Self {
         let header = TransactionType::NewMessage.into();
-        let Self(post) = self;
+        let NotifyNewsMessage(post) = val;
         let body = vec![post.into()].into();
-        TransactionFrame { header, body }
+        Self { header, body }
     }
 }
 
@@ -740,9 +731,9 @@ impl TryFrom<TransactionFrame> for GetFileNameList {
     }
 }
 
-impl Into<TransactionFrame> for GetFileNameList {
-    fn into(self) -> TransactionFrame {
-        TransactionFrame::empty(TransactionType::GetFileNameList.into())
+impl From<GetFileNameList> for TransactionFrame {
+    fn from(_: GetFileNameList) -> Self {
+        Self::empty(TransactionType::GetFileNameList)
     }
 }
 
@@ -761,17 +752,17 @@ impl GetFileNameListReply {
     }
 }
 
-impl Into<TransactionFrame> for GetFileNameListReply {
-    fn into(self) -> TransactionFrame {
+impl From<GetFileNameListReply> for TransactionFrame {
+    fn from(val: GetFileNameListReply) -> Self {
         let header = TransactionHeader {
             _type: TransactionType::GetFileNameList.into(),
             is_reply: IsReply::reply(),
             ..Default::default()
         };
-        let body = self.0.into_iter()
+        let body = val.0.into_iter()
             .map(FileNameWithInfo::into)
             .collect();
-        TransactionFrame { header, body }
+        Self { header, body }
     }
 }
 
@@ -784,20 +775,20 @@ pub struct FileNameWithInfo {
     pub file_name: Vec<u8>,
 }
 
-impl Into<Parameter> for FileNameWithInfo {
-    fn into(self) -> Parameter {
-        let filename_size = self.file_name.len() as i16;
+impl From<FileNameWithInfo> for Parameter {
+    fn from(val: FileNameWithInfo) -> Self {
+        let filename_size = val.file_name.len() as i16;
         let data = [
-            &self.file_type.0[..],
-            &self.creator.0[..],
-            &(i32::from(self.file_size)).to_be_bytes()[..],
+            &val.file_type.0[..],
+            &val.creator.0[..],
+            &(i32::from(val.file_size)).to_be_bytes()[..],
             &[0u8; 4][..],
-            &self.name_script.into_bytes(),
+            &val.name_script.into_bytes(),
             &filename_size.to_be_bytes()[..],
-            &self.file_name[..],
-        ].into_iter()
-            .flat_map(|bytes| bytes.into_iter())
-            .map(|b| *b)
+            &val.file_name[..],
+        ].iter()
+            .flat_map(|bytes| bytes.iter())
+            .copied()
             .collect();
         Parameter::new(
             TransactionField::FileNameWithInfo,
@@ -842,13 +833,9 @@ impl TryFrom<TransactionFrame> for GetFileInfo {
     }
 }
 
-impl Into<TransactionFrame> for GetFileInfo {
-    fn into(self) -> TransactionFrame {
-        let header = TransactionHeader {
-            _type: TransactionType::GetFileNameList.into(),
-            ..Default::default()
-        };
-        TransactionFrame::empty(header)
+impl From<GetFileInfo> for TransactionFrame {
+    fn from(_: GetFileInfo) -> Self {
+        Self::empty(TransactionType::GetFileNameList)
     }
 }
 
@@ -863,25 +850,25 @@ pub struct GetFileInfoReply {
     pub modified_at: FileModifiedAt,
 }
 
-impl Into<TransactionFrame> for GetFileInfoReply {
-    fn into(self) -> TransactionFrame {
+impl From<GetFileInfoReply> for TransactionFrame {
+    fn from(val: GetFileInfoReply) -> Self {
         let header = TransactionType::GetFileInfo.into();
-        let type_string = FileTypeString::from(&self.type_code);
+        let type_string = FileTypeString::from(&val.type_code);
         let body = vec![
-            self.filename.into(),
-            self.type_code.into(),
-            self.creator.into(),
-            self.created_at.into(),
-            self.modified_at.into(),
-            self.comment.into(),
-            self.size.into(),
+            val.filename.into(),
+            val.type_code.into(),
+            val.creator.into(),
+            val.created_at.into(),
+            val.modified_at.into(),
+            val.comment.into(),
+            val.size.into(),
             type_string.into(),
         ].into();
-        TransactionFrame { header, body }
+        Self { header, body }
     }
 }
 
-#[derive(Debug)]
+#[derive(Debug, Clone)]
 pub struct SendChat {
     pub options: ChatOptions,
     pub chat_id: Option<ChatId>,
@@ -918,10 +905,10 @@ impl TryFrom<TransactionFrame> for SendChat {
     }
 }
 
-impl Into<TransactionFrame> for SendChat {
-    fn into(self) -> TransactionFrame {
+impl From<SendChat> for TransactionFrame {
+    fn from(val: SendChat) -> Self {
         let header = TransactionType::SendChat.into();
-        let Self { message, chat_id, options } = self;
+        let SendChat { message, chat_id, options } = val;
         let body = vec![
             Some(Parameter::new(TransactionField::Data, message)),
             chat_id.map(ChatId::into),
@@ -929,7 +916,7 @@ impl Into<TransactionFrame> for SendChat {
         ].into_iter()
             .flat_map(Option::into_iter)
             .collect();
-        TransactionFrame { header, body }
+        Self { header, body }
     }
 }
 
@@ -958,22 +945,22 @@ impl TryFrom<TransactionFrame> for ChatMessage {
     }
 }
 
-impl Into<TransactionFrame> for ChatMessage {
-    fn into(self) -> TransactionFrame {
+impl From<ChatMessage> for TransactionFrame {
+    fn from(val: ChatMessage) -> Self {
         let header = TransactionType::ChatMessage.into();
-        let Self { message, chat_id } = self;
+        let ChatMessage { message, chat_id } = val;
         let message = Parameter::new(
             TransactionField::Data,
             message,
         );
         let chat_id = chat_id.map(ChatId::into);
-        let body = vec![
+        let body = [
             Some(message),
             chat_id,
         ].into_iter()
             .flat_map(Option::into_iter)
             .collect();
-        TransactionFrame { header, body }
+        Self { header, body }
     }
 }
 
@@ -984,10 +971,10 @@ pub struct ServerMessage {
     pub message: Vec<u8>,
 }
 
-impl Into<TransactionFrame> for ServerMessage {
-    fn into(self) -> TransactionFrame {
+impl From<ServerMessage> for TransactionFrame {
+    fn from(val: ServerMessage) -> Self {
         let header = TransactionType::ServerMessage.into();
-        let Self { message, user_id, user_name } = self;
+        let ServerMessage { message, user_id, user_name } = val;
         let message = Parameter::new(
             TransactionField::Data,
             message,
@@ -1001,7 +988,7 @@ impl Into<TransactionFrame> for ServerMessage {
         ].into_iter()
             .flat_map(Option::into_iter)
             .collect();
-        TransactionFrame { header, body }
+        Self { header, body }
     }
 }
 
@@ -1022,16 +1009,16 @@ impl TryFrom<TransactionFrame> for DisconnectMessage {
     }
 }
 
-impl Into<TransactionFrame> for DisconnectMessage {
-    fn into(self) -> TransactionFrame {
+impl From<DisconnectMessage> for TransactionFrame {
+    fn from(val: DisconnectMessage) -> Self {
         let header = TransactionType::DisconnectMessage.into();
-        let Self { message } = self;
+        let DisconnectMessage { message } = val;
         let message = Parameter::new(
             TransactionField::Data,
             message,
         );
         let body = vec![message].into();
-        TransactionFrame { header, body }
+        Self { header, body }
     }
 }
 
@@ -1059,15 +1046,15 @@ impl TryFrom<TransactionFrame> for SendInstantMessage {
     }
 }
 
-impl Into<TransactionFrame> for SendInstantMessage {
-    fn into(self) -> TransactionFrame {
+impl From<SendInstantMessage> for TransactionFrame {
+    fn from(val: SendInstantMessage) -> Self {
         let header = TransactionType::SendChat.into();
-        let Self { user_id, message } = self;
+        let SendInstantMessage { user_id, message } = val;
         let body = vec![
             user_id.into(),
             Parameter::new(TransactionField::Data, message),
         ].into();
-        TransactionFrame { header, body }
+        Self { header, body }
     }
 }
 
@@ -1081,9 +1068,9 @@ impl TryFrom<TransactionFrame> for SendInstantMessageReply {
     }
 }
 
-impl Into<TransactionFrame> for SendInstantMessageReply {
-    fn into(self) -> TransactionFrame {
-        TransactionFrame::empty(Default::default())
+impl From<SendInstantMessageReply> for TransactionFrame {
+    fn from(_: SendInstantMessageReply) -> Self {
+        Self::empty(TransactionHeader::default())
     }
 }
 
@@ -1105,14 +1092,14 @@ impl TryFrom<TransactionFrame> for InviteToNewChat {
     }
 }
 
-impl Into<TransactionFrame> for InviteToNewChat {
-    fn into(self) -> TransactionFrame {
+impl From<InviteToNewChat> for TransactionFrame {
+    fn from(val: InviteToNewChat) -> Self {
         let header = TransactionType::InviteToNewChat.into();
-        let Self(user_ids) = self;
+        let InviteToNewChat(user_ids) = val;
         let body = user_ids.into_iter()
             .map(UserId::into)
             .collect();
-        TransactionFrame { header, body }
+        Self { header, body }
     }
 }
 
@@ -1158,16 +1145,16 @@ impl TryFrom<TransactionFrame> for InviteToNewChatReply {
     }
 }
 
-impl Into<TransactionFrame> for InviteToNewChatReply {
-    fn into(self) -> TransactionFrame {
+impl From<InviteToNewChatReply> for TransactionFrame {
+    fn from(val: InviteToNewChatReply) -> Self {
         let header = TransactionType::InviteToNewChat.into();
-        let Self {
+        let InviteToNewChatReply {
             chat_id,
             user_id,
             user_name,
             icon_id,
             flags,
-        } = self;
+        } = val;
         let body = vec![
             chat_id.into(),
             user_id.into(),
@@ -1175,7 +1162,7 @@ impl Into<TransactionFrame> for InviteToNewChatReply {
             user_name.into(),
             flags.into(),
         ].into();
-        TransactionFrame { header, body }
+        Self { header, body }
     }
 }
 
@@ -1201,15 +1188,15 @@ impl TryFrom<TransactionFrame> for InviteToChat {
     }
 }
 
-impl Into<TransactionFrame> for InviteToChat {
-    fn into(self) -> TransactionFrame {
+impl From<InviteToChat> for TransactionFrame {
+    fn from(val: InviteToChat) -> Self {
         let header = TransactionType::InviteToChat.into();
-        let Self { user_id, chat_id } = self;
+        let InviteToChat { user_id, chat_id } = val;
         let body = vec![
             user_id.into(),
             chat_id.into(),
         ].into();
-        TransactionFrame { header, body }
+        Self { header, body }
     }
 }
 
@@ -1229,12 +1216,12 @@ impl TryFrom<TransactionFrame> for JoinChat {
     }
 }
 
-impl Into<TransactionFrame> for JoinChat {
-    fn into(self) -> TransactionFrame {
+impl From<JoinChat> for TransactionFrame {
+    fn from(val: JoinChat) -> Self {
         let header = TransactionType::JoinChat.into();
-        let Self(chat_id) = self;
+        let JoinChat(chat_id) = val;
         let body = vec![chat_id.into()].into();
-        TransactionFrame { header, body }
+        Self { header, body }
     }
 }
 
@@ -1263,18 +1250,18 @@ impl TryFrom<TransactionFrame> for JoinChatReply {
     }
 }
 
-impl Into<TransactionFrame> for JoinChatReply {
-    fn into(self) -> TransactionFrame {
+impl From<JoinChatReply> for TransactionFrame {
+    fn from(val: JoinChatReply) -> Self {
         let header = TransactionType::Reply.into();
-        let Self { subject, users } = self;
+        let JoinChatReply { subject, users } = val;
         let subject = subject.map(ChatSubject::into);
         let users: Vec<Parameter> = users.into_iter()
             .map(UserNameWithInfo::into)
             .collect();
         let body = subject.into_iter()
-            .chain(users.into_iter())
+            .chain(users)
             .collect();
-        TransactionFrame { header, body }
+        Self { header, body }
     }
 }
 
@@ -1294,12 +1281,12 @@ impl TryFrom<TransactionFrame> for LeaveChat {
     }
 }
 
-impl Into<TransactionFrame> for LeaveChat {
-    fn into(self) -> TransactionFrame {
+impl From<LeaveChat> for TransactionFrame {
+    fn from(val: LeaveChat) -> Self {
         let header = TransactionType::LeaveChat.into();
-        let Self(chat_id) = self;
+        let LeaveChat(chat_id) = val;
         let body = vec![chat_id.into()].into();
-        TransactionFrame { header, body }
+        Self { header, body }
     }
 }
 
@@ -1322,19 +1309,19 @@ impl TryFrom<TransactionFrame> for SetChatSubject {
     }
 }
 
-impl Into<TransactionFrame> for SetChatSubject {
-    fn into(self) -> TransactionFrame {
+impl From<SetChatSubject> for TransactionFrame {
+    fn from(val: SetChatSubject) -> Self {
         let header = TransactionType::SetChatSubject.into();
-        let Self(chat_id, subject) = self;
+        let SetChatSubject(chat_id, subject) = val;
         let body = vec![
             chat_id.into(),
             subject.into(),
         ].into();
-        TransactionFrame { header, body }
+        Self { header, body }
     }
 }
 
-#[derive(Debug)]
+#[derive(Debug, Clone)]
 pub struct GetClientInfoTextRequest {
     pub user_id: UserId,
 }
@@ -1354,12 +1341,12 @@ impl TryFrom<TransactionFrame> for GetClientInfoTextRequest {
     }
 }
 
-impl Into<TransactionFrame> for GetClientInfoTextRequest {
-    fn into(self) -> TransactionFrame {
+impl From<GetClientInfoTextRequest> for TransactionFrame {
+    fn from(val: GetClientInfoTextRequest) -> Self {
         let header = TransactionType::GetClientInfoText.into();
-        let Self { user_id, .. } = self;
+        let GetClientInfoTextRequest { user_id, .. } = val;
         let body = vec![user_id.into()].into();
-        TransactionFrame { header, body }
+        Self { header, body }
     }
 }
 
@@ -1387,15 +1374,15 @@ impl TryFrom<TransactionFrame> for GetClientInfoTextReply {
     }
 }
 
-impl Into<TransactionFrame> for GetClientInfoTextReply {
-    fn into(self) -> TransactionFrame {
+impl From<GetClientInfoTextReply> for TransactionFrame {
+    fn from(val: GetClientInfoTextReply) -> Self {
         let header = TransactionType::GetClientInfoText.into();
-        let Self { user_name, text } = self;
+        let GetClientInfoTextReply { user_name, text } = val;
         let body = vec![
             user_name.into(),
             Parameter::new(TransactionField::Data, text),
         ].into();
-        TransactionFrame { header, body }
+        Self { header, body }
     }
 }
 
@@ -1418,14 +1405,14 @@ impl TryFrom<TransactionFrame> for SendBroadcast {
     }
 }
 
-impl Into<TransactionFrame> for SendBroadcast {
-    fn into(self) -> TransactionFrame {
+impl From<SendBroadcast> for TransactionFrame {
+    fn from(val: SendBroadcast) -> Self {
         let header = TransactionType::GetClientInfoText.into();
-        let Self { message } = self;
+        let SendBroadcast { message } = val;
         let body = vec![
             Parameter::new(TransactionField::Data, message),
         ].into();
-        TransactionFrame { header, body }
+        Self { header, body }
     }
 }
 
@@ -1439,9 +1426,81 @@ impl TryFrom<TransactionFrame> for GenericReply {
     }
 }
 
-impl Into<TransactionFrame> for GenericReply {
-    fn into(self) -> TransactionFrame {
-        TransactionFrame::empty(Default::default())
+impl From<GenericReply> for TransactionFrame {
+    fn from(_: GenericReply) -> Self {
+        Self::empty(TransactionHeader::default())
+    }
+}
+
+#[derive(Debug)]
+pub struct GetUserRequest(pub UserLogin);
+
+impl TryFrom<TransactionFrame> for GetUserRequest {
+    type Error = ProtocolError;
+    fn try_from(frame: TransactionFrame) -> Result<Self, Self::Error> {
+        let TransactionFrame {
+            body, ..
+        } = frame.require_transaction_type(TransactionType::GetUser)?;
+
+        let user = body.require_field(TransactionField::UserLogin)
+            .map(|p| p.clone().take())
+            .map(UserLogin::new)?;
+
+        Ok(Self(user))
+    }
+}
+
+impl From<GetUserRequest> for TransactionFrame {
+    fn from(val: GetUserRequest) -> Self {
+        let header = TransactionType::GetUser.into();
+        let GetUserRequest(user) = val;
+        let body = vec![
+            user.into(),
+        ].into();
+        Self { header, body }
+    }
+}
+
+#[derive(Debug)]
+pub struct GetUserReply {
+    pub username: Nickname,
+    pub user_login: UserLogin,
+    pub user_password: Password,
+    pub user_access: UserAccess,
+}
+
+impl TryFrom<TransactionFrame> for GetUserReply {
+    type Error = ProtocolError;
+    fn try_from(frame: TransactionFrame) -> Result<Self, Self::Error> {
+        let TransactionFrame {
+            body, ..
+        } = frame.require_transaction_type(TransactionType::GetUser)?;
+
+        let user = body.require_field(TransactionField::UserLogin)
+            .map(|p| p.clone().take())
+            .map(UserLogin::new)?;
+
+        panic!();
+
+        // Ok(Self(user))
+    }
+}
+
+impl From<GetUserReply> for TransactionFrame {
+    fn from(val: GetUserReply) -> Self {
+        let GetUserReply {
+            username,
+            user_login,
+            user_password,
+            user_access,
+        } = val;
+        let body: TransactionBody = vec![
+            username.into(),
+            user_login.into(),
+            user_password.into(),
+            user_access.into(),
+        ].into();
+        Self::new(TransactionType::GetUser, body)
     }
 }
 
@@ -1469,22 +1528,21 @@ impl TryFrom<TransactionFrame> for DownloadFile {
     }
 }
 
-impl Into<TransactionFrame> for DownloadFile {
-    fn into(self) -> TransactionFrame {
-        let Self { filename, file_path } = self;
-        let header = TransactionType::DownloadFile.into();
+impl From<DownloadFile> for TransactionFrame {
+    fn from(val: DownloadFile) -> Self {
+        let DownloadFile { filename, file_path } = val;
         let body = [
             Some(filename.into()),
             file_path.into(),
         ]
             .into_iter()
             .flat_map(Option::into_iter)
-            .collect();
-        TransactionFrame { header, body }
+            .collect::<TransactionBody>();
+        Self::new(TransactionType::DownloadFile, body)
     }
 }
 
-#[derive(Debug)]
+#[derive(Debug, PartialEq, Eq, PartialOrd, Ord, Clone)]
 pub struct DownloadFileReply {
     pub transfer_size: TransferSize,
     pub file_size: FileSize,
@@ -1500,7 +1558,8 @@ impl TryFrom<TransactionFrame> for DownloadFileReply {
         let transfer_size = body.require_field(TransactionField::TransferSize)
             .and_then(TransferSize::try_from)?;
         let file_size = body.require_field(TransactionField::FileSize)
-            .and_then(FileSize::try_from)?;
+            .and_then(FileSize::try_from)
+            .unwrap_or_else(|_| FileSize::default());
         let reference = body.require_field(TransactionField::ReferenceNumber)
             .and_then(ReferenceNumber::try_from)?;
         let waiting_count = body.borrow_field(TransactionField::WaitingCount)
@@ -1511,20 +1570,19 @@ impl TryFrom<TransactionFrame> for DownloadFileReply {
     }
 }
 
-impl Into<TransactionFrame> for DownloadFileReply {
-    fn into(self) -> TransactionFrame {
-        let Self { transfer_size, file_size, reference, waiting_count } = self;
-        let header = TransactionType::DownloadFile.into();
+impl From<DownloadFileReply> for TransactionFrame {
+    fn from(val: DownloadFileReply) -> Self {
+        let DownloadFileReply { transfer_size, file_size, reference, waiting_count } = val;
         let body = [
             Some(transfer_size.into()),
             Some(file_size.into()),
             Some(reference.into()),
-            waiting_count.map(WaitingCount::into),
+            Some(waiting_count.unwrap_or_default().into()),
         ]
             .into_iter()
             .flat_map(Option::into_iter)
-            .collect();
-        TransactionFrame { header, body }
+            .collect::<TransactionBody>();
+        Self::new(TransactionType::DownloadFile, body)
     }
 }
 
@@ -1547,7 +1605,7 @@ impl HotlineProtocol for FlattenedFileHeader {
     }
     fn into_bytes(self) -> Vec<u8> {
         let Self(fork_count) = self;
-        vec![
+        [
             FILP.to_vec(),
             1i16.to_be_bytes().to_vec(),
             vec![0u8; 16],
@@ -1640,11 +1698,11 @@ impl From<[u8; 4]> for CompressionType {
     }
 }
 
-impl Into<[u8; 4]> for CompressionType {
-    fn into(self) -> [u8; 4] {
-        match self {
-            Self::None => [0u8; 4],
-            Self::Other(code) => code.get().to_be_bytes(),
+impl From<CompressionType> for [u8; 4] {
+    fn from(val: CompressionType) -> Self {
+        match val {
+            CompressionType::None => [0u8; 4],
+            CompressionType::Other(code) => code.get().to_be_bytes(),
         }
     }
 }
@@ -1669,12 +1727,12 @@ impl From<[u8; 4]> for PlatformType {
     }
 }
 
-impl Into<[u8; 4]> for PlatformType {
-    fn into(self) -> [u8; 4] {
-        match self {
-            Self::AppleMac => *AMAC,
-            Self::MicrosoftWin => *MWIN,
-            Self::Other(code) => code,
+impl From<PlatformType> for [u8; 4] {
+    fn from(val: PlatformType) -> Self {
+        match val {
+            PlatformType::AppleMac => *AMAC,
+            PlatformType::MicrosoftWin => *MWIN,
+            PlatformType::Other(code) => code,
         }
     }
 }
@@ -1702,13 +1760,13 @@ impl From<[u8; 4]> for ForkType {
     }
 }
 
-impl Into<[u8; 4]> for ForkType {
-    fn into(self) -> [u8; 4] {
-        match self {
-            Self::Info => *INFO,
-            Self::Data => *DATA,
-            Self::Resource => *MACR,
-            Self::Other(code) => code,
+impl From<ForkType> for [u8; 4] {
+    fn from(val: ForkType) -> Self {
+        match val {
+            ForkType::Info => *INFO,
+            ForkType::Data => *DATA,
+            ForkType::Resource => *MACR,
+            ForkType::Other(code) => code,
         }
     }
 }
@@ -1760,7 +1818,7 @@ impl HotlineProtocol for ForkHeader {
         Ok((bytes, body))
     }
     fn into_bytes(self) -> Vec<u8> {
-        vec![
+        [
             self.fork_type.into_bytes(),
             self.compression_type.into_bytes(),
             vec![0u8; 4],
@@ -1850,6 +1908,161 @@ impl HotlineProtocol for InfoFork {
     }
 }
 
+#[derive(Debug)]
+pub struct UploadFile {
+    pub filename: FileName,
+    pub file_path: FilePath,
+}
+
+impl TryFrom<TransactionFrame> for UploadFile {
+    type Error = ProtocolError;
+    fn try_from(frame: TransactionFrame) -> Result<Self, Self::Error> {
+        let TransactionFrame {
+            body, ..
+        } = frame.require_transaction_type(TransactionType::UploadFile)?;
+
+        let filename = body.require_field(TransactionField::FileName)
+            .map(FileName::from)?;
+        let file_path = body.borrow_field(TransactionField::FilePath)
+            .try_into()?;
+
+        Ok(Self { filename, file_path })
+    }
+}
+
+impl From<UploadFile> for TransactionFrame {
+    fn from(val: UploadFile) -> Self {
+        let UploadFile { filename, file_path } = val;
+        let body = [
+            Some(filename.into()),
+            file_path.into(),
+        ]
+            .into_iter()
+            .flat_map(Option::into_iter)
+            .collect::<TransactionBody>();
+        Self::new(TransactionType::UploadFile, body)
+    }
+}
+
+#[derive(Debug, Clone, PartialEq, Eq, PartialOrd, Ord)]
+pub struct UploadFileReply {
+    pub reference: ReferenceNumber,
+    // TODO: resume
+}
+
+impl TryFrom<TransactionFrame> for UploadFileReply {
+    type Error = ProtocolError;
+    fn try_from(frame: TransactionFrame) -> Result<Self, Self::Error> {
+        let TransactionFrame { body, ..  } = frame;
+        let reference = body.require_field(TransactionField::ReferenceNumber)
+            .and_then(ReferenceNumber::try_from)?;
+        Ok(Self { reference })
+    }
+}
+
+impl From<UploadFileReply> for TransactionFrame {
+    fn from(val: UploadFileReply) -> Self {
+        let UploadFileReply { reference } = val;
+        let body = [reference.into()].into_iter()
+            .collect::<TransactionBody>();
+        Self::new(TransactionType::UploadFile, body)
+    }
+}
+
+#[derive(Debug, PartialEq, Eq)]
+pub struct ConnectionKeepAlive;
+
+impl TryFrom<TransactionFrame> for ConnectionKeepAlive {
+    type Error = ProtocolError;
+    fn try_from(frame: TransactionFrame) -> Result<Self, Self::Error> {
+        frame.require_transaction_type(TransactionType::ConnectionKeepAlive)?;
+        Ok(Self)
+    }
+}
+
+impl From<ConnectionKeepAlive> for TransactionBody {
+    fn from(_: ConnectionKeepAlive) -> Self {
+        Default::default()
+    }
+}
+
+#[derive(Debug, Clone)]
+pub struct MoveFile {
+    pub filename: FileName,
+    pub path: FilePath,
+    pub new_path: FilePath,
+}
+
+impl TryFrom<TransactionFrame> for MoveFile {
+    type Error = ProtocolError;
+    fn try_from(frame: TransactionFrame) -> Result<Self, Self::Error> {
+        let TransactionFrame {
+            body, ..
+        } = frame.require_transaction_type(TransactionType::MoveFile)?;
+        let filename = body.require_field(TransactionField::FileName)
+            .map(FileName::from)?;
+        let path = body.borrow_field(TransactionField::FilePath)
+            .try_into()
+            .unwrap_or(FilePath::Root);
+        let new_path = body.borrow_field(TransactionField::FileNewPath)
+            .cloned()
+            .map(Parameter::take)
+            .and_then(|path| FilePath::try_from(path.as_slice()).ok())
+            .unwrap_or(FilePath::Root);
+        Ok(Self { filename, path, new_path })
+    }
+}
+
+impl From<MoveFile> for TransactionFrame {
+    fn from(val: MoveFile) -> Self {
+        let MoveFile { filename, path, new_path } = val;
+        let body = [
+            Some(filename.into()),
+            path.into(),
+            new_path.into(),
+        ]
+            .into_iter()
+            .flat_map(Option::into_iter)
+            .collect::<TransactionBody>();
+        Self::new(TransactionType::UploadFile, body)
+    }
+}
+
+#[derive(Debug, Clone)]
+pub struct DeleteFile {
+    pub filename: FileName,
+    pub path: FilePath,
+}
+
+impl TryFrom<TransactionFrame> for DeleteFile {
+    type Error = ProtocolError;
+    fn try_from(frame: TransactionFrame) -> Result<Self, Self::Error> {
+        let TransactionFrame {
+            body, ..
+        } = frame.require_transaction_type(TransactionType::DeleteFile)?;
+        let filename = body.require_field(TransactionField::FileName)
+            .map(FileName::from)?;
+        let path = body.borrow_field(TransactionField::FilePath)
+            .try_into()
+            .unwrap_or(FilePath::Root);
+        Ok(Self { filename, path })
+    }
+}
+
+impl From<DeleteFile> for TransactionFrame {
+    fn from(val: DeleteFile) -> Self {
+        let DeleteFile { filename, path } = val;
+        let body = [
+            Some(filename.into()),
+            path.into(),
+        ]
+            .into_iter()
+            .flat_map(Option::into_iter)
+            .collect::<TransactionBody>();
+        Self::new(TransactionType::UploadFile, body)
+    }
+}
+
 fn take_if_matches(
     parameter: Parameter,
     field: TransactionField,
@@ -1869,7 +2082,7 @@ mod tests {
 
     use super::*;
 
-    static AUTHENTICATED_LOGIN: &'static [u8] = &[
+    static AUTHENTICATED_LOGIN: &[u8] = &[
         0x00, 0x00, 0x00, 0x6b, 0x00, 0x00, 0x00, 0x01,
         0x00, 0x00, 0x00, 0x00, 0x00, 0x00, 0x00, 0x28,
         0x00, 0x00, 0x00, 0x28, 0x00, 0x04, 0x00, 0x69,
@@ -1895,7 +2108,7 @@ mod tests {
             login,
             LoginRequest {
                 login: Some(UserLogin::from_cleartext(b"jyelloz")),
-                nickname: Some(Nickname::new(b"jyelloz".clone().into())),
+                nickname: Some(Nickname::new((*b"jyelloz").into())),
                 password: Some(Password::from_cleartext(b"123456")),
                 icon_id: Some(145.into()),
             },

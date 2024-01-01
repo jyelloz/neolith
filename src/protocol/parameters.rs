@@ -11,10 +11,14 @@ use super::{
     BIResult,
     date::DateParameter,
 };
-
-use std::time::SystemTime;
-
 use derive_more::{From, Into};
+use encoding_rs::MACINTOSH;
+use std::{
+    borrow::Borrow,
+    time::SystemTime,
+    fmt::{Debug, Formatter, self},
+    path::PathBuf,
+};
 
 pub trait Credential {
     fn deobfuscate(&self) -> Vec<u8>;
@@ -38,9 +42,16 @@ impl Nickname {
     }
 }
 
-impl std::fmt::Debug for Nickname {
+impl std::fmt::Display for Nickname {
+    fn fmt(&self, f: &mut Formatter<'_>) -> fmt::Result {
+        let (text, _, _) = MACINTOSH.decode(&self.0);
+        f.write_str(&text)
+    }
+}
+
+impl Debug for Nickname {
     fn fmt(&self, f: &mut std::fmt::Formatter<'_>) -> std::fmt::Result {
-        let text = String::from_utf8_lossy(self.0.as_slice());
+        let (text, _, _) = MACINTOSH.decode(&self.0);
         f.debug_tuple("Nickname")
             .field(&text)
             .finish()
@@ -50,6 +61,12 @@ impl std::fmt::Debug for Nickname {
 impl Default for Nickname {
     fn default() -> Self {
         Self(b"unnamed".to_vec())
+    }
+}
+
+impl From<String> for Nickname {
+    fn from(s: String) -> Self {
+        s.into_bytes().into()
     }
 }
 
@@ -64,10 +81,9 @@ impl TryFrom<&Parameter> for Nickname {
     }
 }
 
-impl Into<Parameter> for Nickname {
-    fn into(self) -> Parameter {
-        let Self(field_data) = self;
-        Parameter::new(TransactionField::UserName, field_data)
+impl From<Nickname> for Parameter {
+    fn from(val: Nickname) -> Self {
+        Parameter::new(TransactionField::UserName, val.0)
     }
 }
 
@@ -81,11 +97,20 @@ impl UserLogin {
     pub fn from_cleartext(clear: &[u8]) -> Self {
         Self(invert_credential(clear))
     }
+    pub fn invert(mut self) -> Self {
+        self.0 = invert_credential(&self.0);
+        self
+    }
     pub fn raw_data(&self) -> &[u8] {
         &self.0
     }
     pub fn take(self) -> Vec<u8> {
         self.0
+    }
+    pub fn text(&self) -> String {
+        String::from_utf8(self.0.clone())
+            .ok()
+            .unwrap_or_else(|| "bad utf8".into())
     }
 }
 
@@ -100,10 +125,9 @@ impl TryFrom<&Parameter> for UserLogin {
     }
 }
 
-impl Into<Parameter> for UserLogin {
-    fn into(self) -> Parameter {
-        let Self(field_data) = self;
-        Parameter::new(TransactionField::UserLogin, field_data)
+impl From<UserLogin> for Parameter {
+    fn from(val: UserLogin) -> Self {
+        Parameter::new(TransactionField::UserLogin, val.0)
     }
 }
 
@@ -136,19 +160,35 @@ impl TryFrom<&Parameter> for Password {
     }
 }
 
-impl Into<Parameter> for Password {
-    fn into(self) -> Parameter {
-        let Self(password) = self;
-        Parameter::new(
-            TransactionField::UserPassword,
-            password,
-        )
+impl From<Password> for Parameter {
+    fn from(val: Password) -> Self {
+        Parameter::new(TransactionField::UserPassword, val.0)
     }
 }
 
 impl Credential for Password {
     fn deobfuscate(&self) -> Vec<u8> {
         invert_credential(&self.0)
+    }
+}
+
+#[derive(Debug, From, Into, PartialEq, Eq, PartialOrd, Ord)]
+pub struct UserAccess(i64);
+
+impl TryFrom<&Parameter> for UserAccess {
+    type Error = ProtocolError;
+    fn try_from(parameter: &Parameter) -> Result<Self, Self::Error> {
+        let value = parameter.clone()
+            .int()
+            .ok_or(ProtocolError::MalformedData(TransactionField::UserAccess))?
+            .into();
+        Ok(Self(value))
+    }
+}
+
+impl From<UserAccess> for Parameter {
+    fn from(val: UserAccess) -> Self {
+        Parameter::new(TransactionField::UserAccess, val.0.to_be_bytes().to_vec())
     }
 }
 
@@ -172,18 +212,15 @@ impl TryFrom<&Parameter> for ChatOptions {
     fn try_from(parameter: &Parameter) -> Result<Self, Self::Error> {
         parameter.clone()
          .int()
-         .map(|i| Self(i.into()))
+         .and_then(|i| i.i32())
+         .map(Self)
          .ok_or(ProtocolError::MalformedData(TransactionField::ChatOptions))
     }
 }
 
-impl Into<Parameter> for ChatOptions {
-    fn into(self) -> Parameter {
-        let Self(int) = self;
-        Parameter::new_int(
-            TransactionField::ChatOptions,
-            int,
-        )
+impl From<ChatOptions> for Parameter {
+    fn from(val: ChatOptions) -> Self {
+        Parameter::new_i32(TransactionField::ChatOptions, val.0)
     }
 }
 
@@ -201,18 +238,15 @@ impl TryFrom<&Parameter> for ChatId {
     fn try_from(parameter: &Parameter) -> Result<Self, Self::Error> {
         parameter.clone()
          .int()
-         .map(|i| Self(i.into()))
+         .and_then(|i| i.i32())
+         .map(Self)
          .ok_or(ProtocolError::MalformedData(TransactionField::ChatId))
     }
 }
 
-impl Into<Parameter> for ChatId {
-    fn into(self) -> Parameter {
-        let Self(int) = self;
-        Parameter::new_int(
-            TransactionField::ChatId,
-            int,
-        )
+impl From<ChatId> for Parameter {
+    fn from(val: ChatId) -> Self {
+        Parameter::new_i32(TransactionField::ChatId, val.0)
     }
 }
 
@@ -230,26 +264,18 @@ impl TryFrom<&Parameter> for ChatSubject {
     }
 }
 
-impl Into<Parameter> for ChatSubject {
-    fn into(self) -> Parameter {
-        let Self(subject) = self;
-        Parameter::new(
-            TransactionField::ChatSubject,
-            subject,
-        )
+impl From<ChatSubject> for Parameter {
+    fn from(val: ChatSubject) -> Self {
+        Parameter::new(TransactionField::ChatSubject, val.0)
     }
 }
 
 #[derive(Debug, Clone, Copy, From, Into, PartialEq, Eq, PartialOrd, Ord)]
 pub struct IconId(i16);
 
-impl Into<Parameter> for IconId {
-    fn into(self) -> Parameter {
-        let Self(int) = self;
-        Parameter::new_int(
-            TransactionField::UserIconId,
-            int,
-        )
+impl From<IconId> for Parameter {
+    fn from(val: IconId) -> Self {
+        Parameter::new_i16(TransactionField::UserIconId, val.0)
     }
 }
 
@@ -269,6 +295,7 @@ impl TryFrom<&Parameter> for IconId {
     PartialEq, Eq,
     PartialOrd, Ord,
     Hash,
+    Default,
 )]
 pub struct UserId(i16);
 
@@ -282,26 +309,18 @@ impl TryFrom<&Parameter> for UserId {
     }
 }
 
-impl Into<Parameter> for UserId {
-    fn into(self) -> Parameter {
-        let Self(int) = self;
-        Parameter::new_int(
-            TransactionField::UserId,
-            int,
-        )
+impl From<UserId> for Parameter {
+    fn from(val: UserId) -> Self {
+        Parameter::new_i16(TransactionField::UserId, val.0)
     }
 }
 
-#[derive(Debug, Clone, Copy, From, Into, PartialEq, Eq, PartialOrd, Ord)]
+#[derive(Debug, Default, Clone, Copy, From, Into, PartialEq, Eq, PartialOrd, Ord)]
 pub struct UserFlags(i16);
 
-impl Into<Parameter> for UserFlags {
-    fn into(self) -> Parameter {
-        let Self(int) = self;
-        Parameter::new_int(
-            TransactionField::UserFlags,
-            int,
-        )
+impl From<UserFlags> for Parameter {
+    fn from(val: UserFlags) -> Self {
+        Parameter::new_i16(TransactionField::UserFlags, val.0)
     }
 }
 
@@ -324,6 +343,14 @@ pub struct UserNameWithInfo {
 }
 
 impl UserNameWithInfo {
+    pub fn anonymous(username: Nickname, icon_id: IconId) -> Self {
+        Self {
+            username,
+            icon_id,
+            user_flags: Default::default(),
+            user_id: Default::default(),
+        }
+    }
     fn user_id(bytes: &[u8]) -> BIResult<UserId> {
         let (bytes, id) = be_i16(bytes)?;
         Ok((bytes, id.into()))
@@ -368,19 +395,19 @@ impl TryFrom<&Parameter> for UserNameWithInfo {
     }
 }
 
-impl Into<Parameter> for UserNameWithInfo {
-    fn into(self) -> Parameter {
-        let username = self.username.take();
+impl From<UserNameWithInfo> for Parameter {
+    fn from(val: UserNameWithInfo) -> Self {
+        let username = val.username.take();
         let username_len = username.len() as i16;
         let data = [
-            &self.user_id.0.to_be_bytes()[..],
-            &self.icon_id.0.to_be_bytes()[..],
-            &self.user_flags.0.to_be_bytes()[..],
+            &val.user_id.0.to_be_bytes()[..],
+            &val.icon_id.0.to_be_bytes()[..],
+            &val.user_flags.0.to_be_bytes()[..],
             &username_len.to_be_bytes()[..],
             &username[..],
         ].into_iter()
-            .flat_map(|bytes| bytes.into_iter())
-            .map(|b| *b)
+            .flat_map(|bytes| bytes.iter())
+            .copied()
             .collect();
         Parameter::new(
             TransactionField::UserNameWithInfo,
@@ -404,12 +431,9 @@ impl From<&Parameter> for Message {
     }
 }
 
-impl Into<Parameter> for Message {
-    fn into(self) -> Parameter {
-        Parameter::new(
-            TransactionField::Data,
-            self.0,
-        )
+impl From<Message> for Parameter {
+    fn from(val: Message) -> Self {
+        Parameter::new(TransactionField::Data, val.0)
     }
 }
 
@@ -422,46 +446,48 @@ impl From<&Parameter> for FileName {
     }
 }
 
-impl Into<Parameter> for FileName {
-    fn into(self) -> Parameter {
-        Parameter::new(
-            TransactionField::FileName,
-            self.0,
-        )
+impl From<FileName> for Parameter {
+    fn from(val: FileName) -> Self {
+        Parameter::new(TransactionField::FileName, val.0)
     }
 }
 
-impl std::fmt::Debug for FileName {
+impl Debug for FileName {
     fn fmt(&self, f: &mut std::fmt::Formatter<'_>) -> std::fmt::Result {
-        let text = String::from_utf8_lossy(self.0.as_slice());
+        let text = MACINTOSH.decode(&self.0);
         f.debug_tuple("FileName")
             .field(&text)
             .finish()
     }
 }
 
-#[derive(Debug, Default, Clone, Copy, From, Into)]
+impl From<&FileName> for PathBuf {
+    fn from(value: &FileName) -> Self {
+        let (s, _, _) = MACINTOSH.decode(&value.0);
+        s.to_string().into()
+    }
+}
+
+#[derive(Debug, Default, Clone, Copy, From, Into, PartialEq, Eq, PartialOrd, Ord)]
 pub struct FileSize(i32);
 
 impl TryFrom<&Parameter> for FileSize {
     type Error = ProtocolError;
     fn try_from(parameter: &Parameter) -> Result<Self, Self::Error> {
         parameter.int()
+            .and_then(|i| i.i32())
             .ok_or(ProtocolError::MalformedData(TransactionField::FileSize))
-            .map(|p| Self(p.into()))
+            .map(Self)
     }
 }
 
-impl Into<Parameter> for FileSize {
-    fn into(self) -> Parameter {
-        Parameter::new_int(
-            TransactionField::FileSize,
-            self.0,
-        )
+impl From<FileSize> for Parameter {
+    fn from(val: FileSize) -> Self {
+        Self::new_i32(TransactionField::FileSize, val.0)
     }
 }
 
-#[derive(Debug, Clone)]
+#[derive(Clone)]
 pub enum FilePath {
     Root,
     Directory(Vec<Vec<u8>>),
@@ -491,13 +517,13 @@ impl FilePath {
     }
     fn encode_path_component(component: Vec<u8>) -> Vec<u8> {
         let component_length = component.len() as i8;
-        vec![
+        [
             &[0u8; 2][..],
-            &component_length.to_be_bytes()[..],
-            &component.as_slice()[..],
-        ].into_iter()
-            .flat_map(|b| b.into_iter())
-            .map(|b| *b)
+            &component_length.to_be_bytes(),
+            component.as_slice(),
+        ].iter()
+            .flat_map(|b| b.iter())
+            .copied()
             .collect()
     }
     fn encode_parameter(components: Vec<Vec<u8>>) -> Parameter {
@@ -518,6 +544,22 @@ impl FilePath {
 impl Default for FilePath {
     fn default() -> Self {
         Self::Root
+    }
+}
+
+impl fmt::Debug for FilePath {
+    fn fmt(&self, f: &mut Formatter<'_>) -> fmt::Result {
+        match self {
+            Self::Root => write!(f, "{:?}", "::"),
+            Self::Directory(parts) => {
+                let pathname: String = parts.iter()
+                    .map(|part| MACINTOSH.decode(part))
+                    .map(|enc| enc.0)
+                    .collect::<Vec<_>>()
+                    .join(":");
+                write!(f, "{:?}", pathname)
+            },
+        }
     }
 }
 
@@ -555,10 +597,10 @@ impl TryFrom<Option<&Parameter>> for FilePath {
     }
 }
 
-impl Into<Option<Parameter>> for FilePath {
-    fn into(self) -> Option<Parameter> {
-        if let Self::Directory(path) = self {
-            Some(Self::encode_parameter(path))
+impl From<FilePath> for Option<Parameter> {
+    fn from(val: FilePath) -> Self {
+        if let FilePath::Directory(path) = val {
+            Some(FilePath::encode_parameter(path))
         } else {
             None
         }
@@ -576,12 +618,9 @@ impl TryFrom<&Parameter> for FileComment {
     }
 }
 
-impl Into<Parameter> for FileComment {
-    fn into(self) -> Parameter {
-        Parameter::new(
-            TransactionField::FileComment,
-            self.0
-        )
+impl From<FileComment> for Parameter {
+    fn from(val: FileComment) -> Self {
+        Parameter::new(TransactionField::FileComment, val.0)
     }
 }
 
@@ -607,12 +646,9 @@ impl TryFrom<&Parameter> for FileType {
     }
 }
 
-impl Into<Parameter> for FileType {
-    fn into(self) -> Parameter {
-        Parameter::new(
-            TransactionField::FileType,
-            self.0.to_vec()
-        )
+impl From<FileType> for Parameter {
+    fn from(val: FileType) -> Self {
+        Parameter::new(TransactionField::FileType, val.0.to_vec())
     }
 }
 
@@ -645,12 +681,9 @@ impl TryFrom<&Parameter> for FileTypeString {
     }
 }
 
-impl Into<Parameter> for FileTypeString {
-    fn into(self) -> Parameter {
-        Parameter::new(
-            TransactionField::FileTypeString,
-            self.0.to_vec()
-        )
+impl From<FileTypeString> for Parameter {
+    fn from(val: FileTypeString) -> Self {
+        Parameter::new(TransactionField::FileTypeString, val.0.to_vec())
     }
 }
 
@@ -668,12 +701,9 @@ impl TryFrom<&Parameter> for FileCreatorString {
     }
 }
 
-impl Into<Parameter> for FileCreatorString {
-    fn into(self) -> Parameter {
-        Parameter::new(
-            TransactionField::FileCreatorString,
-            self.0.to_vec()
-        )
+impl From<FileCreatorString> for Parameter {
+    fn from(val: FileCreatorString) -> Self {
+        Parameter::new(TransactionField::FileCreatorString, val.0.to_vec())
     }
 }
 
@@ -702,9 +732,9 @@ impl TryFrom<&Parameter> for FileCreatedAt {
     }
 }
 
-impl Into<Parameter> for FileCreatedAt {
-    fn into(self) -> Parameter {
-        let Self(date) = self;
+impl From<FileCreatedAt> for Parameter {
+    fn from(val: FileCreatedAt) -> Self {
+        let FileCreatedAt(date) = val;
         Parameter::new(
             TransactionField::FileCreateDate,
             date.pack(),
@@ -737,9 +767,9 @@ impl TryFrom<&Parameter> for FileModifiedAt {
     }
 }
 
-impl Into<Parameter> for FileModifiedAt {
-    fn into(self) -> Parameter {
-        let Self(date) = self;
+impl From<FileModifiedAt> for Parameter {
+    fn from(val: FileModifiedAt) -> Self {
+        let FileModifiedAt(date) = val;
         Parameter::new(
             TransactionField::FileModifyDate,
             date.pack(),
@@ -747,58 +777,48 @@ impl Into<Parameter> for FileModifiedAt {
     }
 }
 
-#[derive(Debug, Default, Clone, Copy, From, Into, PartialEq, Eq)]
+#[derive(Debug, Default, Clone, Copy, From, Into, PartialEq, Eq, PartialOrd, Ord)]
 pub struct TransferSize(i32);
 
 impl TryFrom<&Parameter> for TransferSize {
     type Error = ProtocolError;
     fn try_from(parameter: &Parameter) -> Result<Self, Self::Error> {
         let size = parameter.int()
-            .map(i32::from)
-            .ok_or(ProtocolError::MalformedData(TransactionField::TransferSize))?
-            .into();
+            .and_then(|i| i.i32())
+            .ok_or(ProtocolError::MalformedData(TransactionField::TransferSize))?;
         Ok(Self(size))
     }
 }
 
-impl Into<Parameter> for TransferSize {
-    fn into(self) -> Parameter {
-        let Self(size) = self;
-        Parameter::new_int(
-            TransactionField::TransferSize,
-            size,
-        )
+impl From<TransferSize> for Parameter {
+    fn from(val: TransferSize) -> Self {
+        Self::new_i32(TransactionField::TransferSize, val.0)
     }
 }
 
-#[derive(Debug, Default, Clone, Copy, From, Into, PartialEq, Eq)]
+#[derive(Debug, Default, Clone, Copy, From, Into, PartialEq, Eq, PartialOrd, Ord)]
 pub struct ReferenceNumber(i32);
 
 impl TryFrom<&Parameter> for ReferenceNumber {
     type Error = ProtocolError;
     fn try_from(parameter: &Parameter) -> Result<Self, Self::Error> {
         let reference = parameter.int()
-            .map(i32::from)
-            .ok_or(ProtocolError::MalformedData(TransactionField::ReferenceNumber))?
-            .into();
+            .and_then(|i| i.i32())
+            .ok_or(ProtocolError::MalformedData(TransactionField::ReferenceNumber))?;
         Ok(Self(reference))
     }
 }
 
-impl Into<Parameter> for ReferenceNumber {
-    fn into(self) -> Parameter {
-        let Self(reference) = self;
-        Parameter::new_int(
-            TransactionField::ReferenceNumber,
-            reference,
-        )
+impl From<ReferenceNumber> for Parameter {
+    fn from(val: ReferenceNumber) -> Self {
+        Self::new_i32(TransactionField::ReferenceNumber, val.0)
     }
 }
 
 impl HotlineProtocol for ReferenceNumber {
     fn into_bytes(self) -> Vec<u8> {
         let Self(value) = self;
-        value.to_be_bytes().into()
+        value.to_be_bytes().to_vec()
     }
     fn from_bytes(bytes: &[u8]) -> BIResult<Self> {
         let (bytes, value) = be_i32(bytes)?;
@@ -806,27 +826,22 @@ impl HotlineProtocol for ReferenceNumber {
     }
 }
 
-#[derive(Debug, Default, Clone, Copy, From, Into, PartialEq, Eq)]
+#[derive(Debug, Default, Clone, Copy, From, Into, PartialEq, Eq, PartialOrd, Ord)]
 pub struct WaitingCount(i32);
 
 impl TryFrom<&Parameter> for WaitingCount {
     type Error = ProtocolError;
     fn try_from(parameter: &Parameter) -> Result<Self, Self::Error> {
         let reference = parameter.int()
-            .map(i32::from)
-            .ok_or(ProtocolError::MalformedData(TransactionField::WaitingCount))?
-            .into();
+            .and_then(|i| i.i32())
+            .ok_or(ProtocolError::MalformedData(TransactionField::WaitingCount))?;
         Ok(Self(reference))
     }
 }
 
-impl Into<Parameter> for WaitingCount {
-    fn into(self) -> Parameter {
-        let Self(count) = self;
-        Parameter::new_int(
-            TransactionField::WaitingCount,
-            count,
-        )
+impl From<WaitingCount> for Parameter {
+    fn from(val: WaitingCount) -> Self {
+        Self::new_i32(TransactionField::WaitingCount, val.0)
     }
 }
 

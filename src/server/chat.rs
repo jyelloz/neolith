@@ -1,19 +1,22 @@
 use crate::{
-    protocol::{ChatId, UserId},
+    protocol::{
+        self as proto,
+        ChatId,
+        UserId,
+    },
     server::{
+        bus::Bus,
         ChatRoomCreationRequest,
         ChatRoomSubject,
         ChatRoomPresence,
+        InstantMessage,
     },
 };
 
-use thiserror::Error;
-
 use derive_more::{From, Into};
-
 use std::collections::HashSet;
+use thiserror::Error;
 use tokio::sync::{mpsc, oneshot, watch};
-
 use tracing::debug;
 
 #[derive(Debug, Error)]
@@ -139,11 +142,11 @@ impl Chats {
 #[derive(Debug)]
 enum Command {
     // Chat(Chat),
-    ChatRoomCreate(ChatRoomCreationRequest, oneshot::Sender<ChatId>),
-    ChatRoomSubjectUpdate(ChatRoomSubject, oneshot::Sender<()>),
-    ChatRoomUserJoin(ChatRoomPresence, oneshot::Sender<()>),
-    ChatRoomUserUpdate(ChatRoomPresence, oneshot::Sender<()>),
-    ChatRoomUserLeave(ChatRoomPresence, oneshot::Sender<()>),
+    Create(ChatRoomCreationRequest, oneshot::Sender<ChatId>),
+    SubjectUpdate(ChatRoomSubject, oneshot::Sender<()>),
+    UserJoin(ChatRoomPresence, oneshot::Sender<()>),
+    UserUpdate(ChatRoomPresence, oneshot::Sender<()>),
+    UserLeave(ChatRoomPresence, oneshot::Sender<()>),
 }
 
 pub struct ChatUpdateProcessor {
@@ -153,12 +156,12 @@ pub struct ChatUpdateProcessor {
 }
 
 #[derive(Debug, Clone)]
-pub struct ChatsService(mpsc::Sender<Command>);
+pub struct ChatsService(mpsc::Sender<Command>, Bus);
 
 impl ChatsService {
-    pub fn new() -> (Self, ChatUpdateProcessor) {
+    pub fn new(bus: Bus) -> (Self, ChatUpdateProcessor) {
         let (tx, rx) = mpsc::channel(10);
-        let service = Self(tx);
+        let service = Self(tx, bus);
         let process = ChatUpdateProcessor::new(rx);
         (service, process)
     }
@@ -167,7 +170,7 @@ impl ChatsService {
         request: ChatRoomCreationRequest,
     ) -> Result<ChatId> {
         let (tx, rx) = oneshot::channel();
-        self.0.send(Command::ChatRoomCreate(request, tx)).await?;
+        self.0.send(Command::Create(request, tx)).await?;
         let id = rx.await?;
         Ok(id)
     }
@@ -176,7 +179,7 @@ impl ChatsService {
         request: ChatRoomPresence,
     ) -> Result<()> {
         let (tx, rx) = oneshot::channel();
-        self.0.send(Command::ChatRoomUserJoin(request, tx)).await?;
+        self.0.send(Command::UserJoin(request, tx)).await?;
         rx.await?;
         Ok(())
     }
@@ -185,7 +188,7 @@ impl ChatsService {
         request: ChatRoomPresence,
     ) -> Result<()> {
         let (tx, rx) = oneshot::channel();
-        self.0.send(Command::ChatRoomUserUpdate(request, tx)).await?;
+        self.0.send(Command::UserUpdate(request, tx)).await?;
         rx.await?;
         Ok(())
     }
@@ -194,7 +197,7 @@ impl ChatsService {
         request: ChatRoomPresence,
     ) -> Result<()> {
         let (tx, rx) = oneshot::channel();
-        self.0.send(Command::ChatRoomUserLeave(request, tx)).await?;
+        self.0.send(Command::UserLeave(request, tx)).await?;
         rx.await?;
         Ok(())
     }
@@ -203,8 +206,18 @@ impl ChatsService {
         request: ChatRoomSubject,
     ) -> Result<()> {
         let (tx, rx) = oneshot::channel();
-        self.0.send(Command::ChatRoomSubjectUpdate(request, tx)).await?;
+        self.0.send(Command::SubjectUpdate(request, tx)).await?;
         rx.await?;
+        Ok(())
+    }
+    pub async fn chat(&mut self, chat: proto::ChatMessage) -> Result<()> {
+        let Self(_, bus) = self;
+        bus.publish(chat.into());
+        Ok(())
+    }
+    pub async fn instant_message(&mut self, message: InstantMessage) -> Result<()> {
+        let Self(_, bus) = self;
+        bus.publish(message.into());
         Ok(())
     }
 }
@@ -219,37 +232,38 @@ impl ChatUpdateProcessor {
             updates,
         }
     }
+    #[tracing::instrument(name = "ChatUpdateProcessor", skip(self))]
     pub async fn run(self) -> Result<()> {
         let Self { mut chats, mut queue, updates } = self;
         while let Some(command) = queue.recv().await {
             debug!("handling update: {:?}", &command);
             match command {
-                Command::ChatRoomCreate(users, tx) => {
+                Command::Create(users, tx) => {
                     let id = chats.create(users.clone().into());
                     if tx.send(id).is_err() {
                         Err(ChatError::ServiceUnavailable)?;
                     }
                 }
-                Command::ChatRoomUserJoin(presence, tx) => {
+                Command::UserJoin(presence, tx) => {
                     let ChatRoomPresence(chat, user) = presence;
                     chats.join(chat, user.into());
                     if tx.send(()).is_err() {
                         Err(ChatError::ServiceUnavailable)?;
                     }
                 }
-                Command::ChatRoomUserUpdate(_, tx) => {
+                Command::UserUpdate(_, tx) => {
                     if tx.send(()).is_err() {
                         Err(ChatError::ServiceUnavailable)?;
                     }
                 }
-                Command::ChatRoomUserLeave(presence, tx) => {
+                Command::UserLeave(presence, tx) => {
                     let ChatRoomPresence(chat, user) = presence;
                     chats.leave(chat, user.into());
                     if tx.send(()).is_err() {
                         Err(ChatError::ServiceUnavailable)?;
                     }
                 }
-                Command::ChatRoomSubjectUpdate(presence, tx) => {
+                Command::SubjectUpdate(presence, tx) => {
                     let ChatRoomSubject(chat, subject) = presence;
                     chats.set_subject(chat, subject);
                     if tx.send(()).is_err() {

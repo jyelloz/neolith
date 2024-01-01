@@ -1,8 +1,10 @@
-use encoding::{Encoding, EncoderTrap, DecoderTrap};
+use encoding_rs::Encoding;
 
 use thiserror::Error;
 
 use tokio::sync::{mpsc, oneshot, watch};
+
+use super::bus::{Bus, Notification};
 
 pub static SEPARATOR: &str = "\r--\r";
 
@@ -17,12 +19,12 @@ pub enum NewsError {
 type Result<T> = ::core::result::Result<T, NewsError>;
 
 #[derive(Clone)]
-pub struct News<E> {
-    encoding: E,
+pub struct News {
+    encoding: &'static Encoding,
     articles: Vec<String>,
 }
 
-impl <E> std::fmt::Debug for News<E> {
+impl std::fmt::Debug for News {
     fn fmt(&self, f: &mut std::fmt::Formatter<'_>) -> std::fmt::Result {
         let Self { articles, .. } = self;
         f.debug_struct("News")
@@ -31,8 +33,8 @@ impl <E> std::fmt::Debug for News<E> {
     }
 }
 
-impl <E: Encoding> News<E> {
-    pub fn new(encoding: E) -> Self {
+impl News {
+    pub fn new(encoding: &'static Encoding) -> Self {
         Self {
             encoding,
             articles: vec![],
@@ -53,16 +55,10 @@ impl <E: Encoding> News<E> {
         self.encode(&news)
     }
     fn decode(&self, s: &[u8]) -> String {
-        match self.encoding.decode(s, DecoderTrap::Ignore) {
-            Ok(s) => s,
-            Err(cow) => cow.to_string(),
-        }
+        self.encoding.decode(s).0.to_string()
     }
     fn encode(&self, s: &str) -> Vec<u8> {
-        match self.encoding.encode(s, EncoderTrap::Ignore) {
-            Ok(s) => s,
-            Err(cow) => cow.as_bytes().to_vec(),
-        }
+        self.encoding.encode(s).0.to_vec()
     }
 }
 
@@ -72,40 +68,44 @@ struct Command {
 }
 
 #[derive(Debug, Clone)]
-pub struct NewsService(mpsc::Sender<Command>);
+pub struct NewsService(mpsc::Sender<Command>, Bus);
 
 impl NewsService {
-    pub fn new <E: Encoding + Clone>(encoding: E) -> (Self, NewsUpdateProcessor<E>) {
+    pub fn new(encoding: &'static Encoding, bus: Bus) -> (Self, NewsUpdateProcessor) {
         let (tx, rx) = mpsc::channel(10);
-        let service = Self(tx);
+        let service = Self(tx, bus);
         let process = NewsUpdateProcessor::new(rx, encoding);
         (service, process)
     }
     pub async fn post(&mut self, article: Vec<u8>) {
         let (tx, rx) = oneshot::channel();
+        let notification = Notification::News(article.clone().into());
         let command = Command {
             article,
             tx,
         };
-        self.0.send(command)
+        let Self(tx, bus) = self;
+        tx.send(command)
             .await
             .ok();
         rx.await.ok();
+        bus.publish(notification);
     }
 }
 
-pub struct NewsUpdateProcessor<E> {
+pub struct NewsUpdateProcessor {
     queue: mpsc::Receiver<Command>,
-    news: News<E>,
-    updates: watch::Sender<News<E>>,
+    news: News,
+    updates: watch::Sender<News>,
 }
 
-impl <E: Encoding + Clone> NewsUpdateProcessor<E> {
-    fn new(queue: mpsc::Receiver<Command>, encoding: E) -> Self {
+impl NewsUpdateProcessor {
+    fn new(queue: mpsc::Receiver<Command>, encoding: &'static Encoding) -> Self {
         let news = News::new(encoding);
         let (updates, _) = watch::channel(news.clone());
         Self { queue, news, updates }
     }
+    #[tracing::instrument(name = "NewsUpdateProcessor", skip(self))]
     pub async fn run(self) -> Result<()> {
         let Self { mut queue, mut news, updates: notifications } = self;
         while let Some(command) = queue.recv().await {
@@ -116,7 +116,7 @@ impl <E: Encoding + Clone> NewsUpdateProcessor<E> {
         }
         Ok(())
     }
-    pub fn subscribe(&self) -> watch::Receiver<News<E>> {
+    pub fn subscribe(&self) -> watch::Receiver<News> {
         self.updates.subscribe()
     }
 }

@@ -9,78 +9,70 @@ use tokio::{
     net::TcpListener,
 };
 use futures::stream::TryStreamExt;
-
-use encoding::{
-    Encoding,
-    DecoderTrap,
-    all::MAC_ROMAN,
-    codec::singlebyte::SingleByteEncoding,
-};
-
-use std::path::PathBuf;
-
+use derive_more::Into;
+use encoding_rs::MACINTOSH;
 use anyhow::{anyhow, bail};
-
-use tracing::debug;
+use tracing::{debug, trace, warn, instrument};
 
 type Result<T> = anyhow::Result<T>;
 
-use neolith::protocol::{
-    HotlineProtocol,
-    IntoFrameExt as _,
-    ChatId,
-    ChatSubject,
-    ClientHandshakeRequest,
-    DownloadFile,
-    DownloadFileReply,
-    GetFileInfo,
-    GetFileInfoReply,
-    GetFileNameList,
-    GetFileNameListReply,
-    FileName,
-    FilePath,
-    FileNameWithInfo,
-    GetClientInfoTextRequest,
-    GetClientInfoTextReply,
-    GetMessages,
-    GetMessagesReply,
-    PostNews,
-    NotifyNewsMessage,
-    GetUserNameList,
-    GetUserNameListReply,
-    InviteToNewChat,
-    InviteToNewChatReply,
-    InviteToChat,
-    JoinChat,
-    JoinChatReply,
-    LeaveChat,
-    LoginReply,
-    LoginRequest,
-    SetChatSubject,
-    Message,
-    ProtocolVersion,
-    ServerHandshakeReply,
-    SendBroadcast,
-    GenericReply,
-    SendChat,
-    SendInstantMessage,
-    SendInstantMessageReply,
-    ChatMessage,
-    ServerMessage,
-    SetClientUserInfo,
-    NotifyUserChange,
-    NotifyUserDelete,
-    NotifyChatSubject,
-    NotifyChatUserChange,
-    NotifyChatUserDelete,
-    TransactionFrame,
-    UserId,
-    UserNameWithInfo,
+use neolith::{
+    protocol::{
+        self as proto,
+        HotlineProtocol,
+        IntoFrameExt as _,
+        ChatId,
+        ChatSubject,
+        ClientHandshakeRequest,
+        DownloadFile,
+        GetFileInfo,
+        GetFileNameList,
+        GetClientInfoTextRequest,
+        GetMessages,
+        GetMessagesReply,
+        PostNews,
+        NotifyNewsMessage,
+        GetUserNameList,
+        InviteToNewChat,
+        InviteToNewChatReply,
+        InviteToChat,
+        JoinChat,
+        JoinChatReply,
+        LeaveChat,
+        LoginReply,
+        LoginRequest,
+        SetChatSubject,
+        ProtocolVersion,
+        ServerHandshakeReply,
+        SendBroadcast,
+        GenericReply,
+        SendChat,
+        SendInstantMessage,
+        SendInstantMessageReply,
+        ServerMessage,
+        SetClientUserInfo,
+        NotifyUserChange,
+        NotifyUserDelete,
+        NotifyChatSubject,
+        NotifyChatUserChange,
+        NotifyChatUserDelete,
+        TransactionFrame,
+        UserId,
+        UserNameWithInfo,
+        GetUserRequest,
+        GetUserReply,
+        Password,
+        ConnectionKeepAlive,
+        MoveFile,
+        Parameter,
+        DeleteFile,
+        UploadFile,
+    },
+    server::{application::UserAccountPermissions, NeolithServer, ClientRequest},
 };
 
 use neolith::server::{
     Broadcast,
-    Chat,
     ChatRoomSubject,
     ChatRoomInvite,
     ChatRoomPresence,
@@ -89,7 +81,6 @@ use neolith::server::{
     ServerEvents,
     User,
     bus::{Bus, Notification},
-    files::{DirEntry, OsFiles, FileInfo},
     transaction_stream::Frames,
     transfers::{TransferConnection, TransfersService, Requests},
     users::{Users, UsersService},
@@ -97,71 +88,12 @@ use neolith::server::{
     news::{News, NewsService},
 };
 
-fn os_path(path: FilePath) -> PathBuf {
-    match path {
-        FilePath::Root => PathBuf::new(),
-        FilePath::Directory(parts) => {
-            let mut path = PathBuf::new();
-            for part in parts {
-                path.push(String::from_utf8(part).expect("bad path"));
-            }
-            path
-        }
-    }
-}
-
-struct Files;
-
-impl Files {
-    fn files() -> OsFiles {
-        OsFiles::with_root("files".into())
-            .expect("bad root directory")
-    }
-    pub fn list(path: FilePath) -> Option<Vec<FileNameWithInfo>> {
-        let tmp = Self::files();
-        let path = os_path(path);
-        let files = tmp.list(&path).ok()?;
-        let files = files.into_iter()
-            .map(Self::convert_direntry)
-            .collect();
-        Some(files)
-    }
-    pub fn info(path: FilePath, filename: FileName) -> Option<FileInfo> {
-        let tmp = Self::files();
-        let filename = String::from_utf8(filename.into()).ok()?;
-        let path = os_path(path).join(filename);
-        let info = tmp.get_info(&path).ok()?;
-        Some(info)
-    }
-    fn convert_direntry(entry: DirEntry) -> FileNameWithInfo {
-        let DirEntry {
-            creator_code,
-            type_code,
-            size,
-            path,
-            ..
-        } = entry;
-        let file_name = path.file_name()
-            .and_then(|s| s.to_str())
-            .map(|s| s.as_bytes())
-            .map(|b| b.to_vec())
-            .unwrap_or(vec![]);
-        FileNameWithInfo {
-            file_name,
-            file_size: (size as i32).into(),
-            creator: (*creator_code.bytes()).into(),
-            file_type: (*type_code.bytes()).into(),
-            name_script: 0.into(),
-        }
-    }
-}
-
 #[derive(Debug, Clone)]
 struct Globals {
     user_id: Option<UserId>,
     users: watch::Receiver<Users>,
     chats: watch::Receiver<Chats>,
-    news: watch::Receiver<News<SingleByteEncoding>>,
+    news: watch::Receiver<News>,
     users_tx: UsersService,
     chats_tx: ChatsService,
     news_tx: NewsService,
@@ -177,9 +109,6 @@ impl Globals {
         let user = self.user().ok_or(anyhow!("user unavailable"))?;
         Ok(user)
     }
-    fn user_list(&mut self) -> Vec<UserNameWithInfo> {
-        self.users.borrow().to_vec()
-    }
     fn user_find(&self, id: UserId) -> Option<UserNameWithInfo> {
         self.users.borrow()
             .find(id)
@@ -190,21 +119,11 @@ impl Globals {
             .await
             .expect("failed to add user");
         self.user_id.replace(user_id);
-        let user = self.require_user().unwrap();
-        self.bus.publish(Notification::UserConnect(user.into()));
-    }
-    async fn user_update(&mut self, user: &UserNameWithInfo) {
-        self.users_tx.update(user.clone())
-            .await
-            .expect("failed to update user");
-        let user = self.require_user().unwrap();
-        self.bus.publish(Notification::UserUpdate(user.into()));
     }
     async fn user_remove(&mut self, user: &UserNameWithInfo) {
         self.users_tx.delete(user.clone())
             .await
             .expect("failed to remove user");
-        self.bus.publish(Notification::UserDisconnect(user.clone().into()));
     }
     fn chat_get_subject(&self, chat_id: ChatId) -> Option<ChatSubject> {
         let chats = self.chats.borrow();
@@ -225,7 +144,7 @@ impl Globals {
             .collect()
     }
     async fn chat_create(&mut self, creator: UserId, users: Vec<UserId>) -> ChatId {
-        let chat_id = self.chats_tx.create(users.clone().into())
+        let chat_id = self.chats_tx.create(vec![creator].into())
             .await
             .expect("failed to create chat room");
         let users = users.into_iter()
@@ -263,10 +182,6 @@ impl Globals {
             .expect("failed to update chat subject");
         self.bus.publish(Notification::ChatRoomSubjectUpdate(update));
     }
-    fn chat(&mut self, chat: Chat) {
-        let chat: ChatMessage = chat.into();
-        self.bus.publish(chat.into());
-    }
     fn instant_message(&mut self, message: InstantMessage) {
         let message = Notification::InstantMessage(message);
         self.bus.publish(message);
@@ -275,19 +190,12 @@ impl Globals {
         let broadcast = Notification::Broadcast(broadcast);
         self.bus.publish(broadcast);
     }
-    async fn post_news(&mut self, message: Message) {
-        self.news_tx.post(message.clone().into()).await;
-        let message: Vec<u8> = message.into();
-        let news = Notification::News(message.into());
-        self.bus.publish(news);
-    }
-    fn news(&mut self) -> News<SingleByteEncoding> {
-        self.news.borrow().clone()
-    }
 }
 
 #[tokio::main]
 async fn main() -> Result<()> {
+
+    console_subscriber::init();
 
     let host = "0.0.0.0";
     let listener = TcpListener::bind((host, 5500)).await?;
@@ -295,9 +203,9 @@ async fn main() -> Result<()> {
 
     let bus = Bus::new();
 
-    let (users_tx, users_rx) = UsersService::new();
-    let (chats_tx, chats_rx) = ChatsService::new();
-    let (news_tx, news_rx) = NewsService::new(*MAC_ROMAN);
+    let (users_tx, users_rx) = UsersService::new(bus.clone());
+    let (chats_tx, chats_rx) = ChatsService::new(bus.clone());
+    let (news_tx, news_rx) = NewsService::new(MACINTOSH, bus.clone());
     let (transfers_tx, transfers_rx) = TransfersService::new();
 
     let globals = Globals {
@@ -328,14 +236,17 @@ async fn main() -> Result<()> {
         let (socket, addr) = listener.accept().await?;
         let (r, w) = socket.into_split();
         let mut conn = Connection::new(r, w, globals.clone());
-        tokio::spawn(async move {
-            while let Ok(_) = conn.process().await { }
-            debug!("disconnect from {:?}", addr);
-        });
+        let name = format!("{addr}");
+        let _ = tokio::task::Builder::new()
+            .name(&name)
+            .spawn(async move {
+                while conn.process().await.is_ok() { }
+                debug!("disconnect from {:?}", addr);
+            });
     }
-
 }
 
+#[instrument]
 async fn transfers(
     listener: TcpListener,
     transfers_tx: TransfersService,
@@ -387,8 +298,26 @@ impl <R: AsyncRead + Unpin, W: AsyncWrite + Unpin> State<R, W> {
     }
 }
 
+impl <R, W> std::fmt::Debug for State<R, W> {
+    fn fmt(&self, f: &mut std::fmt::Formatter<'_>) -> std::fmt::Result {
+        match self {
+            Self::New(_) => write!(f, "New"),
+            Self::Unauthenticated(_) => write!(f, "Unauthenticated"),
+            Self::Established(_) => write!(f, "Established"),
+            Self::Closed => write!(f, "Closed"),
+            Self::Borrowed => write!(f, "Borrowed"),
+        }
+    }
+}
+
 struct Connection<R, W> {
     state: State<R, W>,
+}
+
+impl <R, W> std::fmt::Debug for Connection<R, W> {
+    fn fmt(&self, f: &mut std::fmt::Formatter<'_>) -> std::fmt::Result {
+        write!(f, "{:?}", self.state)
+    }
 }
 
 impl <R: AsyncRead + Unpin, W: AsyncWrite + Unpin> Connection<R, W> {
@@ -405,7 +334,7 @@ impl <R: AsyncRead + Unpin, W: AsyncWrite + Unpin> Connection<R, W> {
 struct New<R, W>(R, W, Globals);
 impl <R: AsyncRead + Unpin, W: AsyncWrite + Unpin> New<R, W> {
     fn handshake_sync(buf: &[u8]) -> Result<ProtocolVersion> {
-        match ClientHandshakeRequest::from_bytes(&buf) {
+        match ClientHandshakeRequest::from_bytes(buf) {
             Ok((_, _request)) => {
                 Ok(123i16.into())
             },
@@ -426,6 +355,21 @@ impl <R: AsyncRead + Unpin, W: AsyncWrite + Unpin> New<R, W> {
     }
 }
 
+#[derive(Debug, Into)]
+struct VersionedLoginRequest(LoginRequest);
+
+impl VersionedLoginRequest {
+    fn old_style(&self) -> Option<(proto::Nickname, proto::IconId)> {
+        let Self(req) = self;
+        req.nickname.clone().zip(req.icon_id)
+    }
+    fn fill_in(&mut self, nickname: proto::Nickname, icon_id: proto::IconId) {
+        let Self(req) = self;
+        req.nickname = Some(nickname);
+        req.icon_id = Some(icon_id);
+    }
+}
+
 struct Unauthenticated<R, W>(R, W, Globals);
 impl <R: AsyncRead + Unpin, W: AsyncWrite + Unpin> Unauthenticated<R, W> {
     pub async fn login(&mut self) -> Result<LoginRequest> {
@@ -434,34 +378,44 @@ impl <R: AsyncRead + Unpin, W: AsyncWrite + Unpin> Unauthenticated<R, W> {
 
         let Self(r, w, globals) = self;
 
-        let frame = Frames::new(r).next_frame().await?;
+        let mut frames = Frames::new(r);
 
-        let TransactionFrame { header, .. } = frame.clone();
+        let frame = frames.next_frame().await?;
+        let TransactionFrame { header, .. } = frame;
 
-        let login = LoginRequest::try_from(frame)?;
+        let mut login = VersionedLoginRequest(LoginRequest::try_from(frame)?);
 
         let reply = LoginReply::default().reply_to(&header);
         write_frame(w, reply).await?;
 
-        let LoginRequest { nickname, icon_id, .. } = &login;
-
-        if let (
-            Some(nickname),
-            Some(icon_id),
-        ) = (
-            nickname.clone(),
-            icon_id.clone(),
-        ) {
-            let user = UserNameWithInfo {
+        debug!("login request {login:?}");
+        let user = if let Some((username, icon_id)) = login.old_style() {
+            debug!("old login");
+            UserNameWithInfo {
                 icon_id,
+                username,
                 user_flags: 0.into(),
-                username: nickname,
                 user_id: 0.into(),
-            };
-            globals.user_add(&user).await;
-        }
+            }
+        } else {
+            debug!("new login, awaiting SetClientUserInfo");
+            let frame = frames.next_frame().await?;
+            let SetClientUserInfo {
+                username,
+                icon_id,
+            } = SetClientUserInfo::try_from(frame)?;
+            login.fill_in(username.clone(), icon_id);
+            UserNameWithInfo {
+                icon_id,
+                username,
+                user_flags: 0.into(),
+                user_id: 0.into(),
+            }
+        };
+        debug!("adding user {user:?}");
+        globals.user_add(&user).await;
 
-        Ok(login)
+        Ok(login.into())
     }
 }
 
@@ -476,6 +430,7 @@ impl <R: AsyncRead + Unpin, W: AsyncWrite + Unpin> Established<R, W> {
         debug!("connection established");
         Self { r, w, globals }
     }
+    #[instrument(fields(nick), skip(self))]
     pub async fn handle(mut self) -> Result<()> {
         match self.handle_inner().await {
             Ok(ok) => Ok(ok),
@@ -514,136 +469,91 @@ impl <R: AsyncRead + Unpin, W: AsyncWrite + Unpin> Established<R, W> {
     ) -> Result<()> {
 
         let TransactionFrame { header, body } = frame.clone();
+        let mut server = NeolithServer::new(
+            globals.user_id.unwrap_or_default(),
+            "files",
+            globals.users.clone(),
+            globals.users_tx.clone(),
+            globals.news.clone(),
+            globals.news_tx.clone(),
+            globals.chats.clone(),
+            globals.chats_tx.clone(),
+            globals.transfers_tx.clone(),
+        );
 
-        if let Ok(_) = GetUserNameList::try_from(frame.clone()) {
+        let reply = if let Ok(req) = GetUserNameList::try_from(frame.clone()) {
             debug!("get user name list");
-            let reply = GetUserNameListReply::with_users(globals.user_list())
-                .reply_to(&header);
-            write_frame(w, reply).await?;
-            return Ok(())
-        }
-
-        if let Ok(_) = GetMessages::try_from(frame.clone()) {
+            server.handle_client(req)
+                .await?
+                .map(|r| r.reply_to(&header))
+        } else if let Ok(req) = GetMessages::try_from(frame.clone()) {
             debug!("get messages");
-            let reply = GetMessagesReply::single(
-                Message::new(globals.news().all())
-            ).reply_to(&header);
-            write_frame(w, reply).await?;
-            return Ok(())
-        }
-
-        if let Ok(req) = PostNews::try_from(frame.clone()) {
+            server.handle_client(req)
+                .await?
+                .map(|r| r.reply_to(&header))
+        } else if let Ok(req) = PostNews::try_from(frame.clone()) {
             debug!("post news");
-            let message = Message::from(req);
-            let reply = GenericReply.reply_to(&header);
-            write_frame(w, reply).await?;
-            globals.post_news(message).await;
-            return Ok(())
-        }
-
-        if let Ok(GetFileNameList(path)) = GetFileNameList::try_from(frame.clone()) {
-            if let Some(p) = path.path() {
-                let pathname: String = p.iter()
-                    .map(|component| MAC_ROMAN.decode(&component, DecoderTrap::Replace).unwrap())
-                    .collect::<Vec<String>>()
-                    .join(":");
-                debug!("get files: {:?}", &pathname);
-            } else {
-                debug!("get files: {:?}", &path);
-            }
-            let reply = GetFileNameListReply::with_files(
-                Files::list(path).unwrap_or(vec![])
-            ).reply_to(&header);
-            write_frame(w, reply).await?;
-            return Ok(())
-        }
-
-        if let Ok(info) = GetFileInfo::try_from(frame.clone()) {
+            server.handle_client(req)
+                .await?
+                .map(|r| r.reply_to(&header))
+        } else if let Ok(GetFileNameList(path)) = GetFileNameList::try_from(frame.clone()) {
+            debug!("get files: {path:?}");
+            server.handle_client(ClientRequest::GetFileNameList(path))
+                .await?
+                .map(|r| r.reply_to(&header))
+        } else if let Ok(info) = GetFileInfo::try_from(frame.clone()) {
+            debug!("get file info: {info:?}");
             let GetFileInfo { path, filename } = info;
-            let info = Files::info(path.clone(), filename.clone())
-                .expect(&format!("missing file: {:?}", &path));
-            let reply: TransactionFrame = GetFileInfoReply {
-                filename: filename.into(),
-                size: (info.size as i32).into(),
-                type_code: info.type_code.bytes().into(),
-                creator: info.creator_code.bytes().to_vec().into(),
-                comment: info.comment.as_bytes().to_vec().into(),
-                created_at: info.modified_at.into(),
-                modified_at: info.modified_at.into(),
-            }.reply_to(&header);
-            write_frame(w, reply).await?;
-            return Ok(())
-        }
-
-        if let Ok(download) = DownloadFile::try_from(frame.clone()) {
-            let DownloadFile { filename, file_path, .. } = download;
-            let download_path = {
-                let mut p = os_path(file_path.clone());
-                p.push(String::from_utf8(filename.clone().into()).unwrap());
-                p
-            };
-            let info = Files::info(file_path.clone(), filename)
-                .expect(&format!("missing file: {:?}", &file_path));
-            let reference = globals.transfers_tx.file_download(download_path).await;
-            let reply: TransactionFrame = DownloadFileReply {
-                transfer_size: (info.size as i32).into(),
-                file_size: (info.size as i32).into(),
-                reference,
-                waiting_count: None,
-            }.reply_to(&header);
-            write_frame(w, reply).await?;
-            return Ok(())
-        }
-
-        if let Ok(req) = SetClientUserInfo::try_from(frame.clone()) {
-            if let Some(mut user) = globals.user() {
-                user.username = req.username;
-                user.icon_id = req.icon_id;
-                globals.user_update(&user).await;
-            } else {
-                let SetClientUserInfo { username, icon_id } = req;
-                let user = UserNameWithInfo {
-                    icon_id,
-                    username,
-                    user_flags: 0.into(),
-                    user_id: 0.into(),
-                };
-                globals.user_add(&user).await;
-            }
-            return Ok(())
-        }
-
-        if let Ok(req) = SendChat::try_from(frame.clone()) {
-            let SendChat { chat_id, message, .. } = req;
-            let user = globals.require_user()?;
-            let chat = Chat(chat_id, user.clone().into(), message);
-            globals.chat(chat);
-            return Ok(())
-        }
-
-        if let Ok(req) = SendInstantMessage::try_from(frame.clone()) {
+            server.handle_client(ClientRequest::GetFileInfo(path, filename))
+                .await?
+                .map(|r| r.reply_to(&header))
+        } else if let Ok(req) = DeleteFile::try_from(frame.clone()) {
+            debug!("delete file {req:?}");
+            let mut reply = TransactionFrame::empty(header).reply_to(&header);
+            reply.body.parameters.push(Parameter::new_error("not yet implemented"));
+            reply.header.error_code = 1i32.into();
+            Some(reply)
+        } else if let Ok(req) = MoveFile::try_from(frame.clone()) {
+            debug!("move file {req:?}");
+            let mut reply = TransactionFrame::empty(header).reply_to(&header);
+            reply.body.parameters.push(Parameter::new_error("not yet implemented"));
+            reply.header.error_code = 1i32.into();
+            Some(reply)
+        } else if let Ok(req) = DownloadFile::try_from(frame.clone()) {
+            debug!("download: {req:?}");
+            server.handle_client(req)
+                .await?
+                .map(|r| r.reply_to(&header))
+        } else if let Ok(req) = UploadFile::try_from(frame.clone()) {
+            debug!("upload: {req:?}");
+            server.handle_client(req)
+                .await?
+                .map(|r| r.reply_to(&header))
+        } else if let Ok(req) = SetClientUserInfo::try_from(frame.clone()) {
+            debug!("set user info: {req:?}");
+            server.handle_client(req)
+                .await?
+                .map(|r| r.reply_to(&header))
+        } else if let Ok(req) = SendChat::try_from(frame.clone()) {
+            debug!("chat {req:?}");
+            server.handle_client(req)
+                .await?
+                .map(|r| r.reply_to(&header))
+        } else if let Ok(req) = SendInstantMessage::try_from(frame.clone()) {
             let SendInstantMessage { user_id, message } = req;
             let user = globals.user();
             let to = globals.user_find(user_id);
             if let (Some(from), Some(to)) = (user, to) {
-                let from = from.clone().into();
-                let to = to.clone().into();
+                let from = from.into();
+                let to = to.into();
                 let message = InstantMessage { from, to, message };
                 globals.instant_message(message);
             }
-            let reply = SendInstantMessageReply.reply_to(&header);
-            write_frame(w, reply).await?;
-            return Ok(())
-        }
-
-        if let Ok(req) = SendBroadcast::try_from(frame.clone()) {
+            Some(SendInstantMessageReply.reply_to(&header))
+        } else if let Ok(req) = SendBroadcast::try_from(frame.clone()) {
             globals.server_broadcast(req.message.into());
-            let reply = GenericReply.reply_to(&header);
-            write_frame(w, reply).await?;
-            return Ok(())
-        }
-
-        if let Ok(req) = InviteToNewChat::try_from(frame.clone()) {
+            Some(GenericReply.reply_to(&header))
+        } else if let Ok(req) = InviteToNewChat::try_from(frame.clone()) {
             let user = globals.require_user()?.clone();
             let users = {
                 let mut users: Vec<UserId> = req.into();
@@ -660,11 +570,8 @@ impl <R: AsyncRead + Unpin, W: AsyncWrite + Unpin> Established<R, W> {
                 user_name: user.username,
                 flags: user.user_flags,
             }.reply_to(&header);
-            write_frame(w, reply).await?;
-            return Ok(())
-        }
-
-        if let Ok(req) = InviteToChat::try_from(frame.clone()) {
+            Some(reply)
+        } else if let Ok(req) = InviteToChat::try_from(frame.clone()) {
             debug!("invite: {:?}", &req);
             let user = globals.require_user()?.clone();
             let InviteToChat { chat_id, user_id } = req;
@@ -676,11 +583,8 @@ impl <R: AsyncRead + Unpin, W: AsyncWrite + Unpin> Established<R, W> {
                 flags: user.user_flags,
             }.reply_to(&header);
             globals.chat_invite(chat_id, user_id).await;
-            write_frame(w, reply).await?;
-            return Ok(())
-        }
-
-        if let Ok(req) = JoinChat::try_from(frame.clone()) {
+            Some(reply)
+        } else if let Ok(req) = JoinChat::try_from(frame.clone()) {
             debug!("join: {:?}", &req);
             let chat_id: ChatId = req.into();
             let user = globals.require_user()?;
@@ -689,45 +593,51 @@ impl <R: AsyncRead + Unpin, W: AsyncWrite + Unpin> Established<R, W> {
             let users = globals.chat_list(chat_id);
             let reply = JoinChatReply::from((subject, users))
                 .reply_to(&header);
-            write_frame(w, reply).await?;
-            return Ok(())
-        }
-
-        if let Ok(req) = LeaveChat::try_from(frame.clone()) {
+            Some(reply)
+        } else if let Ok(req) = LeaveChat::try_from(frame.clone()) {
             debug!("leave: {:?}", &req);
             let user = globals.require_user()?;
             globals.chat_leave(req.into(), &user).await;
-            return Ok(())
-        }
-
-        if let Ok(req) = SetChatSubject::try_from(frame.clone()) {
+            None
+        } else if let Ok(req) = SetChatSubject::try_from(frame.clone()) {
             debug!("leave: {:?}", &req);
             let (chat_id, subject) = req.into();
             globals.chat_subject_change(chat_id, subject.into()).await;
-            return Ok(())
-        }
-
-        if let Ok(req) = GetMessages::try_from(frame.clone()) {
+            None
+        } else if let Ok(req) = GetMessages::try_from(frame.clone()) {
             debug!("get messages: {:?}", &req);
-            let reply = GetMessagesReply::empty().reply_to(&header);
-            write_frame(w, reply).await?;
-            return Ok(())
-        }
-
-        if let Ok(req) = GetClientInfoTextRequest::try_from(frame.clone()) {
-            let GetClientInfoTextRequest { user_id } = req;
-            let user = globals.user_find(user_id)
-                .ok_or(anyhow!("could not find user"))?;
-            let text = format!("{:#?}", &user).replace("\n", "\r");
-            let reply = GetClientInfoTextReply {
-                user_name: user.username,
-                text: text.into_bytes(),
+            Some(GetMessagesReply::empty().reply_to(&header))
+        } else if let Ok(req) = GetClientInfoTextRequest::try_from(frame.clone()) {
+            debug!("get user info: {:?}", &req);
+            server.handle_client(req)
+                .await?
+                .map(|r| r.reply_to(&header))
+        } else if let Ok(req) = GetUserRequest::try_from(frame.clone()) {
+            let GetUserRequest(login) = req;
+            let login = login.invert();
+            let access: i64 = UserAccountPermissions::default().into();
+            let reply = GetUserReply {
+                username: "test user".to_string().into(),
+                user_login: login,
+                user_access: access.into(),
+                user_password: Password::from_cleartext("password".as_bytes()),
             }.reply_to(&header);
-            write_frame(w, reply).await?;
-            return Ok(())
-        }
+            Some(reply)
+        } else if ConnectionKeepAlive::try_from(frame.clone()).is_ok() {
+            debug!("keep alive");
+            Some(GenericReply.reply_to(&header))
+        } else {
+            warn!("established: unhandled request {:?} {:?}", header, body);
+            None
+        };
 
-        debug!("established: unhandled request {:?} {:?}", header, body);
+        trace!("processed message");
+
+        if let Some(reply) = reply {
+            trace!("replying with {reply:?}");
+            write_frame(w, reply).await?;
+            trace!("replied");
+        }
 
         Ok(())
     }
@@ -740,9 +650,20 @@ impl <R: AsyncRead + Unpin, W: AsyncWrite + Unpin> Established<R, W> {
         match notification {
             Notification::Empty => {},
             Notification::Chat(chat) => {
-                debug!("chat notification: {:?}", &chat);
-                let chat: ChatMessage = chat.into();
-                write_frame(w, chat.framed()).await?;
+                let username = current_user.as_ref().map(|u| &u.username);
+                if let Some(id) = chat.chat_id {
+                    let chat_members = globals.chat_list(id);
+                    debug!("chat {id:?} contains {chat_members:?}");
+                    if let Some(user) = &current_user {
+                        if globals.chat_list(id).contains(user) {
+                            debug!("private chat notification -> {username:?}: {:?}", &chat);
+                            write_frame(w, chat.framed()).await?;
+                        }
+                    }
+                } else {
+                    debug!("chat notification -> {username:?}: {:?}", &chat);
+                    write_frame(w, chat.framed()).await?;
+                }
             },
             Notification::InstantMessage(message) => {
                 let InstantMessage { from, to, message } = message;
@@ -773,10 +694,10 @@ impl <R: AsyncRead + Unpin, W: AsyncWrite + Unpin> Established<R, W> {
                 let notify: NotifyUserDelete = (&user).into();
                 write_frame(w, notify.framed()).await?;
             },
-            Notification::ChatRoomInvite(ChatRoomInvite(chat_id, user)) => {
-                if Some(user) == current_user.map(|u| u.user_id) {
+            Notification::ChatRoomInvite(ChatRoomInvite(chat_id, user_id)) => {
+                if Some(user_id) == current_user.map(|u| u.user_id) {
                     let invite = InviteToChat {
-                        user_id: user.into(),
+                        user_id,
                         chat_id,
                     };
                     write_frame(w, invite.framed()).await?;

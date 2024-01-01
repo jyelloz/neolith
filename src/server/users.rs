@@ -12,6 +12,8 @@ use tokio::sync::{mpsc, oneshot, watch};
 
 use tracing::debug;
 
+use super::bus::{Bus, Notification};
+
 #[derive(Debug, Error)]
 pub enum UsersError {
     #[error("execution error")]
@@ -89,6 +91,12 @@ impl Users {
     }
 }
 
+impl Default for Users {
+    fn default() -> Self {
+        Self::new()
+    }
+}
+
 #[derive(Debug)]
 enum Command {
     Connect(UserNameWithInfo, oneshot::Sender<UserId>),
@@ -97,22 +105,27 @@ enum Command {
 }
 
 #[derive(Debug, Clone, From)]
-pub struct UsersService(mpsc::Sender<Command>);
+pub struct UsersService(mpsc::Sender<Command>, Bus);
 
 impl UsersService {
-    pub fn new() -> (Self, UserUpdateProcessor) {
+    pub fn new(bus: Bus) -> (Self, UserUpdateProcessor) {
         let (tx, rx) = mpsc::channel(10);
-        let service = Self(tx);
+        let service = Self(tx, bus);
         let process = UserUpdateProcessor::new(rx);
         (service, process)
     }
     pub async fn add(
         &mut self,
-        user: UserNameWithInfo,
+        mut user: UserNameWithInfo,
     ) -> Result<UserId> {
         let (tx, rx) = oneshot::channel();
-        self.0.send(Command::Connect(user, tx)).await?;
+        let command = Command::Connect(user.clone(), tx);
+        let Self(tx, bus) = self;
+        tx.send(command).await?;
         let id = rx.await?;
+        user.user_id = id;
+        let notification = Notification::UserConnect(user.into());
+        bus.publish(notification);
         Ok(id)
     }
     pub async fn update(
@@ -120,8 +133,12 @@ impl UsersService {
         user: UserNameWithInfo,
     ) -> Result<()> {
         let (tx, rx) = oneshot::channel();
-        self.0.send(Command::Update(user, tx)).await?;
+        let notification = Notification::UserUpdate(user.clone().into());
+        let command = Command::Update(user, tx);
+        let Self(tx, bus) = self;
+        tx.send(command).await?;
         rx.await?;
+        bus.publish(notification);
         Ok(())
     }
     pub async fn delete(
@@ -129,8 +146,12 @@ impl UsersService {
         user: UserNameWithInfo,
     ) -> Result<()> {
         let (tx, rx) = oneshot::channel();
-        self.0.send(Command::Disconnect(user, tx)).await?;
+        let notification = Notification::UserDisconnect(user.clone().into());
+        let command = Command::Disconnect(user, tx);
+        let Self(tx, bus) = self;
+        tx.send(command).await?;
         rx.await?;
+        bus.publish(notification);
         Ok(())
     }
 }
@@ -151,21 +172,22 @@ impl UserUpdateProcessor {
             updates,
         }
     }
+    #[tracing::instrument(name = "UserUpdateProcessor", skip(self))]
     pub async fn run(self) -> Result<()> {
         let Self { mut users, mut queue, updates } = self;
         while let Some(command) = queue.recv().await {
             debug!("handling update: {:?}", &command);
             match command {
-                Command::Connect(user, tx) => {
-                    let id = users.add(&mut user.into());
+                Command::Connect(mut user, tx) => {
+                    let id = users.add(&mut user);
                     tx.send(id).ok();
                 },
                 Command::Update(user, tx) => {
-                    users.update(&mut user.into());
+                    users.update(&user);
                     tx.send(()).ok();
                 },
                 Command::Disconnect(user, tx) => {
-                    users.remove(&mut user.into());
+                    users.remove(&user);
                     tx.send(()).ok();
                 },
             }

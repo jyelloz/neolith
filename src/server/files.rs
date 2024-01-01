@@ -4,10 +4,10 @@ use std::{
     path::{Path, PathBuf, Component},
     time::SystemTime,
 };
-
+use encoding_rs::MACINTOSH;
 use magic::Cookie;
-
 use four_cc::FourCC;
+use crate::protocol as proto;
 
 #[derive(Debug)]
 pub struct FileType(FourCC);
@@ -30,6 +30,7 @@ impl Default for FileType {
     }
 }
 
+#[derive(Debug)]
 pub struct Creator(four_cc::FourCC);
 
 impl Creator {
@@ -82,6 +83,31 @@ impl <'a> TryFrom<FilesContext<'a>> for DirEntry {
     }
 }
 
+impl From<DirEntry> for proto::FileNameWithInfo {
+    fn from(value: DirEntry) -> Self {
+        let DirEntry {
+            creator_code,
+            type_code,
+            size,
+            path,
+            ..
+        } = value;
+        let file_name = path.file_name()
+            .and_then(|s| s.to_str())
+            .map(|s| MACINTOSH.encode(s).0)
+            .map(|b| b.to_vec())
+            .unwrap_or(vec![]);
+        proto::FileNameWithInfo {
+            file_name,
+            file_size: (size as i32).into(),
+            creator: (*creator_code.bytes()).into(),
+            file_type: (*type_code.bytes()).into(),
+            name_script: 0.into(),
+        }
+    }
+}
+
+#[derive(Debug)]
 pub struct FileInfo {
     pub path: PathBuf,
     pub size: u64,
@@ -127,14 +153,15 @@ pub trait Files {
     fn get_info(&self, path: &Path) -> Result<FileInfo>;
 }
 
+#[derive(Debug)]
 pub struct OsFiles {
     root: PathBuf,
     magic: Cookie,
 }
 
 impl OsFiles {
-    pub fn with_root(root: PathBuf) -> Result<Self> {
-        let root = root.canonicalize()?;
+    pub fn with_root<P: Into<PathBuf>>(root: P) -> Result<Self> {
+        let root = root.into().canonicalize()?;
         let metadata = fs::metadata(&root)?;
         let magic = Cookie::open(magic::CookieFlags::APPLE)
             .or::<io::Error>(Err(ErrorKind::Other.into()))?;
@@ -180,7 +207,7 @@ impl OsFiles {
         Ok(subpath)
     }
     fn apple_magic(&self, path: &Path) -> Result<(FileType, Creator)> {
-        let magic = self.magic.file(&path)
+        let magic = self.magic.file(path)
             .or::<io::Error>(Err(ErrorKind::Other.into()))?;
         let magic = magic.as_bytes();
         let (creator, file_type) = (&magic[..4], &magic[4..]);

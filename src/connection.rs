@@ -37,9 +37,9 @@ impl <S: AsyncRead + AsyncWrite + Unpin> Connection<S> {
     }
     async fn body(&mut self, size: usize) -> Result<TransactionBody> {
         let Self { socket } = self;
-        let mut buf = &mut vec![0u8; size][..size];
-        socket.read_exact(&mut buf).await?;
-        match TransactionBody::from_bytes(&buf) {
+        let buf = &mut vec![0u8; size][..size];
+        socket.read_exact(buf).await?;
+        match TransactionBody::from_bytes(buf) {
             Ok((_, body)) => Ok(body),
             Err(_) => Err(ProtocolError::ParseBody),
         }

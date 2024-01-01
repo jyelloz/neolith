@@ -35,6 +35,12 @@ impl From<ChatMessage> for Notification {
     }
 }
 
+impl From<InstantMessage> for Notification {
+    fn from(message: InstantMessage) -> Self {
+        Self::InstantMessage(message)
+    }
+}
+
 /// A publish-subscribe node between connected peers and the backing state
 /// components of the server.
 ///
@@ -58,6 +64,12 @@ impl Bus {
     }
     pub fn subscribe(&self) -> Notifications {
         self.tx.subscribe().into()
+    }
+}
+
+impl Default for Bus {
+    fn default() -> Self {
+        Self::new()
     }
 }
 

@@ -4,8 +4,8 @@ use enumset::{EnumSetType, EnumSet, EnumSetIter, enum_set};
 use serde::{de::Visitor, ser::SerializeMap, Serialize, Deserialize, Serializer, Deserializer};
 use strum::{EnumIter, Display, IntoEnumIterator, EnumString};
 
-type PBDF<O> = Pin<Box<dyn Future<Output=O>>>;
-type PBDFR<O> = PBDF<Result<O, Error>>;
+type Pbdf<O> = Pin<Box<dyn Future<Output=O>>>;
+type Ppdfr<O> = Pbdf<Result<O, Error>>;
 
 #[derive(Debug, thiserror::Error)]
 pub enum Error {
@@ -30,61 +30,67 @@ pub struct Credentials {
 #[strum(serialize_all = "snake_case")]
 #[serde(try_from = "&str")]
 pub enum FileOperation {
-    Download,
-    UploadToDropbox,
-    UploadToFolder,
-    DeleteFile,
-    RenameFile,
-    MoveFile,
-    SetFileComment,
-    CreateFolder,
-    DeleteFolder,
-    RenameFolder,
-    MoveFolder,
-    SetFolderComment,
-    ViewDropBox,
-    CreateAlias,
+    Download = 2,
+    UploadToDropbox = 1,
+    UploadToFolder = 25,
+    DeleteFile = 0,
+    RenameFile = 3,
+    MoveFile = 4,
+    SetFileComment = 28,
+    CreateFolder = 5,
+    DeleteFolder = 6,
+    RenameFolder = 7,
+    MoveFolder = 8,
+    SetFolderComment = 29,
+    ViewDropBox = 30,
+    CreateAlias = 31,
 }
 
 #[derive(Debug, Serialize, Deserialize, Display, PartialOrd, Ord, EnumIter, EnumString, EnumSetType)]
 #[strum(serialize_all = "snake_case")]
 #[serde(try_from = "&str")]
 pub enum UserOperation {
-    CanCreateUsers,
-    CanDeleteUsers,
-    CanReadUsers,
-    CanModifyUsers,
-    CanGetUserInfo,
-    CanDisconnectUsers,
-    CannotBeDisconnected,
+    CanCreateUsers = 14,
+    CanDeleteUsers = 15,
+    CanReadUsers = 16,
+    CanModifyUsers = 17,
+    CanGetUserInfo = 24,
+    CanDisconnectUsers = 22,
+    CannotBeDisconnected = 23,
 }
 
 #[derive(Debug, Serialize, Deserialize, Display, PartialOrd, Ord, EnumIter, EnumString, EnumSetType)]
 #[strum(serialize_all = "snake_case")]
 #[serde(try_from = "&str")]
 pub enum NewsOperation {
-    ReadNews,
-    PostNews,
+    ReadNews = 20,
+    PostNews = 21,
 }
 
 #[derive(Debug, Serialize, Deserialize, Display, PartialOrd, Ord, EnumIter, EnumString, EnumSetType)]
 #[strum(serialize_all = "snake_case")]
 #[serde(try_from = "&str")]
 pub enum ChatOperation {
-    ReadChat,
-    SendChat,
+    ReadChat = 9,
+    SendChat = 10,
 }
 
 #[derive(Debug, Serialize, Deserialize, Display, PartialOrd, Ord, EnumIter, EnumString, EnumSetType)]
 #[strum(serialize_all = "snake_case")]
 #[serde(try_from = "&str")]
 pub enum MiscOperation {
-    CanUseAnyName,
-    DontShowAgreement,
+    CanUseAnyName = 26,
+    DontShowAgreement = 27,
 }
 
 #[derive(Debug, Clone, From, Into, PartialOrd, Ord, PartialEq, Eq)]
 struct FlagSet<T: EnumSetType + IntoEnumIterator + fmt::Display>(EnumSet<T>);
+
+impl <T: EnumSetType + IntoEnumIterator + fmt::Display> FlagSet<T> {
+    pub fn empty() -> Self {
+        Self(EnumSet::new())
+    }
+}
 
 impl <F> FromIterator<F> for FlagSet<F>
     where F: EnumSetType + IntoEnumIterator + fmt::Display {
@@ -164,6 +170,29 @@ impl FromIterator<FileOperation> for FilePermissions {
     }
 }
 
+impl From<i64> for FilePermissions {
+    fn from(bits: i64) -> Self {
+        let mut flags = FlagSet::empty();
+        for op in FileOperation::iter() {
+            let bit = 1 & (bits >> (63 - (op as u8))) == 1;
+            if bit {
+                flags.0.insert(op);
+            }
+        }
+        Self(flags)
+    }
+}
+
+impl From<FilePermissions> for i64 {
+    fn from(val: FilePermissions) -> Self {
+        let mut bits = 0;
+        for op in val.into_iter() {
+            bits |= 1 << (63 - (op as u8));
+        }
+        bits
+    }
+}
+
 #[derive(Debug, Clone, Serialize, Deserialize, PartialEq, Eq, PartialOrd, Ord, From)]
 #[serde(transparent)]
 pub struct UserPermissions(FlagSet<UserOperation>);
@@ -187,6 +216,29 @@ impl FromIterator<UserOperation> for UserPermissions {
     fn from_iter<T: IntoIterator<Item = UserOperation>>(iter: T) -> Self {
         let flags: FlagSet<_> = iter.into_iter().collect();
         flags.into()
+    }
+}
+
+impl From<i64> for UserPermissions {
+    fn from(bits: i64) -> Self {
+        let mut flags = FlagSet::empty();
+        for op in UserOperation::iter() {
+            let bit = 1 & (bits >> (63 - (op as u8))) == 1;
+            if bit {
+                flags.0.insert(op);
+            }
+        }
+        Self(flags)
+    }
+}
+
+impl From<UserPermissions> for i64 {
+    fn from(val: UserPermissions) -> Self {
+        let mut bits = 0;
+        for op in val.into_iter() {
+            bits |= 1 << (63 - (op as u8));
+        }
+        bits
     }
 }
 
@@ -216,6 +268,29 @@ impl FromIterator<NewsOperation> for NewsPermissions {
     }
 }
 
+impl From<i64> for NewsPermissions {
+    fn from(bits: i64) -> Self {
+        let mut flags = FlagSet::empty();
+        for op in NewsOperation::iter() {
+            let bit = 1 & (bits >> (63 - (op as u8))) == 1;
+            if bit {
+                flags.0.insert(op);
+            }
+        }
+        Self(flags)
+    }
+}
+
+impl From<NewsPermissions> for i64 {
+    fn from(val: NewsPermissions) -> Self {
+        let mut bits = 0;
+        for op in val.into_iter() {
+            bits |= 1 << (63 - (op as u8));
+        }
+        bits
+    }
+}
+
 #[derive(Debug, Clone, Serialize, Deserialize, PartialEq, Eq, PartialOrd, Ord, From)]
 #[serde(transparent)]
 pub struct ChatPermissions(FlagSet<ChatOperation>);
@@ -241,6 +316,29 @@ impl FromIterator<ChatOperation> for ChatPermissions {
     }
 }
 
+impl From<i64> for ChatPermissions {
+    fn from(bits: i64) -> Self {
+        let mut flags = FlagSet::empty();
+        for op in ChatOperation::iter() {
+            let bit = 1 & (bits >> (63 - (op as u8))) == 1;
+            if bit {
+                flags.0.insert(op);
+            }
+        }
+        Self(flags)
+    }
+}
+
+impl From<ChatPermissions> for i64 {
+    fn from(val: ChatPermissions) -> Self {
+        let mut bits = 0;
+        for op in val.into_iter() {
+            bits |= 1 << (63 - (op as u8));
+        }
+        bits
+    }
+}
+
 #[derive(Debug, Clone, Serialize, Deserialize, PartialEq, Eq, PartialOrd, Ord, From)]
 #[serde(transparent)]
 pub struct MiscPermissions(FlagSet<MiscOperation>);
@@ -262,6 +360,29 @@ impl FromIterator<MiscOperation> for MiscPermissions {
     fn from_iter<T: IntoIterator<Item = MiscOperation>>(iter: T) -> Self {
         let flags: FlagSet<_> = iter.into_iter().collect();
         flags.into()
+    }
+}
+
+impl From<i64> for MiscPermissions {
+    fn from(bits: i64) -> Self {
+        let mut flags = FlagSet::empty();
+        for op in MiscOperation::iter() {
+            let bit = 1 & (bits >> (63 - (op as u8))) == 1;
+            if bit {
+                flags.0.insert(op);
+            }
+        }
+        Self(flags)
+    }
+}
+
+impl From<MiscPermissions> for i64 {
+    fn from(val: MiscPermissions) -> Self {
+        let mut bits = 0;
+        for op in val.into_iter() {
+            bits |= 1 << (63 - (op as u8));
+        }
+        bits
     }
 }
 
@@ -302,6 +423,29 @@ pub struct UserAccountPermissions {
     pub news: NewsPermissions,
     pub chat: ChatPermissions,
     pub misc: MiscPermissions,
+}
+
+impl From<i64> for UserAccountPermissions {
+    fn from(i: i64) -> Self {
+        Self {
+            file: i.into(),
+            user: i.into(),
+            news: i.into(),
+            chat: i.into(),
+            misc: i.into(),
+        }
+    }
+}
+
+impl From<UserAccountPermissions> for i64 {
+    fn from(val: UserAccountPermissions) -> Self {
+        let file: i64 = val.file.into();
+        let user: i64 = val.user.into();
+        let news: i64 = val.news.into();
+        let chat: i64 = val.chat.into();
+        let misc: i64 = val.misc.into();
+        file | user | news | chat | misc
+    }
 }
 
 #[derive(Debug, Clone, Serialize, Deserialize, PartialEq, Eq, PartialOrd, Ord, Default)]
@@ -361,10 +505,10 @@ pub struct UserList {
 }
 
 pub trait Users {
-    fn online(&self) -> PBDFR<UserList>;
-    fn info(&self, user: &OnlineUser) -> PBDFR<UserInfo>;
-    fn authenticate(&self, credentials: &Credentials) -> PBDFR<bool>;
-    fn authorize<I: Identity>(&self, identity: &I) -> PBDFR<bool>;
+    fn online(&self) -> Ppdfr<UserList>;
+    fn info(&self, user: &OnlineUser) -> Ppdfr<UserInfo>;
+    fn authenticate(&self, credentials: &Credentials) -> Ppdfr<bool>;
+    fn authorize<I: Identity>(&self, identity: &I) -> Ppdfr<bool>;
 }
 pub trait Files {}
 pub trait News {}
@@ -380,7 +524,6 @@ pub struct Application<U: Users, F: Files, N: News, M: Messages> {
 }
 
 impl <U: Users, F: Files, N: News, M: Messages> Application<U, F, N, M> {
-
     async fn login(&self, credentials: &Credentials) -> Result<(), Error> {
         let result = self.users.authenticate(credentials).await?;
         if result {
@@ -403,7 +546,6 @@ impl <U: Users, F: Files, N: News, M: Messages> Application<U, F, N, M> {
     async fn command() -> Result<(), ()> {
         Ok(())
     }
-
 }
 
 #[cfg(test)]
@@ -438,21 +580,18 @@ mod tests {
     }
 
     impl Users for TestUsers {
-        fn online(&self) -> PBDFR<UserList> {
+        fn online(&self) -> Ppdfr<UserList> {
             let users = UserList { users: vec![test_user()] };
             pbfutrok(users)
         }
-
-        fn info(&self, _: &OnlineUser) -> PBDFR<UserInfo> {
+        fn info(&self, _: &OnlineUser) -> Ppdfr<UserInfo> {
             let user = test_user();
             pbfutrok(user)
         }
-
-        fn authenticate(&self, _: &Credentials) -> PBDFR<bool> {
+        fn authenticate(&self, _: &Credentials) -> Ppdfr<bool> {
             pbfutrok(true)
         }
-
-        fn authorize<I: Identity>(&self, _: &I) -> PBDFR<bool> {
+        fn authorize<I: Identity>(&self, _: &I) -> Ppdfr<bool> {
             pbfutrok(true)
         }
     }
@@ -490,7 +629,7 @@ mod tests {
             identity: UserAccountIdentity {
                 name: "test account".into(),
                 login: "test".into(),
-                password: "password".into(),
+                password: "password".try_into()?,
             },
             ..Default::default()
         };

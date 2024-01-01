@@ -6,9 +6,9 @@ use dialoguer::Confirm;
 use neolith::server::user_editor::InteractiveUserEditor;
 
 fn main() -> Result<()> {
-    let args = std::env::args();
+    let mut args = std::env::args();
 
-    let filename = if let Some(filename) = args.skip(1).next() {
+    let filename = if let Some(filename) = args.nth(1) {
         Ok(filename)
     } else {
         Err(anyhow!("provide input filename"))

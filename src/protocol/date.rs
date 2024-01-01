@@ -34,9 +34,9 @@ impl DateParameter {
         be_i32(bytes)
     }
     pub fn parse(bytes: &[u8]) -> BIResult<Self> {
-        let (bytes, year) = Self::parse_year(&bytes)?;
-        let (bytes, milliseconds) = Self::parse_milliseconds(&bytes)?;
-        let (bytes, seconds) = Self::parse_seconds(&bytes)?;
+        let (bytes, year) = Self::parse_year(bytes)?;
+        let (bytes, milliseconds) = Self::parse_milliseconds(bytes)?;
+        let (bytes, seconds) = Self::parse_seconds(bytes)?;
         Ok((
             bytes,
             Self {
@@ -53,15 +53,15 @@ impl DateParameter {
             &milliseconds.to_be_bytes()[..],
             &seconds.to_be_bytes()[..],
         ].into_iter()
-            .flat_map(|b| b.into_iter())
-            .map(|b| *b)
+            .flat_map(|b| b.iter())
+            .copied()
             .collect()
     }
     fn try_from(time: SystemTime) -> Result<Self, ProtocolError> {
         let diff = time.duration_since(SystemTime::UNIX_EPOCH)
             .unwrap_or(0.std_seconds());
         let diff = Duration::ZERO + diff;
-        let chronodate = OffsetDateTime::UNIX_EPOCH.checked_add(diff.into())
+        let chronodate = OffsetDateTime::UNIX_EPOCH.checked_add(diff)
             .ok_or(ProtocolError::SystemError)?;
         let year = chronodate.year();
         let year_start = Date::from_ordinal_date(year, 1)
