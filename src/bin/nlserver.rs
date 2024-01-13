@@ -24,15 +24,9 @@ use neolith::{
         ChatId,
         ChatSubject,
         ClientHandshakeRequest,
-        DownloadFile,
-        GetFileInfo,
-        GetFileNameList,
-        GetClientInfoTextRequest,
         GetMessages,
         GetMessagesReply,
-        PostNews,
         NotifyNewsMessage,
-        GetUserNameList,
         InviteToNewChat,
         InviteToNewChatReply,
         InviteToChat,
@@ -46,7 +40,6 @@ use neolith::{
         ServerHandshakeReply,
         SendBroadcast,
         GenericReply,
-        SendChat,
         SendInstantMessage,
         SendInstantMessageReply,
         ServerMessage,
@@ -66,7 +59,6 @@ use neolith::{
         MoveFile,
         Parameter,
         DeleteFile,
-        UploadFile,
     },
     server::{application::UserAccountPermissions, NeolithServer, ClientRequest},
 };
@@ -481,30 +473,9 @@ impl <R: AsyncRead + Unpin, W: AsyncWrite + Unpin> Established<R, W> {
             globals.transfers_tx.clone(),
         );
 
-        let reply = if let Ok(req) = GetUserNameList::try_from(frame.clone()) {
-            debug!("get user name list");
+        let reply = if let Ok(req) = ClientRequest::try_from(frame.clone()) {
+            trace!("auto decode using tryfrom: {req:?}");
             server.handle_client(req)
-                .await?
-                .map(|r| r.reply_to(&header))
-        } else if let Ok(req) = GetMessages::try_from(frame.clone()) {
-            debug!("get messages");
-            server.handle_client(req)
-                .await?
-                .map(|r| r.reply_to(&header))
-        } else if let Ok(req) = PostNews::try_from(frame.clone()) {
-            debug!("post news");
-            server.handle_client(req)
-                .await?
-                .map(|r| r.reply_to(&header))
-        } else if let Ok(GetFileNameList(path)) = GetFileNameList::try_from(frame.clone()) {
-            debug!("get files: {path:?}");
-            server.handle_client(ClientRequest::GetFileNameList(path))
-                .await?
-                .map(|r| r.reply_to(&header))
-        } else if let Ok(info) = GetFileInfo::try_from(frame.clone()) {
-            debug!("get file info: {info:?}");
-            let GetFileInfo { path, filename } = info;
-            server.handle_client(ClientRequest::GetFileInfo(path, filename))
                 .await?
                 .map(|r| r.reply_to(&header))
         } else if let Ok(req) = DeleteFile::try_from(frame.clone()) {
@@ -519,26 +490,6 @@ impl <R: AsyncRead + Unpin, W: AsyncWrite + Unpin> Established<R, W> {
             reply.body.parameters.push(Parameter::new_error("not yet implemented"));
             reply.header.error_code = 1i32.into();
             Some(reply)
-        } else if let Ok(req) = DownloadFile::try_from(frame.clone()) {
-            debug!("download: {req:?}");
-            server.handle_client(req)
-                .await?
-                .map(|r| r.reply_to(&header))
-        } else if let Ok(req) = UploadFile::try_from(frame.clone()) {
-            debug!("upload: {req:?}");
-            server.handle_client(req)
-                .await?
-                .map(|r| r.reply_to(&header))
-        } else if let Ok(req) = SetClientUserInfo::try_from(frame.clone()) {
-            debug!("set user info: {req:?}");
-            server.handle_client(req)
-                .await?
-                .map(|r| r.reply_to(&header))
-        } else if let Ok(req) = SendChat::try_from(frame.clone()) {
-            debug!("chat {req:?}");
-            server.handle_client(req)
-                .await?
-                .map(|r| r.reply_to(&header))
         } else if let Ok(req) = SendInstantMessage::try_from(frame.clone()) {
             let SendInstantMessage { user_id, message } = req;
             let user = globals.user();
@@ -607,11 +558,6 @@ impl <R: AsyncRead + Unpin, W: AsyncWrite + Unpin> Established<R, W> {
         } else if let Ok(req) = GetMessages::try_from(frame.clone()) {
             debug!("get messages: {:?}", &req);
             Some(GetMessagesReply::empty().reply_to(&header))
-        } else if let Ok(req) = GetClientInfoTextRequest::try_from(frame.clone()) {
-            debug!("get user info: {:?}", &req);
-            server.handle_client(req)
-                .await?
-                .map(|r| r.reply_to(&header))
         } else if let Ok(req) = GetUserRequest::try_from(frame.clone()) {
             let GetUserRequest(login) = req;
             let login = login.invert();
