@@ -24,8 +24,6 @@ use neolith::{
         ChatId,
         ChatSubject,
         ClientHandshakeRequest,
-        GetMessages,
-        GetMessagesReply,
         NotifyNewsMessage,
         InviteToNewChat,
         InviteToNewChatReply,
@@ -56,9 +54,6 @@ use neolith::{
         GetUserReply,
         Password,
         ConnectionKeepAlive,
-        MoveFile,
-        Parameter,
-        DeleteFile,
     },
     server::{application::UserAccountPermissions, NeolithServer, ClientRequest},
 };
@@ -478,18 +473,6 @@ impl <R: AsyncRead + Unpin, W: AsyncWrite + Unpin> Established<R, W> {
             server.handle_client(req)
                 .await?
                 .map(|r| r.reply_to(&header))
-        } else if let Ok(req) = DeleteFile::try_from(frame.clone()) {
-            debug!("delete file {req:?}");
-            let mut reply = TransactionFrame::empty(header).reply_to(&header);
-            reply.body.parameters.push(Parameter::new_error("not yet implemented"));
-            reply.header.error_code = 1i32.into();
-            Some(reply)
-        } else if let Ok(req) = MoveFile::try_from(frame.clone()) {
-            debug!("move file {req:?}");
-            let mut reply = TransactionFrame::empty(header).reply_to(&header);
-            reply.body.parameters.push(Parameter::new_error("not yet implemented"));
-            reply.header.error_code = 1i32.into();
-            Some(reply)
         } else if let Ok(req) = SendInstantMessage::try_from(frame.clone()) {
             let SendInstantMessage { user_id, message } = req;
             let user = globals.user();
@@ -555,9 +538,6 @@ impl <R: AsyncRead + Unpin, W: AsyncWrite + Unpin> Established<R, W> {
             let (chat_id, subject) = req.into();
             globals.chat_subject_change(chat_id, subject.into()).await;
             None
-        } else if let Ok(req) = GetMessages::try_from(frame.clone()) {
-            debug!("get messages: {:?}", &req);
-            Some(GetMessagesReply::empty().reply_to(&header))
         } else if let Ok(req) = GetUserRequest::try_from(frame.clone()) {
             let GetUserRequest(login) = req;
             let login = login.invert();
