@@ -189,69 +189,21 @@ impl <S: AsyncRead + Unpin> ServerEvents<S> {
     }
 }
 
-#[derive(Debug)]
+#[derive(Debug, From)]
 pub enum ClientRequest {
-    GetMessages,
-    PostNews(proto::Message),
-    GetFileNameList(proto::FilePath),
-    GetFileInfo(proto::FilePath, proto::FileName),
-    GetUserNameList,
-    GetClientInfoText(proto::UserId),
-    SetClientUserInfo(proto::Nickname, proto::IconId),
-    SendChat(proto::ChatOptions, Option<proto::ChatId>, Vec<u8>),
-    DownloadFile(proto::FilePath, proto::FileName),
-    UploadFile(proto::FilePath, proto::FileName),
+    GetMessages(proto::GetMessages),
+    PostNews(proto::PostNews),
+    GetFileNameList(proto::GetFileNameList),
+    GetFileInfo(proto::GetFileInfo),
+    GetUserNameList(proto::GetUserNameList),
+    GetClientInfoText(proto::GetClientInfoText),
+    SetClientUserInfo(proto::SetClientUserInfo),
+    SendChat(proto::SendChat),
+    DownloadFile(proto::DownloadFile),
+    UploadFile(proto::UploadFile),
 }
 
-impl From<proto::GetMessages> for ClientRequest {
-    fn from(_: proto::GetMessages) -> Self {
-        Self::GetUserNameList
-    }
-}
-
-impl From<proto::GetUserNameList> for ClientRequest {
-    fn from(_: proto::GetUserNameList) -> Self {
-        Self::GetUserNameList
-    }
-}
-
-impl From<proto::PostNews> for ClientRequest {
-    fn from(val: proto::PostNews) -> Self {
-        Self::PostNews(val.into())
-    }
-}
-
-impl From<proto::GetClientInfoTextRequest> for ClientRequest {
-    fn from(val: proto::GetClientInfoTextRequest) -> Self {
-        Self::GetClientInfoText(val.user_id)
-    }
-}
-
-impl From<proto::SetClientUserInfo> for ClientRequest {
-    fn from(val: proto::SetClientUserInfo) -> Self {
-        Self::SetClientUserInfo(val.username, val.icon_id)
-    }
-}
-
-impl From<proto::SendChat> for ClientRequest {
-    fn from(val: proto::SendChat) -> Self {
-        Self::SendChat(val.options, val.chat_id, val.message)
-    }
-}
-
-impl From<proto::DownloadFile> for ClientRequest {
-    fn from(val: proto::DownloadFile) -> Self {
-        Self::DownloadFile(val.file_path, val.filename)
-    }
-}
-
-impl From<proto::UploadFile> for ClientRequest {
-    fn from(val: proto::UploadFile) -> Self {
-        Self::UploadFile(val.file_path, val.filename)
-    }
-}
-
-#[derive(Debug)]
+#[derive(Debug, From)]
 pub enum ServerResponse {
     GetUserNameListReply(proto::GetUserNameListReply),
     GetClientInfoTextReply(proto::GetClientInfoTextReply),
@@ -302,11 +254,34 @@ impl TryFrom<TransactionFrame> for ClientRequest {
     type Error = anyhow::Error;
 
     fn try_from(frame: TransactionFrame) -> Result<Self, Self::Error> {
-        if proto::GetUserNameList::try_from(frame).is_ok() {
-            Ok(Self::GetUserNameList)
-        } else {
-            anyhow::bail!("invalid request")
+        if let Ok(req) = proto::GetMessages::try_from(frame.clone()) {
+            return Ok(req.into())
         }
+        if let Ok(req) = proto::PostNews::try_from(frame.clone()) {
+            return Ok(req.into())
+        }
+        if let Ok(req) = proto::GetFileNameList::try_from(frame.clone()) {
+            return Ok(req.into())
+        }
+        if let Ok(req) = proto::GetFileInfo::try_from(frame.clone()) {
+            return Ok(req.into())
+        }
+        if let Ok(req) = proto::GetUserNameList::try_from(frame.clone()) {
+            return Ok(req.into())
+        }
+        if let Ok(req) = proto::GetClientInfoText::try_from(frame.clone()) {
+            return Ok(req.into())
+        }
+        if let Ok(req) = proto::SendChat::try_from(frame.clone()) {
+            return Ok(req.into())
+        }
+        if let Ok(req) = proto::DownloadFile::try_from(frame.clone()) {
+            return Ok(req.into())
+        }
+        if let Ok(req) = proto::UploadFile::try_from(frame.clone()) {
+            return Ok(req.into())
+        }
+        anyhow::bail!("invalid request")
     }
 }
 
@@ -357,33 +332,42 @@ impl NeolithServer {
         span.record("user_id", format!("{}", i16::from(user.user_id)));
         span.record("nick", format!("{}", user.username));
         match request.into() {
-            ClientRequest::GetUserNameList => Ok(Some(self.get_users().await)),
-            ClientRequest::GetMessages => Ok(Some(self.get_news().await)),
-            ClientRequest::PostNews(news) => Ok(Some(self.post_news(news).await)),
-            ClientRequest::GetFileNameList(path) => self.list_files(path).await,
-            ClientRequest::GetFileInfo(path, name) => self.file_info(path, name).await,
-            ClientRequest::SetClientUserInfo(nick, icon) => {
-                self.set_user_info(nick, icon).await?;
+            ClientRequest::GetUserNameList(_) => Ok(Some(self.get_users().await)),
+            ClientRequest::GetMessages(_) => Ok(Some(self.get_news().await)),
+            ClientRequest::PostNews(req) => Ok(Some(self.post_news(req.into()).await)),
+            ClientRequest::GetFileNameList(req) => self.list_files(req.0).await,
+            ClientRequest::GetFileInfo(req) => {
+                self.file_info(req.path, req.filename).await
+            },
+            ClientRequest::SetClientUserInfo(req) => {
+                self.set_user_info(req.username, req.icon_id).await?;
                 Ok(None)
             },
-            ClientRequest::GetClientInfoText(user_id) => self.get_user_info_text(user_id)
+            ClientRequest::GetClientInfoText(req) => {
+                self.get_user_info_text(req.user_id)
                 .await
-                .map(Some),
-            ClientRequest::SendChat(options, id, message) => {
-                if let Some(chat_id) = id {
+                .map(Some)
+            },
+            ClientRequest::SendChat(req) => {
+                let proto::SendChat { options, chat_id, message } = req;
+                if let Some(chat_id) = chat_id {
                     self.send_private_chat(options, chat_id, message).await?;
                 } else {
                     self.send_chat(options, message).await?;
                 }
                 Ok(None)
             }
-            ClientRequest::DownloadFile(path, name) => self.file_download(path, name).await,
-            ClientRequest::UploadFile(path, name) => self.file_upload(path, name).await,
+            ClientRequest::DownloadFile(req) => {
+                self.file_download(req.file_path, req.filename).await
+            },
+            ClientRequest::UploadFile(req) => {
+                self.file_upload(req.file_path, req.filename).await
+            },
         }
     }
     async fn get_users(&self) -> ServerResponse {
         let users = self.users.borrow().to_vec();
-        ServerResponse::GetUserNameListReply(proto::GetUserNameListReply::with_users(users))
+        proto::GetUserNameListReply::with_users(users).into()
     }
     async fn get_user_info_text(&self, user_id: proto::UserId) -> ServerResult<ServerResponse> {
         let users = self.users.borrow();
@@ -394,12 +378,12 @@ impl NeolithServer {
             user_name: user.username.clone(),
             text: text.into_bytes(),
         };
-        Ok(ServerResponse::GetClientInfoTextReply(reply))
+        Ok(reply.into())
     }
     async fn get_news(&self) -> ServerResponse {
         let news = Message::new(self.news.borrow().all());
         debug!("{news:?}");
-        ServerResponse::GetMessagesReply(proto::GetMessagesReply::single(news))
+        proto::GetMessagesReply::single(news).into()
     }
     async fn post_news(&mut self, news: proto::Message) -> ServerResponse {
         debug!("post {news:?}");
@@ -415,7 +399,7 @@ impl NeolithServer {
             .map(proto::FileNameWithInfo::from)
             .collect();
         let reply = proto::GetFileNameListReply::with_files(files);
-        Ok(Some(ServerResponse::GetFileNameListReply(reply)))
+        Ok(Some(reply.into()))
     }
     async fn file_info(
         &self,
@@ -435,7 +419,7 @@ impl NeolithServer {
             created_at: info.created_at.into(),
             modified_at: info.modified_at.into(),
         };
-        Ok(Some(ServerResponse::GetFileInfoReply(reply)))
+        Ok(Some(reply.into()))
     }
     fn join_path(path: &proto::FilePath, name: &proto::FileName) -> PathBuf {
         let name_slice = [name.clone().into()];
@@ -454,8 +438,8 @@ impl NeolithServer {
         let path = Self::join_path(&path, &name);
         let reply = self.transfers_tx.file_download(self.files_root.clone(), path)
             .await
-            .ok_or_else(|| anyhow::anyhow!("failed start download"))?;
-        Ok(Some(ServerResponse::DownloadFileReply(reply)))
+            .ok_or_else(|| anyhow::anyhow!("failed to start download"))?;
+        Ok(Some(reply.into()))
     }
     async fn file_upload(
         &mut self,
@@ -465,8 +449,8 @@ impl NeolithServer {
         let path = Self::join_path(&path, &name);
         let reply = self.transfers_tx.file_upload(self.files_root.clone(), path)
             .await
-            .ok_or_else(|| anyhow::anyhow!("failed start upload"))?;
-        Ok(Some(ServerResponse::UploadFileReply(reply)))
+            .ok_or_else(|| anyhow::anyhow!("failed to start upload"))?;
+        Ok(Some(reply.into()))
     }
     async fn set_user_info(
         &mut self,
