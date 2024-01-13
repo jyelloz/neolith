@@ -345,8 +345,8 @@ impl NeolithServer {
             },
             ClientRequest::GetClientInfoText(req) => {
                 self.get_user_info_text(req.user_id)
-                .await
-                .map(Some)
+                    .await
+                    .map(Some)
             },
             ClientRequest::SendChat(req) => {
                 let proto::SendChat { options, chat_id, message } = req;
