@@ -666,7 +666,7 @@ impl From<GetMessagesReply> for TransactionFrame {
 }
 
 #[derive(Debug, From, Into)]
-pub struct PostNews(Message);
+pub struct PostNews(pub Message);
 
 impl TryFrom<TransactionFrame> for PostNews {
     type Error = ProtocolError;
