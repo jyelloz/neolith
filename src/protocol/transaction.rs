@@ -14,6 +14,7 @@ use super::{
 };
 
 use derive_more::{From, Into};
+use encoding_rs::MACINTOSH;
 
 #[derive(Debug, Clone, Copy, From, Into)]
 pub struct Flags(i8);
@@ -328,8 +329,13 @@ impl Parameter {
             field_data,
         }
     }
+    pub fn new_data(data: Vec<u8>) -> Self {
+        Self::new(TransactionField::Data, data)
+    }
     pub fn new_error<S: AsRef<str>>(message: S) -> Self {
-        Self::new(TransactionField::ErrorText, message.as_ref().into())
+        let message = message.as_ref();
+        let (message, _, _) = MACINTOSH.encode(message);
+        Self::new(TransactionField::ErrorText, message.to_vec())
     }
     pub fn field_matches(&self, field: TransactionField) -> bool {
         self.field_id.0 == field as i16
