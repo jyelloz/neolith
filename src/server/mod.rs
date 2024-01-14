@@ -199,11 +199,19 @@ pub enum ClientRequest {
     GetUserNameList(proto::GetUserNameList),
     GetClientInfoText(proto::GetClientInfoText),
     SetClientUserInfo(proto::SetClientUserInfo),
+    DisconnectUser(proto::DisconnectUser),
     SendChat(proto::SendChat),
     DownloadFile(proto::DownloadFile),
     UploadFile(proto::UploadFile),
     DeleteFile(proto::DeleteFile),
     MoveFile(proto::MoveFile),
+    NewFolder(proto::NewFolder),
+    MakeFileAlias(proto::MakeFileAlias),
+    NewUser(proto::NewUser),
+    DeleteUser(proto::DeleteUser),
+    GetUser(proto::GetUser),
+    SetUser(proto::SetUser),
+    SendBroadcast(proto::SendBroadcast),
 }
 
 #[derive(Debug, From)]
@@ -219,6 +227,7 @@ pub enum ServerResponse {
     UploadFileReply(proto::UploadFileReply),
     DeleteFileReply(proto::DeleteFileReply),
     MoveFileReply(proto::MoveFileReply),
+    GetUserReply(proto::GetUserReply),
     Rejected(Option<String>),
 }
 
@@ -247,6 +256,7 @@ impl From<ServerResponse> for TransactionFrame {
             ServerResponse::UploadFileReply(reply) => reply.into(),
             ServerResponse::DeleteFileReply(reply) => reply.into(),
             ServerResponse::MoveFileReply(reply) => reply.into(),
+            ServerResponse::GetUserReply(reply) => reply.into(),
             ServerResponse::Rejected(message) => ServerResponse::reject(message),
         }
     }
@@ -303,6 +313,9 @@ impl TryFrom<TransactionFrame> for ClientRequest {
         if let Ok(req) = proto::GetClientInfoText::try_from(frame.clone()) {
             return Ok(req.into())
         }
+        if let Ok(req) = proto::DisconnectUser::try_from(frame.clone()) {
+            return Ok(req.into())
+        }
         if let Ok(req) = proto::SendChat::try_from(frame.clone()) {
             return Ok(req.into())
         }
@@ -316,6 +329,27 @@ impl TryFrom<TransactionFrame> for ClientRequest {
             return Ok(req.into())
         }
         if let Ok(req) = proto::DeleteFile::try_from(frame.clone()) {
+            return Ok(req.into())
+        }
+        if let Ok(req) = proto::NewFolder::try_from(frame.clone()) {
+            return Ok(req.into())
+        }
+        if let Ok(req) = proto::MakeFileAlias::try_from(frame.clone()) {
+            return Ok(req.into())
+        }
+        if let Ok(req) = proto::NewUser::try_from(frame.clone()) {
+            return Ok(req.into())
+        }
+        if let Ok(req) = proto::DeleteUser::try_from(frame.clone()) {
+            return Ok(req.into())
+        }
+        if let Ok(req) = proto::GetUser::try_from(frame.clone()) {
+            return Ok(req.into())
+        }
+        if let Ok(req) = proto::SetUser::try_from(frame.clone()) {
+            return Ok(req.into())
+        }
+        if let Ok(req) = proto::SendBroadcast::try_from(frame.clone()) {
             return Ok(req.into())
         }
         anyhow::bail!("invalid request")
