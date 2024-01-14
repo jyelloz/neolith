@@ -50,7 +50,7 @@ use neolith::{
         TransactionFrame,
         UserId,
         UserNameWithInfo,
-        GetUserRequest,
+        GetUser,
         GetUserReply,
         Password,
         ConnectionKeepAlive,
@@ -538,8 +538,8 @@ impl <R: AsyncRead + Unpin, W: AsyncWrite + Unpin> Established<R, W> {
             let (chat_id, subject) = req.into();
             globals.chat_subject_change(chat_id, subject.into()).await;
             None
-        } else if let Ok(req) = GetUserRequest::try_from(frame.clone()) {
-            let GetUserRequest(login) = req;
+        } else if let Ok(req) = GetUser::try_from(frame.clone()) {
+            let GetUser(login) = req;
             let login = login.invert();
             let access: i64 = UserAccountPermissions::default().into();
             let reply = GetUserReply {
