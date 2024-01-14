@@ -1478,30 +1478,141 @@ impl From<GenericReply> for TransactionFrame {
 }
 
 #[derive(Debug)]
-pub struct GetUserRequest(pub UserLogin);
+pub struct NewUser {
+    pub login: UserLogin,
+    pub password: Password,
+    pub name: Nickname,
+    pub access: UserAccess,
+}
 
-impl TryFrom<TransactionFrame> for GetUserRequest {
+impl From<NewUser> for TransactionFrame {
+    fn from(val: NewUser) -> Self {
+        let header = TransactionType::NewUser.into();
+        let NewUser { login, password, name, access } = val;
+        let body = vec![
+            login.into(),
+            password.into(),
+            name.into(),
+            access.into(),
+        ].into();
+        Self { header, body }
+    }
+}
+
+impl TryFrom<TransactionFrame> for NewUser {
+    type Error = ProtocolError;
+    fn try_from(frame: TransactionFrame) -> Result<Self, Self::Error> {
+        let TransactionFrame {
+            body, ..
+        } = frame.require_transaction_type(TransactionType::NewUser)?;
+
+        let login = body.require_field(TransactionField::UserLogin)
+            .and_then(UserLogin::try_from)?;
+        let password = body.require_field(TransactionField::UserPassword)
+            .and_then(Password::try_from)?;
+        let name = body.require_field(TransactionField::UserName)
+            .and_then(Nickname::try_from)?;
+        let access = body.require_field(TransactionField::UserAccess)
+            .and_then(UserAccess::try_from)?;
+
+        Ok(Self { login, password, name, access })
+    }
+}
+
+#[derive(Debug)]
+pub struct DeleteUser(pub UserLogin);
+
+impl TryFrom<TransactionFrame> for DeleteUser {
+    type Error = ProtocolError;
+    fn try_from(frame: TransactionFrame) -> Result<Self, Self::Error> {
+        let TransactionFrame {
+            body, ..
+        } = frame.require_transaction_type(TransactionType::DeleteUser)?;
+
+        let login = body.require_field(TransactionField::UserLogin)
+            .cloned()
+            .map(Parameter::take)
+            .map(UserLogin::new)?;
+
+        Ok(Self(login))
+    }
+}
+
+impl From<DeleteUser> for TransactionFrame {
+    fn from(val: DeleteUser) -> Self {
+        let header = TransactionType::DeleteUser.into();
+        let DeleteUser(user) = val;
+        let body = vec![user.into()].into();
+        Self { header, body }
+    }
+}
+
+#[derive(Debug)]
+pub struct SetUser {
+    pub login: UserLogin,
+    pub password: Password,
+    pub name: Nickname,
+    pub access: UserAccess,
+}
+
+impl TryFrom<TransactionFrame> for SetUser {
+    type Error = ProtocolError;
+    fn try_from(frame: TransactionFrame) -> Result<Self, Self::Error> {
+        let TransactionFrame {
+            body, ..
+        } = frame.require_transaction_type(TransactionType::SetUser)?;
+
+        let login = body.require_field(TransactionField::UserLogin)
+            .and_then(UserLogin::try_from)?;
+        let password = body.require_field(TransactionField::UserPassword)
+            .and_then(Password::try_from)?;
+        let name = body.require_field(TransactionField::UserName)
+            .and_then(Nickname::try_from)?;
+        let access = body.require_field(TransactionField::UserAccess)
+            .and_then(UserAccess::try_from)?;
+
+        Ok(Self { login, password, name, access })
+    }
+}
+
+impl From<SetUser> for TransactionFrame {
+    fn from(val: SetUser) -> Self {
+        let header = TransactionType::SetUser.into();
+        let SetUser { login, password, name, access } = val;
+        let body = vec![
+            login.into(),
+            password.into(),
+            name.into(),
+            access.into(),
+        ].into();
+        Self { header, body }
+    }
+}
+
+#[derive(Debug)]
+pub struct GetUser(pub UserLogin);
+
+impl TryFrom<TransactionFrame> for GetUser {
     type Error = ProtocolError;
     fn try_from(frame: TransactionFrame) -> Result<Self, Self::Error> {
         let TransactionFrame {
             body, ..
         } = frame.require_transaction_type(TransactionType::GetUser)?;
 
-        let user = body.require_field(TransactionField::UserLogin)
-            .map(|p| p.clone().take())
+        let login = body.require_field(TransactionField::UserLogin)
+            .cloned()
+            .map(Parameter::take)
             .map(UserLogin::new)?;
 
-        Ok(Self(user))
+        Ok(Self(login))
     }
 }
 
-impl From<GetUserRequest> for TransactionFrame {
-    fn from(val: GetUserRequest) -> Self {
+impl From<GetUser> for TransactionFrame {
+    fn from(val: GetUser) -> Self {
         let header = TransactionType::GetUser.into();
-        let GetUserRequest(user) = val;
-        let body = vec![
-            user.into(),
-        ].into();
+        let GetUser(user) = val;
+        let body = vec![user.into()].into();
         Self { header, body }
     }
 }
@@ -1521,13 +1632,16 @@ impl TryFrom<TransactionFrame> for GetUserReply {
             body, ..
         } = frame.require_transaction_type(TransactionType::GetUser)?;
 
-        let user = body.require_field(TransactionField::UserLogin)
-            .map(|p| p.clone().take())
-            .map(UserLogin::new)?;
+        let username = body.require_field(TransactionField::UserName)
+            .and_then(Nickname::try_from)?;
+        let user_login = body.require_field(TransactionField::UserLogin)
+            .and_then(UserLogin::try_from)?;
+        let user_password = body.require_field(TransactionField::UserPassword)
+            .and_then(Password::try_from)?;
+        let user_access = body.require_field(TransactionField::UserAccess)
+            .and_then(UserAccess::try_from)?;
 
-        panic!();
-
-        // Ok(Self(user))
+        Ok(Self { username, user_login, user_password, user_access })
     }
 }
 
