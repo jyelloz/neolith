@@ -2073,6 +2073,23 @@ impl From<MoveFile> for TransactionFrame {
     }
 }
 
+#[derive(Debug, Clone, Copy, PartialEq, Eq, PartialOrd, Ord)]
+pub struct MoveFileReply;
+
+impl TryFrom<TransactionFrame> for MoveFileReply {
+    type Error = ProtocolError;
+    fn try_from(frame: TransactionFrame) -> Result<Self, Self::Error> {
+        frame.require_transaction_type(TransactionType::MoveFile)?;
+        Ok(Self)
+    }
+}
+
+impl From<MoveFileReply> for TransactionFrame {
+    fn from(_: MoveFileReply) -> Self {
+        Self::empty(TransactionType::MoveFile)
+    }
+}
+
 #[derive(Debug, Clone)]
 pub struct DeleteFile {
     pub filename: FileName,
