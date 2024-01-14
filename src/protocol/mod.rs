@@ -1322,11 +1322,11 @@ impl From<SetChatSubject> for TransactionFrame {
 }
 
 #[derive(Debug, Clone)]
-pub struct GetClientInfoTextRequest {
+pub struct GetClientInfoText {
     pub user_id: UserId,
 }
 
-impl TryFrom<TransactionFrame> for GetClientInfoTextRequest {
+impl TryFrom<TransactionFrame> for GetClientInfoText {
     type Error = ProtocolError;
     fn try_from(frame: TransactionFrame) -> Result<Self, Self::Error> {
 
@@ -1341,10 +1341,10 @@ impl TryFrom<TransactionFrame> for GetClientInfoTextRequest {
     }
 }
 
-impl From<GetClientInfoTextRequest> for TransactionFrame {
-    fn from(val: GetClientInfoTextRequest) -> Self {
+impl From<GetClientInfoText> for TransactionFrame {
+    fn from(val: GetClientInfoText) -> Self {
         let header = TransactionType::GetClientInfoText.into();
-        let GetClientInfoTextRequest { user_id, .. } = val;
+        let GetClientInfoText { user_id, .. } = val;
         let body = vec![user_id.into()].into();
         Self { header, body }
     }
