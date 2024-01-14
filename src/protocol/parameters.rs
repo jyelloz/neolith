@@ -171,7 +171,7 @@ impl Credential for Password {
     }
 }
 
-#[derive(Debug, From, Into, PartialEq, Eq, PartialOrd, Ord)]
+#[derive(Debug, Default, From, Into, PartialEq, Eq, PartialOrd, Ord)]
 pub struct UserAccess(i64);
 
 impl TryFrom<&Parameter> for UserAccess {
@@ -606,7 +606,7 @@ impl From<FilePath> for Option<Parameter> {
     }
 }
 
-#[derive(Debug, From, Into)]
+#[derive(Clone, From, Into)]
 pub struct FileComment(Vec<u8>);
 
 impl TryFrom<&Parameter> for FileComment {
@@ -620,6 +620,13 @@ impl TryFrom<&Parameter> for FileComment {
 impl From<FileComment> for Parameter {
     fn from(val: FileComment) -> Self {
         Parameter::new(TransactionField::FileComment, val.0)
+    }
+}
+
+impl std::fmt::Debug for FileComment {
+    fn fmt(&self, f: &mut Formatter<'_>) -> fmt::Result {
+        let (comment, _, _) = MACINTOSH.decode(&self.0);
+        f.debug_tuple("FileComment").field(&comment).finish()
     }
 }
 
