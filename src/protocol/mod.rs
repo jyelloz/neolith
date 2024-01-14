@@ -130,6 +130,7 @@ pub use parameters::{
     Nickname,
     Password,
     ReferenceNumber,
+    TransactionOptions,
     TransferSize,
     UserFlags,
     UserId,
@@ -614,6 +615,50 @@ impl From<GetUserNameListReply> for TransactionFrame {
         let body = users.into_iter()
             .map(UserNameWithInfo::into)
             .collect();
+        Self { header, body }
+    }
+}
+
+#[derive(Debug, Clone)]
+pub struct DisconnectUser {
+    pub user_id: UserId,
+    pub options: Option<TransactionOptions>,
+    pub data: Option<Vec<u8>>,
+}
+
+impl TryFrom<TransactionFrame> for DisconnectUser {
+    type Error = ProtocolError;
+    fn try_from(frame: TransactionFrame) -> Result<Self, Self::Error> {
+        let TransactionFrame {
+            body,
+            ..
+        } = frame.require_transaction_type(TransactionType::DisconnectUser)?;
+
+        let user_id = body.require_field(TransactionField::UserId)
+            .and_then(UserId::try_from)?;
+        let options = body.borrow_field(TransactionField::Options)
+            .and_then(Parameter::int)
+            .and_then(|i| i.i32())
+            .map(TransactionOptions::from);
+        let data = body.borrow_field(TransactionField::Data)
+            .cloned()
+            .map(Parameter::take);
+
+        Ok(Self { user_id, options, data })
+    }
+}
+
+impl From<DisconnectUser> for TransactionFrame {
+    fn from(val: DisconnectUser) -> Self {
+        let header = TransactionType::DisconnectUser.into();
+        let DisconnectUser { user_id, options, data } = val;
+        let body = [
+            Some(Parameter::from(user_id)),
+            options.map(Parameter::from),
+            data.map(Parameter::new_data),
+        ].into_iter()
+            .flat_map(Option::into_iter)
+            .collect::<TransactionBody>();
         Self { header, body }
     }
 }
