@@ -869,6 +869,51 @@ impl From<GetFileInfoReply> for TransactionFrame {
 }
 
 #[derive(Debug, Clone)]
+pub struct SetFileInfo {
+    pub filename: FileName,
+    pub path: FilePath,
+    pub new_name: Option<FileName>,
+    pub new_comment: Option<FileComment>,
+}
+
+impl TryFrom<TransactionFrame> for SetFileInfo {
+    type Error = ProtocolError;
+    fn try_from(frame: TransactionFrame) -> Result<Self, Self::Error> {
+        let TransactionFrame {
+            body, ..
+        } = frame.require_transaction_type(TransactionType::SetFileInfo)?;
+
+        let filename = body.require_field(TransactionField::FileName)
+            .map(FileName::from)?;
+        let path = body.borrow_field(TransactionField::FilePath)
+            .try_into()?;
+        let new_name = body.borrow_field(TransactionField::FileNewName)
+            .map(FileName::from);
+        let new_comment = body.borrow_field(TransactionField::FileComment)
+            .and_then(|param| FileComment::try_from(param).ok());
+
+        Ok(Self { filename, path, new_name, new_comment })
+    }
+}
+
+#[derive(Debug, Clone, Copy, PartialEq, Eq, PartialOrd, Ord)]
+pub struct SetFileInfoReply;
+
+impl TryFrom<TransactionFrame> for SetFileInfoReply {
+    type Error = ProtocolError;
+    fn try_from(frame: TransactionFrame) -> Result<Self, Self::Error> {
+        frame.require_transaction_type(TransactionType::DeleteFile)?;
+        Ok(Self)
+    }
+}
+
+impl From<SetFileInfoReply> for TransactionFrame {
+    fn from(_: SetFileInfoReply) -> Self {
+        Self::empty(TransactionType::SetFileInfo)
+    }
+}
+
+#[derive(Debug, Clone)]
 pub struct SendChat {
     pub options: ChatOptions,
     pub chat_id: Option<ChatId>,
