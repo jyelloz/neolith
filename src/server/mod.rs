@@ -195,12 +195,15 @@ pub enum ClientRequest {
     PostNews(proto::PostNews),
     GetFileNameList(proto::GetFileNameList),
     GetFileInfo(proto::GetFileInfo),
+    SetFileInfo(proto::SetFileInfo),
     GetUserNameList(proto::GetUserNameList),
     GetClientInfoText(proto::GetClientInfoText),
     SetClientUserInfo(proto::SetClientUserInfo),
     SendChat(proto::SendChat),
     DownloadFile(proto::DownloadFile),
     UploadFile(proto::UploadFile),
+    DeleteFile(proto::DeleteFile),
+    MoveFile(proto::MoveFile),
 }
 
 #[derive(Debug, From)]
@@ -211,8 +214,11 @@ pub enum ServerResponse {
     PostNewsReply,
     GetFileNameListReply(proto::GetFileNameListReply),
     GetFileInfoReply(proto::GetFileInfoReply),
+    SetFileInfoReply(proto::SetFileInfoReply),
     DownloadFileReply(proto::DownloadFileReply),
     UploadFileReply(proto::UploadFileReply),
+    DeleteFileReply(proto::DeleteFileReply),
+    MoveFileReply(proto::MoveFileReply),
 }
 
 impl From<ServerResponse> for TransactionFrame {
@@ -223,10 +229,19 @@ impl From<ServerResponse> for TransactionFrame {
             ServerResponse::PostNewsReply => GenericReply.into(),
             ServerResponse::GetFileNameListReply(reply) => reply.into(),
             ServerResponse::GetFileInfoReply(reply) => reply.into(),
+            ServerResponse::SetFileInfoReply(reply) => reply.into(),
             ServerResponse::GetClientInfoTextReply(reply) => reply.into(),
             ServerResponse::DownloadFileReply(reply) => reply.into(),
             ServerResponse::UploadFileReply(reply) => reply.into(),
+            ServerResponse::DeleteFileReply(reply) => reply.into(),
+            ServerResponse::MoveFileReply(reply) => reply.into(),
         }
+    }
+}
+
+impl From<ServerResponse> for ServerResult<Option<ServerResponse>> {
+    fn from(val: ServerResponse) -> Self {
+        Ok(Some(val))
     }
 }
 
@@ -266,6 +281,9 @@ impl TryFrom<TransactionFrame> for ClientRequest {
         if let Ok(req) = proto::GetFileInfo::try_from(frame.clone()) {
             return Ok(req.into())
         }
+        if let Ok(req) = proto::SetFileInfo::try_from(frame.clone()) {
+            return Ok(req.into())
+        }
         if let Ok(req) = proto::GetUserNameList::try_from(frame.clone()) {
             return Ok(req.into())
         }
@@ -279,6 +297,12 @@ impl TryFrom<TransactionFrame> for ClientRequest {
             return Ok(req.into())
         }
         if let Ok(req) = proto::UploadFile::try_from(frame.clone()) {
+            return Ok(req.into())
+        }
+        if let Ok(req) = proto::MoveFile::try_from(frame.clone()) {
+            return Ok(req.into())
+        }
+        if let Ok(req) = proto::DeleteFile::try_from(frame.clone()) {
             return Ok(req.into())
         }
         anyhow::bail!("invalid request")
@@ -332,13 +356,21 @@ impl NeolithServer {
         span.record("user_id", format!("{}", i16::from(user.user_id)));
         span.record("nick", format!("{}", user.username));
         match request.into() {
-            ClientRequest::GetUserNameList(_) => Ok(Some(self.get_users().await)),
-            ClientRequest::GetMessages(_) => Ok(Some(self.get_news().await)),
-            ClientRequest::PostNews(req) => Ok(Some(self.post_news(req.into()).await)),
-            ClientRequest::GetFileNameList(req) => self.list_files(req.0).await,
-            ClientRequest::GetFileInfo(req) => {
-                self.file_info(req.path, req.filename).await
-            },
+            ClientRequest::GetUserNameList(_) => Ok(Some(self.get_users().await.into())),
+            ClientRequest::GetMessages(_) => Ok(Some(self.get_news().await.into())),
+            ClientRequest::PostNews(req) => self.post_news(req.0).await.into(),
+            ClientRequest::GetFileNameList(req) => self.list_files(req.0)
+                .await
+                .map(Into::into)
+                .map(Some),
+            ClientRequest::GetFileInfo(req) => self.file_info(
+                req.path,
+                req.filename,
+            )
+                .await
+                .map(Into::into)
+                .map(Some),
+            ClientRequest::SetFileInfo(_) => Ok(Some(proto::SetFileInfoReply.into())),
             ClientRequest::SetClientUserInfo(req) => {
                 self.set_user_info(req.username, req.icon_id).await?;
                 Ok(None)
@@ -358,16 +390,22 @@ impl NeolithServer {
                 Ok(None)
             }
             ClientRequest::DownloadFile(req) => {
-                self.file_download(req.file_path, req.filename).await
+                self.file_download(req.file_path, req.filename).await.map(Some)
             },
             ClientRequest::UploadFile(req) => {
-                self.file_upload(req.file_path, req.filename).await
+                self.file_upload(req.file_path, req.filename).await.map(Some)
+            },
+            ClientRequest::DeleteFile(_) => {
+                Ok(Some(proto::DeleteFileReply.into()))
+            },
+            ClientRequest::MoveFile(_) => {
+                Ok(Some(proto::MoveFileReply.into()))
             },
         }
     }
-    async fn get_users(&self) -> ServerResponse {
+    async fn get_users(&self) -> proto::GetUserNameListReply {
         let users = self.users.borrow().to_vec();
-        proto::GetUserNameListReply::with_users(users).into()
+        proto::GetUserNameListReply::with_users(users)
     }
     async fn get_user_info_text(&self, user_id: proto::UserId) -> ServerResult<ServerResponse> {
         let users = self.users.borrow();
@@ -380,17 +418,17 @@ impl NeolithServer {
         };
         Ok(reply.into())
     }
-    async fn get_news(&self) -> ServerResponse {
+    async fn get_news(&self) -> proto::GetMessagesReply {
         let news = Message::new(self.news.borrow().all());
         debug!("{news:?}");
-        proto::GetMessagesReply::single(news).into()
+        proto::GetMessagesReply::single(news)
     }
     async fn post_news(&mut self, news: proto::Message) -> ServerResponse {
         debug!("post {news:?}");
         self.news_tx.post(news.into()).await;
         ServerResponse::PostNewsReply
     }
-    async fn list_files(&self, path: proto::FilePath) -> ServerResult<Option<ServerResponse>> {
+    async fn list_files(&self, path: proto::FilePath) -> ServerResult<proto::GetFileNameListReply> {
         debug!("list {path:?}");
         let path: PathBuf = path.into();
         let files = self.files()?;
@@ -398,14 +436,13 @@ impl NeolithServer {
             .into_iter()
             .map(proto::FileNameWithInfo::from)
             .collect();
-        let reply = proto::GetFileNameListReply::with_files(files);
-        Ok(Some(reply.into()))
+        Ok(proto::GetFileNameListReply::with_files(files))
     }
     async fn file_info(
         &self,
         path: proto::FilePath,
         name: proto::FileName,
-    ) -> ServerResult<Option<ServerResponse>> {
+    ) -> ServerResult<proto::GetFileInfoReply> {
         debug!("info {name:?} @ {path:?}");
         let path = PathBuf::from(path).join(PathBuf::from(&name));
         let files = self.files()?;
@@ -419,7 +456,7 @@ impl NeolithServer {
             created_at: info.created_at.into(),
             modified_at: info.modified_at.into(),
         };
-        Ok(Some(reply.into()))
+        Ok(reply)
     }
     fn join_path(path: &proto::FilePath, name: &proto::FileName) -> PathBuf {
         let name_slice = [name.clone().into()];
@@ -434,23 +471,23 @@ impl NeolithServer {
         &mut self,
         path: proto::FilePath,
         name: proto::FileName,
-    ) -> ServerResult<Option<ServerResponse>> {
+    ) -> ServerResult<ServerResponse> {
         let path = Self::join_path(&path, &name);
         let reply = self.transfers_tx.file_download(self.files_root.clone(), path)
             .await
             .ok_or_else(|| anyhow::anyhow!("failed to start download"))?;
-        Ok(Some(reply.into()))
+        Ok(reply.into())
     }
     async fn file_upload(
         &mut self,
         path: proto::FilePath,
         name: proto::FileName,
-    ) -> ServerResult<Option<ServerResponse>> {
+    ) -> ServerResult<ServerResponse> {
         let path = Self::join_path(&path, &name);
         let reply = self.transfers_tx.file_upload(self.files_root.clone(), path)
             .await
             .ok_or_else(|| anyhow::anyhow!("failed to start upload"))?;
-        Ok(Some(reply.into()))
+        Ok(reply.into())
     }
     async fn set_user_info(
         &mut self,
