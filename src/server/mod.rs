@@ -219,6 +219,18 @@ pub enum ServerResponse {
     UploadFileReply(proto::UploadFileReply),
     DeleteFileReply(proto::DeleteFileReply),
     MoveFileReply(proto::MoveFileReply),
+    Rejected(Option<String>),
+}
+
+impl ServerResponse {
+    fn reject(message: Option<String>) -> TransactionFrame {
+        let mut frame = TransactionFrame::empty(proto::TransactionType::Error);
+        frame.header.error_code = 1i32.into();
+        if let Some(reason) = message {
+            frame.body.parameters.push(proto::Parameter::new_error(reason));
+        }
+        frame
+    }
 }
 
 impl From<ServerResponse> for TransactionFrame {
@@ -235,6 +247,7 @@ impl From<ServerResponse> for TransactionFrame {
             ServerResponse::UploadFileReply(reply) => reply.into(),
             ServerResponse::DeleteFileReply(reply) => reply.into(),
             ServerResponse::MoveFileReply(reply) => reply.into(),
+            ServerResponse::Rejected(message) => ServerResponse::reject(message),
         }
     }
 }
@@ -401,6 +414,7 @@ impl NeolithServer {
             ClientRequest::MoveFile(_) => {
                 Ok(Some(proto::MoveFileReply.into()))
             },
+            _ => Ok(Some(ServerResponse::Rejected(Some("todo".to_string())))),
         }
     }
     async fn get_users(&self) -> proto::GetUserNameListReply {
