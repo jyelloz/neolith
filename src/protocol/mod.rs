@@ -2301,6 +2301,85 @@ impl From<DeleteFileReply> for TransactionFrame {
     }
 }
 
+#[derive(Debug, Clone)]
+pub struct NewFolder {
+    pub filename: FileName,
+    pub path: FilePath,
+}
+
+impl TryFrom<TransactionFrame> for NewFolder {
+    type Error = ProtocolError;
+    fn try_from(frame: TransactionFrame) -> Result<Self, Self::Error> {
+        let TransactionFrame {
+            body, ..
+        } = frame.require_transaction_type(TransactionType::NewFolder)?;
+        let filename = body.require_field(TransactionField::FileName)
+            .map(FileName::from)?;
+        let path = body.borrow_field(TransactionField::FilePath)
+            .try_into()
+            .unwrap_or(FilePath::Root);
+        Ok(Self { filename, path })
+    }
+}
+
+impl From<NewFolder> for TransactionFrame {
+    fn from(val: NewFolder) -> Self {
+        let NewFolder { filename, path } = val;
+        let body = [
+            Some(filename.into()),
+            path.into(),
+        ]
+            .into_iter()
+            .flat_map(Option::into_iter)
+            .collect::<TransactionBody>();
+        Self::new(TransactionType::NewFolder, body)
+    }
+}
+
+#[derive(Debug, Clone)]
+pub struct MakeFileAlias {
+    pub filename: FileName,
+    pub source: FilePath,
+    pub target: FilePath,
+}
+
+impl TryFrom<TransactionFrame> for MakeFileAlias {
+    type Error = ProtocolError;
+    fn try_from(frame: TransactionFrame) -> Result<Self, Self::Error> {
+        let TransactionFrame {
+            body, ..
+        } = frame.require_transaction_type(TransactionType::MakeFileAlias)?;
+
+        let filename = body.require_field(TransactionField::FileName)
+            .map(FileName::from)?;
+        let source = body.borrow_field(TransactionField::FilePath)
+            .try_into()
+            .unwrap_or(FilePath::Root);
+        let target = body.borrow_field(TransactionField::FileNewPath)
+            .cloned()
+            .map(Parameter::take)
+            .and_then(|path| FilePath::try_from(path.as_slice()).ok())
+            .unwrap_or(FilePath::Root);
+
+        Ok(Self { filename, source, target })
+    }
+}
+
+impl From<MakeFileAlias> for TransactionFrame {
+    fn from(val: MakeFileAlias) -> Self {
+        let MakeFileAlias { filename, source, target } = val;
+        let body = [
+            Some(filename.into()),
+            source.into(),
+            target.into(),
+        ]
+            .into_iter()
+            .flat_map(Option::into_iter)
+            .collect::<TransactionBody>();
+        Self::new(TransactionType::MakeFileAlias, body)
+    }
+}
+
 fn take_if_matches(
     parameter: Parameter,
     field: TransactionField,
