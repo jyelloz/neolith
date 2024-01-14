@@ -87,7 +87,7 @@ impl From<Nickname> for Parameter {
     }
 }
 
-#[derive(Debug, PartialEq, Eq, PartialOrd, Ord)]
+#[derive(Debug, Clone, PartialEq, Eq, PartialOrd, Ord)]
 pub struct UserLogin(Vec<u8>);
 
 impl UserLogin {
@@ -108,9 +108,8 @@ impl UserLogin {
         self.0
     }
     pub fn text(&self) -> String {
-        String::from_utf8(self.0.clone())
-            .ok()
-            .unwrap_or_else(|| "bad utf8".into())
+        let (text, _, _) = MACINTOSH.decode(&self.0);
+        text.to_string()
     }
 }
 
