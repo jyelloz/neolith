@@ -2108,6 +2108,23 @@ impl From<DeleteFile> for TransactionFrame {
     }
 }
 
+#[derive(Debug, Clone, Copy, PartialEq, Eq, PartialOrd, Ord)]
+pub struct DeleteFileReply;
+
+impl TryFrom<TransactionFrame> for DeleteFileReply {
+    type Error = ProtocolError;
+    fn try_from(frame: TransactionFrame) -> Result<Self, Self::Error> {
+        frame.require_transaction_type(TransactionType::DeleteFile)?;
+        Ok(Self)
+    }
+}
+
+impl From<DeleteFileReply> for TransactionFrame {
+    fn from(_: DeleteFileReply) -> Self {
+        Self::empty(TransactionType::DeleteFile)
+    }
+}
+
 fn take_if_matches(
     parameter: Parameter,
     field: TransactionField,
