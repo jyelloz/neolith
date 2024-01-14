@@ -845,6 +845,26 @@ impl From<WaitingCount> for Parameter {
     }
 }
 
+#[derive(Debug, Default, Clone, Copy, From, Into)]
+pub struct TransactionOptions(i32);
+
+impl TryFrom<&Parameter> for TransactionOptions {
+    type Error = ProtocolError;
+    fn try_from(parameter: &Parameter) -> Result<Self, Self::Error> {
+        parameter.clone()
+         .int()
+         .and_then(|i| i.i32())
+         .map(Self)
+         .ok_or(ProtocolError::MalformedData(TransactionField::Options))
+    }
+}
+
+impl From<TransactionOptions> for Parameter {
+    fn from(val: TransactionOptions) -> Self {
+        Parameter::new_i32(TransactionField::Options, val.0)
+    }
+}
+
 fn take_if_matches(
     parameter: Parameter,
     field: TransactionField,
