@@ -2121,7 +2121,7 @@ impl From<DeleteFile> for TransactionFrame {
             .into_iter()
             .flat_map(Option::into_iter)
             .collect::<TransactionBody>();
-        Self::new(TransactionType::UploadFile, body)
+        Self::new(TransactionType::DeleteFile, body)
     }
 }
 
