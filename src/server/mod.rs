@@ -313,6 +313,9 @@ impl TryFrom<TransactionFrame> for ClientRequest {
         if let Ok(req) = proto::GetClientInfoText::try_from(frame.clone()) {
             return Ok(req.into())
         }
+        if let Ok(req) = proto::SetClientUserInfo::try_from(frame.clone()) {
+            return Ok(req.into())
+        }
         if let Ok(req) = proto::DisconnectUser::try_from(frame.clone()) {
             return Ok(req.into())
         }
