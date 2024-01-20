@@ -28,7 +28,7 @@ pub struct Credentials {
 
 #[derive(Debug, Serialize, Deserialize, Display, PartialOrd, Ord, EnumIter, EnumString, EnumSetType)]
 #[strum(serialize_all = "snake_case")]
-#[serde(try_from = "&str")]
+#[serde(rename_all = "snake_case")]
 pub enum FileOperation {
     Download = 2,
     UploadToDropbox = 1,
@@ -48,7 +48,7 @@ pub enum FileOperation {
 
 #[derive(Debug, Serialize, Deserialize, Display, PartialOrd, Ord, EnumIter, EnumString, EnumSetType)]
 #[strum(serialize_all = "snake_case")]
-#[serde(try_from = "&str")]
+#[serde(rename_all = "snake_case")]
 pub enum UserOperation {
     CanCreateUsers = 14,
     CanDeleteUsers = 15,
@@ -61,7 +61,7 @@ pub enum UserOperation {
 
 #[derive(Debug, Serialize, Deserialize, Display, PartialOrd, Ord, EnumIter, EnumString, EnumSetType)]
 #[strum(serialize_all = "snake_case")]
-#[serde(try_from = "&str")]
+#[serde(rename_all = "snake_case")]
 pub enum NewsOperation {
     ReadNews = 20,
     PostNews = 21,
@@ -69,7 +69,7 @@ pub enum NewsOperation {
 
 #[derive(Debug, Serialize, Deserialize, Display, PartialOrd, Ord, EnumIter, EnumString, EnumSetType)]
 #[strum(serialize_all = "snake_case")]
-#[serde(try_from = "&str")]
+#[serde(rename_all = "snake_case")]
 pub enum ChatOperation {
     ReadChat = 9,
     SendChat = 10,
@@ -77,7 +77,7 @@ pub enum ChatOperation {
 
 #[derive(Debug, Serialize, Deserialize, Display, PartialOrd, Ord, EnumIter, EnumString, EnumSetType)]
 #[strum(serialize_all = "snake_case")]
-#[serde(try_from = "&str")]
+#[serde(rename_all = "snake_case")]
 pub enum MiscOperation {
     CanUseAnyName = 26,
     DontShowAgreement = 27,
