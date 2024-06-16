@@ -156,16 +156,16 @@ pub trait Files {
 #[derive(Debug)]
 pub struct OsFiles {
     root: PathBuf,
-    magic: Cookie,
+    magic: Cookie<magic::cookie::Load>,
 }
 
 impl OsFiles {
     pub fn with_root<P: Into<PathBuf>>(root: P) -> Result<Self> {
         let root = root.into().canonicalize()?;
         let metadata = fs::metadata(&root)?;
-        let magic = Cookie::open(magic::CookieFlags::APPLE)
+        let magic = Cookie::open(magic::cookie::Flags::APPLE)
             .or::<io::Error>(Err(ErrorKind::Other.into()))?;
-        magic.load::<String>(&[])
+        let magic = magic.load(&Default::default())
             .or::<io::Error>(Err(ErrorKind::Other.into()))?;
         if metadata.is_dir() {
             Ok(Self { root, magic })

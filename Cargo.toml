@@ -22,7 +22,7 @@ encoding_rs = "0.8"
 enumset = { version = "*", features = ["serde"] }
 four-cc = "*"
 futures = "0.3"
-magic = "0.13"
+magic = "0.16"
 maplit = "1"
 num_enum = "0.5"
 pwhash = "1"
