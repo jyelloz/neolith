@@ -6,6 +6,7 @@ use nom::{
     bytes::{self, streaming::take},
     number::streaming::{be_i16, be_i32, be_i64, be_i8},
 };
+use deku::prelude::*;
 use maplit::hashmap;
 use derive_more::{From, Into};
 use thiserror::Error;
@@ -28,15 +29,15 @@ pub trait HotlineProtocol: Sized {
     fn from_bytes(bytes: &[u8]) -> BIResult<Self>;
 }
 
-impl <H: Into<[u8; 4]> + From<[u8; 4]>> HotlineProtocol for H {
-    fn from_bytes(bytes: &[u8]) -> BIResult<Self> {
-        let (bytes, data) = bytes::streaming::take(4usize)(bytes)?;
-        let data: [u8; 4] = data.try_into()
-            .expect("array size mismatch");
-        Ok((bytes, data.into()))
-    }
+trait DekuHotlineProtocol {}
+
+impl <D> HotlineProtocol for D where D: DekuHotlineProtocol, D: DekuContainerWrite, D: for<'a> DekuContainerRead<'a> {
     fn into_bytes(self) -> Vec<u8> {
-        self.into().to_vec()
+        self.to_bytes().unwrap()
+    }
+    fn from_bytes(bytes: &[u8]) -> BIResult<Self> {
+        let ((bytes, _bits), value) = <Self as DekuContainerRead>::from_bytes((bytes, 0)).unwrap();
+        Ok((bytes, value))
     }
 }
 
@@ -62,7 +63,8 @@ pub enum ProtocolError {
     SystemError,
 }
 
-#[derive(Debug, PartialEq, Eq, PartialOrd, Ord, Clone, Copy, From, Into)]
+#[derive(Debug, PartialEq, Eq, PartialOrd, Ord, Clone, Copy, From, Into, DekuRead, DekuWrite)]
+#[deku(endian = "big")]
 pub struct ErrorCode(i32);
 
 impl ErrorCode {
@@ -74,17 +76,6 @@ impl ErrorCode {
 impl Default for ErrorCode {
     fn default() -> Self {
         Self::ok()
-    }
-}
-
-impl HotlineProtocol for ErrorCode {
-    fn into_bytes(self) -> Vec<u8> {
-        let Self(value) = self;
-        value.to_be_bytes().into()
-    }
-    fn from_bytes(bytes: &[u8]) -> BIResult<Self> {
-        let (bytes, value) = be_i32(bytes)?;
-        Ok((bytes, Self(value)))
     }
 }
 
@@ -139,7 +130,6 @@ pub use parameters::{
     UserNameWithInfo,
     WaitingCount,
 };
-use date::DateParameter;
 
 #[derive(Debug, PartialEq, Eq, PartialOrd, Ord)]
 pub struct LoginRequest {
@@ -188,9 +178,9 @@ impl From<LoginRequest> for TransactionBody {
 
         let parameters = [login, nickname, password, icon_id].into_iter()
             .flat_map(Option::into_iter)
-            .collect();
+            .collect::<Vec<Parameter>>();
 
-        TransactionBody { parameters }
+        parameters.into()
     }
 }
 
@@ -333,7 +323,7 @@ impl From<ShowAgreement> for TransactionBody {
                 1i16,
             )
         };
-        TransactionBody { parameters: vec![parameter] }
+        vec![parameter].into()
     }
 }
 
@@ -372,7 +362,7 @@ pub struct NotifyUserChange {
 impl From<NotifyUserChange> for TransactionFrame {
     fn from(val: NotifyUserChange) -> Self {
         let header = TransactionHeader {
-            _type: TransactionType::NotifyUserChange.into(),
+            type_: TransactionType::NotifyUserChange.into(),
             ..Default::default()
         };
         let NotifyUserChange {
@@ -416,7 +406,7 @@ pub struct NotifyUserDelete {
 impl From<NotifyUserDelete> for TransactionFrame {
     fn from(val: NotifyUserDelete) -> Self {
         let header = TransactionHeader {
-            _type: TransactionType::NotifyUserDelete.into(),
+            type_: TransactionType::NotifyUserDelete.into(),
             ..Default::default()
         };
         let NotifyUserDelete { user_id } = val;
@@ -449,7 +439,7 @@ pub struct NotifyChatUserChange {
 impl From<NotifyChatUserChange> for TransactionFrame {
     fn from(val: NotifyChatUserChange) -> Self {
         let header = TransactionHeader {
-            _type: TransactionType::NotifyChatUserChange.into(),
+            type_: TransactionType::NotifyChatUserChange.into(),
             ..Default::default()
         };
         let NotifyChatUserChange {
@@ -500,7 +490,7 @@ pub struct NotifyChatUserDelete {
 impl From<NotifyChatUserDelete> for TransactionFrame {
     fn from(val: NotifyChatUserDelete) -> Self {
         let header = TransactionHeader {
-            _type: TransactionType::NotifyChatUserDelete.into(),
+            type_: TransactionType::NotifyChatUserDelete.into(),
             ..Default::default()
         };
         let NotifyChatUserDelete {
@@ -548,7 +538,7 @@ pub struct NotifyChatSubject {
 impl From<NotifyChatSubject> for TransactionFrame {
     fn from(val: NotifyChatSubject) -> Self {
         let header = TransactionHeader {
-            _type: TransactionType::NotifyChatSubject.into(),
+            type_: TransactionType::NotifyChatSubject.into(),
             ..Default::default()
         };
         let NotifyChatSubject { chat_id, subject } = val;
@@ -607,7 +597,7 @@ impl GetUserNameListReply {
 impl From<GetUserNameListReply> for TransactionFrame {
     fn from(val: GetUserNameListReply) -> Self {
         let header = TransactionHeader {
-            _type: TransactionType::GetUserNameList.into(),
+            type_: TransactionType::GetUserNameList.into(),
             is_reply: IsReply::reply(),
             ..Default::default()
         };
@@ -698,7 +688,7 @@ impl GetMessagesReply {
 impl From<GetMessagesReply> for TransactionFrame {
     fn from(val: GetMessagesReply) -> Self {
         let header = TransactionHeader {
-            _type: TransactionType::GetMessages.into(),
+            type_: TransactionType::GetMessages.into(),
             is_reply: IsReply::reply(),
             ..Default::default()
         };
@@ -800,7 +790,7 @@ impl GetFileNameListReply {
 impl From<GetFileNameListReply> for TransactionFrame {
     fn from(val: GetFileNameListReply) -> Self {
         let header = TransactionHeader {
-            _type: TransactionType::GetFileNameList.into(),
+            type_: TransactionType::GetFileNameList.into(),
             is_reply: IsReply::reply(),
             ..Default::default()
         };
@@ -828,7 +818,7 @@ impl From<FileNameWithInfo> for Parameter {
             &val.creator.0[..],
             &(i32::from(val.file_size)).to_be_bytes()[..],
             &[0u8; 4][..],
-            &val.name_script.into_bytes(),
+            &val.name_script.to_bytes().unwrap(),
             &filename_size.to_be_bytes()[..],
             &val.file_name[..],
         ].iter()
@@ -842,18 +832,9 @@ impl From<FileNameWithInfo> for Parameter {
     }
 }
 
-#[derive(Debug, Default, Clone, Copy, From, Into)]
+#[derive(Debug, Default, Clone, Copy, From, Into, DekuRead, DekuWrite)]
+#[deku(endian = "big")]
 pub struct NameScript(i16);
-
-impl HotlineProtocol for NameScript {
-    fn from_bytes(bytes: &[u8]) -> BIResult<Self> {
-        let (bytes, data) = be_i16(bytes)?;
-        Ok((bytes, data.into()))
-    }
-    fn into_bytes(self) -> Vec<u8> {
-        self.0.to_be_bytes().to_vec()
-    }
-}
 
 #[derive(Debug, Clone)]
 pub struct GetFileInfo {
@@ -1859,6 +1840,7 @@ impl FlattenedFileObject {
             ForkHeader {
                 fork_type: ForkType::Info,
                 compression_type: Default::default(),
+                padding: [0u8; 4],
                 data_size,
             },
             self.info.clone(),
@@ -1870,6 +1852,7 @@ impl FlattenedFileObject {
                 ForkHeader {
                     fork_type,
                     compression_type: Default::default(),
+                    padding: [0u8; 4],
                     data_size: (fork.0 as usize).into(),
                 },
                 fork,
@@ -1880,9 +1863,12 @@ impl FlattenedFileObject {
     }
 }
 
-#[derive(Debug, Clone)]
+#[derive(Debug, Clone, DekuRead, DekuWrite)]
+#[deku(id_type = "u32")]
 pub enum CompressionType {
+    #[deku(id = "0u32")]
     None,
+    #[deku(id_pat = "_")]
     Other(NonZeroU32),
 }
 
@@ -1892,223 +1878,70 @@ impl Default for CompressionType {
     }
 }
 
-impl From<[u8; 4]> for CompressionType {
-    fn from(code: [u8; 4]) -> Self {
-        let code = u32::from_be_bytes(code);
-        match NonZeroU32::new(code) {
-            None => Self::None,
-            Some(code) => Self::Other(code),
-        }
-    }
-}
-
-impl From<CompressionType> for [u8; 4] {
-    fn from(val: CompressionType) -> Self {
-        match val {
-            CompressionType::None => [0u8; 4],
-            CompressionType::Other(code) => code.get().to_be_bytes(),
-        }
-    }
-}
-
-#[derive(Debug, Clone)]
+#[derive(Debug, Clone, DekuRead, DekuWrite)]
+#[deku(id_type = "[u8; 4]")]
 pub enum PlatformType {
+    #[deku(id = b"AMAC")]
     AppleMac,
+    #[deku(id = b"MWIN")]
     MicrosoftWin,
+    #[deku(id_pat = "_")]
     Other([u8; 4]),
 }
 
-const AMAC: &[u8; 4] = b"AMAC";
-const MWIN: &[u8; 4] = b"MWIN";
-
-impl From<[u8; 4]> for PlatformType {
-    fn from(code: [u8; 4]) -> Self {
-        match &code {
-            AMAC => Self::AppleMac,
-            MWIN => Self::MicrosoftWin,
-            _ => Self::Other(code),
-        }
-    }
-}
-
-impl From<PlatformType> for [u8; 4] {
-    fn from(val: PlatformType) -> Self {
-        match val {
-            PlatformType::AppleMac => *AMAC,
-            PlatformType::MicrosoftWin => *MWIN,
-            PlatformType::Other(code) => code,
-        }
-    }
-}
-
-const INFO: &[u8; 4] = b"INFO";
-const DATA: &[u8; 4] = b"DATA";
-const MACR: &[u8; 4] = b"MACR";
-
-#[derive(Debug, Clone, Copy, Hash, PartialEq, Eq, PartialOrd, Ord)]
+#[derive(Debug, Clone, Copy, Hash, PartialEq, Eq, PartialOrd, Ord, DekuRead, DekuWrite)]
+#[deku(id_type = "[u8; 4]")]
 pub enum ForkType {
+    #[deku(id = b"INFO")]
     Info,
+    #[deku(id = b"DATA")]
     Data,
+    #[deku(id = b"MACR")]
     Resource,
+    #[deku(id_pat = "_")]
     Other([u8; 4]),
 }
 
-impl From<[u8; 4]> for ForkType {
-    fn from(code: [u8; 4]) -> Self {
-        match &code {
-            INFO => Self::Info,
-            DATA => Self::Data,
-            MACR => Self::Resource,
-            _ => Self::Other(code),
-        }
-    }
-}
-
-impl From<ForkType> for [u8; 4] {
-    fn from(val: ForkType) -> Self {
-        match val {
-            ForkType::Info => *INFO,
-            ForkType::Data => *DATA,
-            ForkType::Resource => *MACR,
-            ForkType::Other(code) => code,
-        }
-    }
-}
-
-#[derive(Debug, Default, Clone, Copy, PartialEq, Eq, PartialOrd, Ord, From, Into)]
+#[derive(Debug, Default, Clone, Copy, PartialEq, Eq, PartialOrd, Ord, From, Into, DekuRead, DekuWrite)]
+#[deku(endian = "big")]
 pub struct FileFlags(i32);
 
-impl HotlineProtocol for FileFlags {
-    fn from_bytes(bytes: &[u8]) -> BIResult<Self> {
-        let (bytes, flags) = be_i32(bytes)?;
-        Ok((bytes, flags.into()))
-    }
-    fn into_bytes(self) -> Vec<u8> {
-        self.0.to_be_bytes().to_vec()
-    }
-}
-
-#[derive(Debug, Default, Clone, Copy, PartialEq, Eq, PartialOrd, Ord, From, Into)]
+#[derive(Debug, Default, Clone, Copy, PartialEq, Eq, PartialOrd, Ord, From, Into, DekuRead, DekuWrite)]
+#[deku(endian = "big")]
 pub struct PlatformFlags(i32);
 
-impl HotlineProtocol for PlatformFlags {
-    fn from_bytes(bytes: &[u8]) -> BIResult<Self> {
-        let (bytes, flags) = be_i32(bytes)?;
-        Ok((bytes, flags.into()))
-    }
-    fn into_bytes(self) -> Vec<u8> {
-        self.0.to_be_bytes().to_vec()
-    }
-}
-
-#[derive(Debug, Clone)]
+#[derive(Debug, Clone, DekuRead, DekuWrite)]
 pub struct ForkHeader {
     pub fork_type: ForkType,
     pub compression_type: CompressionType,
+    pub padding: [u8; 4],
     pub data_size: DataSize,
 }
 
-impl HotlineProtocol for ForkHeader {
-    fn from_bytes(bytes: &[u8]) -> BIResult<Self> {
-        let (bytes, fork_type) = ForkType::from_bytes(bytes)?;
-        let (bytes, compression_type) = CompressionType::from_bytes(bytes)?;
-        let (bytes, _) = take(4usize)(bytes)?;
-        let (bytes, data_size) = map(be_i32, DataSize::from)(bytes)?;
-        let body = Self {
-            fork_type,
-            compression_type,
-            data_size,
-        };
-        Ok((bytes, body))
-    }
-    fn into_bytes(self) -> Vec<u8> {
-        [
-            self.fork_type.into_bytes(),
-            self.compression_type.into_bytes(),
-            vec![0u8; 4],
-            self.data_size.into_bytes(),
-        ].concat()
-    }
-}
-
-#[derive(Debug, Clone)]
+#[derive(Debug, Clone, DekuRead, DekuWrite)]
 pub struct InfoFork {
     pub platform: PlatformType,
     pub type_code: FileType,
     pub creator_code: Creator,
     pub flags: FileFlags,
     pub platform_flags: PlatformFlags,
+    pub padding: [u8; 4],
     pub created_at: FileCreatedAt,
     pub modified_at: FileModifiedAt,
     pub name_script: NameScript,
+    #[deku(endian = "big")]
+    pub name_len: i16,
+    #[deku(count = "name_len")]
     pub file_name: Vec<u8>,
-    pub comment: Option<Vec<u8>>,
+    #[deku(endian = "big")]
+    pub comment_len: i16,
+    #[deku(count = "comment_len")]
+    pub comment: Vec<u8>,
 }
 
 impl InfoFork {
-    fn comment_len(&self) -> usize {
-        self.comment.as_ref()
-            .map(Vec::len)
-            .unwrap_or_default()
-    }
     pub fn size(&self) -> usize {
-        74 + self.file_name.len() + self.comment_len()
-    }
-}
-
-impl HotlineProtocol for InfoFork {
-    fn from_bytes(bytes: &[u8]) -> BIResult<Self> {
-        let (bytes, platform) = PlatformType::from_bytes(bytes)?;
-        let (bytes, type_code) = FileType::from_bytes(bytes)?;
-        let (bytes, creator_code) = Creator::from_bytes(bytes)?;
-        let (bytes, flags) = FileFlags::from_bytes(bytes)?;
-        let (bytes, platform_flags) = PlatformFlags::from_bytes(bytes)?;
-        let (bytes, _reserved) = take(32usize)(bytes)?;
-        let (bytes, created_at) = DateParameter::from_bytes(bytes)?;
-        let (bytes, modified_at) = DateParameter::from_bytes(bytes)?;
-        let (bytes, name_script) = NameScript::from_bytes(bytes)?;
-        let (bytes, name_len) = be_i16(bytes)?;
-        let (bytes, file_name) = take(name_len as usize)(bytes)?;
-        let (bytes, comment_len) = be_i16(bytes)?;
-        let (bytes, comment) = take(comment_len as usize)(bytes)?;
-        let comment = Some(comment.to_vec())
-            .filter(|v| !v.is_empty());
-        let body = Self {
-            platform,
-            type_code,
-            creator_code,
-            flags,
-            platform_flags,
-            created_at: created_at.into(),
-            modified_at: modified_at.into(),
-            name_script,
-            file_name: file_name.to_vec(),
-            comment,
-        };
-        Ok((bytes, body))
-    }
-    fn into_bytes(self) -> Vec<u8> {
-        let created_at: DateParameter = self.created_at.into();
-        let modified_at: DateParameter = self.modified_at.into();
-        let file_name = self.file_name;
-        let name_len = file_name.len() as i16;
-        let comment = self.comment.unwrap_or_default();
-        let comment_len = comment.len() as i16;
-        vec![
-            self.platform.into_bytes(),
-            self.type_code.into_bytes(),
-            self.creator_code.into_bytes(),
-            self.flags.into_bytes(),
-            self.platform_flags.into_bytes(),
-            vec![0u8; 32],
-            created_at.into_bytes(),
-            modified_at.into_bytes(),
-            self.name_script.into_bytes(),
-            name_len.to_be_bytes().to_vec(),
-            file_name,
-            comment_len.to_be_bytes().to_vec(),
-            comment,
-        ].concat()
+        74 + self.file_name.len() + self.comment.len()
     }
 }
 
@@ -2413,7 +2246,7 @@ mod tests {
     #[test]
     fn parse_authenticated_login() {
 
-        let (tail, frame) = TransactionFrame::from_bytes(AUTHENTICATED_LOGIN)
+        let (tail, frame) = <TransactionFrame as HotlineProtocol>::from_bytes(AUTHENTICATED_LOGIN)
             .expect("could not parse valid login packet");
 
         assert!(tail.is_empty());
