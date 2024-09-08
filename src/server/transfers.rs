@@ -17,6 +17,7 @@ use tokio::{
 use derive_more::{From, Into};
 use thiserror::Error;
 use tracing::{debug, error};
+use deku::prelude::*;
 
 use crate::protocol::{
     self as proto,
@@ -145,16 +146,19 @@ impl Files {
         debug!("found filename {file_name:?}");
         let len = stat.len();
         let info = proto::InfoFork {
-            platform: (*b"AMAC").into(),
-            type_code: b"BINA".into(),
-            creator_code: b"dosa".into(),
+            platform: proto::PlatformType::AppleMac,
+            type_code: proto::FileType::try_from(&b"BINA"[..]).unwrap(),
+            creator_code: proto::Creator::try_from(&b"dosa"[..]).unwrap(),
             flags: Default::default(),
             platform_flags: Default::default(),
+            padding: [0u8; 4],
             created_at: Default::default(),
             modified_at: Default::default(),
             name_script: Default::default(),
+            name_len: file_name.len() as i16,
             file_name,
-            comment: None,
+            comment_len: 0,
+            comment: vec![],
         };
         Ok((len, info))
     }
@@ -226,11 +230,11 @@ impl <S: AsyncRead + AsyncWrite + Unpin + Send> TransferConnection<S> {
         let handshake = self.read_handshake().await?;
         let mut transfers = self.transfers.clone();
         debug!("handshake={:?}", &handshake);
-        let proto::TransferHandshake { reference, size } = handshake;
+        let proto::TransferHandshake { reference, size, .. } = handshake;
         tracing::Span::current()
             .record("reference", format!("{:#x}", i32::from(reference)));
         let id = reference.into();
-        let result = if let Some(size) = size {
+        let result = if let Some(size) = size.filter(|s| i32::from(*s) != 0) {
             self.handle_file_upload(id, size).await
         } else {
             self.handle_file_download(id).await
@@ -246,8 +250,8 @@ impl <S: AsyncRead + AsyncWrite + Unpin + Send> TransferConnection<S> {
         let mut buf = Box::pin(vec![0u8; 16]);
         self.socket.read_exact(&mut buf).await?;
         debug!("handshake bytes={buf:?}");
-        match proto::TransferHandshake::from_bytes(&buf) {
-            Ok((_, handshake)) => Ok(handshake),
+        match proto::TransferHandshake::try_from(&buf[..]) {
+            Ok(handshake) => Ok(handshake),
             _ => Err(proto::ProtocolError::ParseHeader.into()),
         }
     }
@@ -256,7 +260,7 @@ impl <S: AsyncRead + AsyncWrite + Unpin + Send> TransferConnection<S> {
         header: proto::ForkHeader,
         body: proto::AsyncDataSource,
     ) -> io::Result<u64> {
-        let bytes = header.into_bytes();
+        let bytes = header.to_bytes().unwrap();
         socket.write_all(&bytes).await?;
         let (_, mut fork) = body.into();
         let bytes = tokio::io::copy(&mut fork, socket).await?;
@@ -274,9 +278,9 @@ impl <S: AsyncRead + AsyncWrite + Unpin + Send> TransferConnection<S> {
         let header = file.header();
         let header = header.into_bytes();
         socket.write_all(&header).await?;
-        let info_header = info_header.into_bytes();
+        let info_header = info_header.to_bytes().unwrap();
         socket.write_all(&info_header).await?;
-        let info = info.into_bytes();
+        let info = info.to_bytes().unwrap();
         socket.write_all(&info).await?;
         if let Some((header, body)) = file.take_fork(proto::ForkType::Data) {
             let size = Self::write_fork(&mut socket, header, body).await?;
@@ -308,8 +312,8 @@ impl <S: AsyncRead + AsyncWrite + Unpin + Send> TransferConnection<S> {
     async fn read_fork_header(&mut self) -> Result<proto::ForkHeader> {
         let mut buf = [0u8; 16];
         self.socket.read_exact(&mut buf).await?;
-        match proto::ForkHeader::from_bytes(&buf) {
-            Ok((_, header)) => Ok(header),
+        match proto::ForkHeader::try_from(&buf[..]) {
+            Ok(header) => Ok(header),
             _ => Err(proto::ProtocolError::ParseHeader.into()),
         }
     }
@@ -329,8 +333,8 @@ impl <S: AsyncRead + AsyncWrite + Unpin + Send> TransferConnection<S> {
             self.socket.read_exact(&mut comment[..comment_len]).await?;
             buf.extend(&comment);
         }
-        match proto::InfoFork::from_bytes(&buf) {
-            Ok((_, info)) => Ok(info),
+        match proto::InfoFork::try_from(&buf[..]) {
+            Ok(info) => Ok(info),
             _ => Err(proto::ProtocolError::ParseHeader.into()),
         }
     }
