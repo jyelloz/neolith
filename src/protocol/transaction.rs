@@ -4,19 +4,19 @@ use super::{
     TransactionType,
     TransactionField,
     HotlineProtocol,
+    DekuHotlineProtocol,
     BIResult,
     be_i8,
     be_i16,
     be_i32,
     be_i64,
-    take,
-    multi,
 };
 
 use derive_more::{From, Into};
 use encoding_rs::MACINTOSH;
+use deku::prelude::*;
 
-#[derive(Debug, Clone, Copy, From, Into)]
+#[derive(Debug, Clone, Copy, From, Into, DekuRead, DekuWrite)]
 pub struct Flags(i8);
 
 impl Flags {
@@ -31,18 +31,7 @@ impl Default for Flags {
     }
 }
 
-impl HotlineProtocol for Flags {
-    fn into_bytes(self) -> Vec<u8> {
-        let Self(value) = self;
-        value.to_be_bytes().into()
-    }
-    fn from_bytes(bytes: &[u8]) -> BIResult<Self> {
-        let (bytes, value) = be_i8(bytes)?;
-        Ok((bytes, Self(value)))
-    }
-}
-
-#[derive(Debug, Clone, Copy, From, Into)]
+#[derive(Debug, Clone, Copy, Default, From, Into, DekuRead, DekuWrite)]
 pub struct IsReply(i8);
 
 impl IsReply {
@@ -63,60 +52,20 @@ impl From<IsReply> for bool {
     }
 }
 
-impl HotlineProtocol for IsReply {
-    fn into_bytes(self) -> Vec<u8> {
-        let Self(value) = self;
-        value.to_be_bytes().into()
-    }
-    fn from_bytes(bytes: &[u8]) -> BIResult<Self> {
-        let (bytes, value) = be_i8(bytes)?;
-        Ok((bytes, Self(value)))
-    }
-}
-
-#[derive(Debug, Clone, Copy, From, Into)]
+#[derive(Debug, Clone, Copy, Default, From, Into, DekuRead, DekuWrite)]
+#[deku(endian = "big")]
 pub struct Type(i16);
 
-impl HotlineProtocol for Type {
-    fn into_bytes(self) -> Vec<u8> {
-        let Self(value) = self;
-        value.to_be_bytes().into()
-    }
-    fn from_bytes(bytes: &[u8]) -> BIResult<Self> {
-        let (bytes, value) = be_i16(bytes)?;
-        Ok((bytes, Self(value)))
-    }
-}
-
-#[derive(Debug, Clone, Copy, Default, From, Into)]
+#[derive(Debug, Clone, Copy, Default, From, Into, DekuRead, DekuWrite)]
+#[deku(endian = "big")]
 pub struct Id(i32);
 
-impl HotlineProtocol for Id {
-    fn into_bytes(self) -> Vec<u8> {
-        let Self(value) = self;
-        value.to_be_bytes().into()
-    }
-    fn from_bytes(bytes: &[u8]) -> BIResult<Self> {
-        let (bytes, value) = be_i32(bytes)?;
-        Ok((bytes, Self(value)))
-    }
-}
-
-#[derive(Debug, Clone, Copy, Default, From, Into)]
+#[derive(Debug, Clone, Copy, Default, From, Into, DekuRead, DekuWrite)]
+#[deku(endian = "big")]
 pub struct TotalSize(i32);
 
-impl HotlineProtocol for TotalSize {
-    fn into_bytes(self) -> Vec<u8> {
-        let Self(value) = self;
-        value.to_be_bytes().into()
-    }
-    fn from_bytes(bytes: &[u8]) -> BIResult<Self> {
-        let (bytes, value) = be_i32(bytes)?;
-        Ok((bytes, Self(value)))
-    }
-}
-
-#[derive(Debug, Clone, Copy, Default, From, Into)]
+#[derive(Debug, Clone, Copy, Default, From, Into, DekuRead, DekuWrite)]
+#[deku(endian = "big")]
 pub struct DataSize(i32);
 
 impl From<usize> for DataSize {
@@ -125,22 +74,11 @@ impl From<usize> for DataSize {
     }
 }
 
-impl HotlineProtocol for DataSize {
-    fn into_bytes(self) -> Vec<u8> {
-        let Self(value) = self;
-        value.to_be_bytes().into()
-    }
-    fn from_bytes(bytes: &[u8]) -> BIResult<Self> {
-        let (bytes, value) = be_i32(bytes)?;
-        Ok((bytes, Self(value)))
-    }
-}
-
-#[derive(Debug, Clone, Copy)]
+#[derive(Debug, Clone, Copy, DekuRead, DekuWrite)]
 pub struct TransactionHeader {
     pub flags: Flags,
     pub is_reply: IsReply,
-    pub _type: Type,
+    pub type_: Type,
     pub id: Id,
     pub error_code: ErrorCode,
     pub total_size: TotalSize,
@@ -149,7 +87,7 @@ pub struct TransactionHeader {
 
 impl TransactionHeader {
     pub fn transaction_type(&self) -> Result<TransactionType, ProtocolError> {
-        let Type(type_id) = self._type;
+        let Type(type_id) = self.type_;
         TransactionType::try_from(type_id)
             .map_err(|_| ProtocolError::UnsupportedTransaction(type_id))
     }
@@ -171,22 +109,26 @@ impl TransactionHeader {
     }
     pub fn reply_to(self, request: &TransactionHeader) -> Self {
         Self {
-            _type: TransactionType::Reply.into(),
+            type_: TransactionType::Reply.into(),
             id: request.id,
             is_reply: IsReply::reply(),
             ..self
         }
+    }
+    pub fn update_sizes(&mut self, size: usize) {
+        self.data_size = DataSize(size as i32);
+        self.total_size = TotalSize(size as i32);
     }
 }
 
 impl Default for TransactionHeader {
     fn default() -> Self {
         Self {
-            _type: TransactionType::Error.into(),
+            type_: TransactionType::Error.into(),
             id: 0.into(),
             error_code: ErrorCode::ok(),
             is_reply: IsReply::request(),
-            flags: Default::default(),
+            flags: Flags::default(),
             total_size: 0.into(),
             data_size: 0.into(),
         }
@@ -196,127 +138,46 @@ impl Default for TransactionHeader {
 impl From<TransactionType> for TransactionHeader {
     fn from(_type: TransactionType) -> Self {
         Self {
-            _type: _type.into(),
+            type_: _type.into(),
             ..Default::default()
         }
     }
 }
 
-impl HotlineProtocol for TransactionHeader {
-    fn into_bytes(self) -> Vec<u8> {
-        let flags = self.flags.into_bytes();
-        let is_reply = self.is_reply.into_bytes();
-        let _type = self._type.into_bytes();
-        let id = self.id.into_bytes();
-        let error_code = self.error_code.into_bytes();
-        let total_size = self.total_size.into_bytes();
-        let data_size = self.data_size.into_bytes();
-        [
-            &flags[..],
-            &is_reply[..],
-            &_type[..],
-            &id[..],
-            &error_code[..],
-            &total_size[..],
-            &data_size[..],
-        ].into_iter()
-            .flat_map(|bytes| bytes.iter())
-            .copied()
-            .collect()
-    }
-    fn from_bytes(bytes: &[u8]) -> BIResult<Self> {
-        let (bytes, flags) = Flags::from_bytes(bytes)?;
-        let (bytes, is_reply) = IsReply::from_bytes(bytes)?;
-        let (bytes, _type) = Type::from_bytes(bytes)?;
-        let (bytes, id) = Id::from_bytes(bytes)?;
-        let (bytes, error_code) = ErrorCode::from_bytes(bytes)?;
-        let (bytes, total_size) = TotalSize::from_bytes(bytes)?;
-        let (bytes, data_size) = DataSize::from_bytes(bytes)?;
-        let header = Self {
-            flags,
-            is_reply,
-            _type,
-            id,
-            error_code,
-            total_size,
-            data_size,
-        };
-        Ok((bytes, header))
-    }
-}
-
-#[derive(Debug, Clone, Copy, From, Into)]
+#[derive(Debug, Clone, Copy, From, Into, DekuRead, DekuWrite)]
+#[deku(endian = "big")]
 pub struct FieldId(i16);
 
-impl HotlineProtocol for FieldId {
-    fn into_bytes(self) -> Vec<u8> {
-        let Self(value) = self;
-        value.to_be_bytes().into()
-    }
-    fn from_bytes(bytes: &[u8]) -> BIResult<Self> {
-        let (bytes, value) = be_i16(bytes)?;
-        Ok((bytes, Self(value)))
-    }
-}
-
-#[derive(Debug, Clone, Copy, From, Into)]
+#[derive(Debug, Clone, Copy, From, Into, DekuRead, DekuWrite)]
+#[deku(endian = "big")]
 struct FieldSize(i16);
 
-impl From<&[u8]> for FieldSize {
-    fn from(data: &[u8]) -> Self {
-        Self(data.len() as i16)
-    }
-}
-
-impl HotlineProtocol for FieldSize {
-    fn into_bytes(self) -> Vec<u8> {
-        let Self(value) = self;
-        value.to_be_bytes().into()
-    }
-    fn from_bytes(bytes: &[u8]) -> BIResult<Self> {
-        let (bytes, value) = be_i16(bytes)?;
-        Ok((bytes, Self(value)))
-    }
-}
-
-#[derive(Debug, Clone, Copy, From, Into)]
+#[derive(Debug, Clone, Copy, From, Into, DekuRead, DekuWrite)]
+#[deku(endian = "big")]
 struct ParameterCount(i16);
 
-impl HotlineProtocol for ParameterCount {
-    fn into_bytes(self) -> Vec<u8> {
-        let Self(value) = self;
-        value.to_be_bytes().into()
-    }
-    fn from_bytes(bytes: &[u8]) -> BIResult<Self> {
-        let (bytes, value) = be_i16(bytes)?;
-        Ok((bytes, Self(value)))
-    }
-}
-
-#[derive(Debug, Clone)]
+#[derive(Debug, Clone, DekuRead, DekuWrite)]
 pub struct Parameter {
     pub field_id: FieldId,
-    field_data: Vec<u8>,
+    #[deku(endian = "big", update = "self.field_data.len()")]
+    pub field_size: i16,
+    #[deku(count = "field_size")]
+    pub field_data: Vec<u8>,
 }
 
 impl Parameter {
     pub fn new<F: Into<FieldId>>(field_id: F, field_data: Vec<u8>) -> Self {
         Self {
             field_id: field_id.into(),
+            field_size: field_data.len() as i16,
             field_data,
         }
     }
     pub fn new_i16<F: Into<FieldId>>(field_id: F, int: i16) -> Self {
-        Self {
-            field_id: field_id.into(),
-            field_data: int.to_be_bytes().to_vec(),
-        }
+        Self::new(field_id, int.to_be_bytes().to_vec())
     }
     pub fn new_i32<F: Into<FieldId>>(field_id: F, int: i32) -> Self {
-        Self {
-            field_id: field_id.into(),
-            field_data: int.to_be_bytes().to_vec(),
-        }
+        Self::new(field_id, int.to_be_bytes().to_vec())
     }
     pub fn new_int<F, I>(field_id: F, int: I) -> Self
         where F: Into<FieldId>,
@@ -324,8 +185,10 @@ impl Parameter {
         let field_id = field_id.into();
         let param = int.into();
         let field_data: Vec<u8> = param.into();
+        let field_size = field_data.len() as i16;
         Self {
             field_id,
+            field_size,
             field_data,
         }
     }
@@ -343,42 +206,17 @@ impl Parameter {
     pub fn take(self) -> Vec<u8> {
         self.field_data
     }
-    fn field_data(bytes: &[u8], size: usize) -> BIResult<Vec<u8>> {
-        let (bytes, data) = take(size)(bytes)?;
-        Ok((bytes, data.to_vec()))
-    }
     pub fn int(&self) -> Option<IntParameter> {
         self.into()
+    }
+    pub fn compute_length(&self) -> usize {
+        2 + 2 + self.field_data.len()
     }
 }
 
 impl std::borrow::Borrow<[u8]> for Parameter {
     fn borrow(&self) -> &[u8] {
         &self.field_data
-    }
-}
-
-impl HotlineProtocol for Parameter {
-    fn into_bytes(self) -> Vec<u8> {
-        let field_id = self.field_id.0.to_be_bytes();
-        let field_size = (self.field_data.len() as i16).to_be_bytes();
-        let field_data = self.field_data;
-        [
-            &field_id[..],
-            &field_size[..],
-            &field_data[..],
-        ].into_iter()
-            .flat_map(|bytes| bytes.iter())
-            .copied()
-            .collect()
-    }
-    fn from_bytes(bytes: &[u8]) -> BIResult<Self> {
-        let (bytes, field_id) = FieldId::from_bytes(bytes)?;
-        let (bytes, field_size) = FieldSize::from_bytes(bytes)?;
-        let field_size = field_size.0 as usize;
-        let (bytes, field_data) = Self::field_data(bytes, field_size)?;
-        let parameter = Parameter { field_id, field_data };
-        Ok((bytes, parameter))
     }
 }
 
@@ -460,26 +298,22 @@ impl From<IntParameter> for Vec<u8> {
     }
 }
 
-#[derive(Debug, Clone, Default)]
+#[derive(Debug, Clone, Default, DekuRead, DekuWrite)]
 pub struct TransactionBody {
+    #[deku(endian = "big", update = "self.parameters.len()")]
+    parameter_count: i16,
+    #[deku(count = "parameter_count")]
     pub parameters: Vec<Parameter>,
 }
 
 impl TransactionBody {
-    fn parameter_count(bytes: &[u8]) -> BIResult<usize> {
-        let (bytes, count) = be_i16(bytes)?;
-        Ok((bytes, count as usize))
-    }
-    fn parameter_list(bytes: &[u8], count: usize) -> BIResult<Vec<Parameter>> {
-        multi::count(Parameter::from_bytes, count)(bytes)
-    }
     pub fn borrow_field(&self, field: TransactionField) -> Option<&Parameter> {
-        let Self { parameters } = self;
+        let Self { parameters, .. } = self;
         parameters.iter()
             .find(|p| p.field_matches(field))
     }
     pub fn borrow_fields(&self, field: TransactionField) -> Vec<&Parameter> {
-        let Self { parameters } = self;
+        let Self { parameters, .. } = self;
         parameters.iter()
             .filter(|p| p.field_matches(field))
             .collect()
@@ -487,6 +321,9 @@ impl TransactionBody {
     pub fn require_field(&self, field: TransactionField) -> Result<&Parameter, ProtocolError> {
         self.borrow_field(field)
             .ok_or(ProtocolError::MissingField(field))
+    }
+    pub fn compute_length(&self) -> usize {
+        2 + self.parameters.iter().map(Parameter::compute_length).sum::<usize>()
     }
 }
 
@@ -498,36 +335,19 @@ impl FromIterator<Parameter> for TransactionBody {
 
 impl From<Vec<Parameter>> for TransactionBody {
     fn from(parameters: Vec<Parameter>) -> Self {
-        Self { parameters }
+        Self {
+            parameter_count: parameters.len() as i16,
+            parameters,
+        }
     }
 }
 
-impl HotlineProtocol for TransactionBody {
-    fn into_bytes(self) -> Vec<u8> {
-        let Self { parameters } = self;
-        let parameter_count = (parameters.len() as i16).to_be_bytes();
-        let parameters: Vec<u8> = parameters.into_iter()
-            .map(HotlineProtocol::into_bytes)
-            .flat_map(|bytes| bytes.into_iter())
-            .collect();
-        [
-            parameter_count.as_slice(),
-            parameters.as_slice(),
-        ].into_iter()
-            .flat_map(|bytes| bytes.iter())
-            .copied()
-            .collect()
-    }
-    fn from_bytes(bytes: &[u8]) -> BIResult<Self> {
-        let (bytes, count) = Self::parameter_count(bytes)?;
-        let (bytes, parameters) = Self::parameter_list(bytes, count)?;
-        let body = TransactionBody { parameters };
-        Ok((bytes, body))
-    }
-}
-
-#[derive(Debug, Clone)]
+#[derive(Debug, Clone, DekuRead, DekuWrite)]
 pub struct TransactionFrame {
+    #[deku(update = "{
+        self.header.update_sizes(self.body.compute_length());
+        self.header
+    }")]
     pub header: TransactionHeader,
     pub body: TransactionBody,
 }
@@ -582,24 +402,16 @@ impl <F: Into<TransactionFrame>> IntoFrameExt for F {
     }
 }
 
+impl DekuHotlineProtocol for TransactionHeader {}
+impl DekuHotlineProtocol for TransactionBody {}
+
 impl HotlineProtocol for TransactionFrame {
-    fn into_bytes(self) -> Vec<u8> {
-        let Self { header, body } = self;
-        let body = body.into_bytes();
-        let size = body.len() as i32;
-        let header = TransactionHeader {
-            total_size: TotalSize(size),
-            data_size: DataSize(size),
-            ..header
-        }.into_bytes();
-        [header, body].into_iter()
-            .flat_map(|bytes| bytes.into_iter())
-            .collect()
+    fn into_bytes(mut self) -> Vec<u8> {
+        self.update().unwrap();
+        self.to_bytes().unwrap()
     }
     fn from_bytes(bytes: &[u8]) -> BIResult<Self> {
-        let (bytes, header) = TransactionHeader::from_bytes(bytes)?;
-        let (bytes, body) = TransactionBody::from_bytes(bytes)?;
-        let frame = Self { header, body };
-        Ok((bytes, frame))
+        let ((bytes, _bits), value) = <Self as DekuContainerRead>::from_bytes((bytes, 0)).unwrap();
+        Ok((bytes, value))
     }
 }
