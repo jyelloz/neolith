@@ -7,7 +7,6 @@ use super::{
     take,
     be_i8,
     be_i16,
-    be_i32,
     BIResult,
     date::DateParameter,
 };
@@ -19,6 +18,7 @@ use std::{
     fmt::{Debug, Formatter, self},
     path::PathBuf,
 };
+use deku::prelude::*;
 
 pub trait Credential {
     fn deobfuscate(&self) -> Vec<u8>;
@@ -630,14 +630,8 @@ impl std::fmt::Debug for FileComment {
     }
 }
 
-#[derive(Debug, Clone, Copy, From, Into)]
+#[derive(Debug, Clone, Copy, From, Into, DekuRead, DekuWrite)]
 pub struct FileType(pub [u8; 4]);
-
-impl From<&[u8; 4]> for FileType {
-    fn from(data: &[u8; 4]) -> Self {
-        data.to_owned().into()
-    }
-}
 
 impl TryFrom<&Parameter> for FileType {
     type Error = ProtocolError;
@@ -658,14 +652,8 @@ impl From<FileType> for Parameter {
     }
 }
 
-#[derive(Debug, Clone, Copy, From, Into)]
+#[derive(Debug, Clone, Copy, From, Into, DekuRead, DekuWrite)]
 pub struct Creator(pub [u8; 4]);
-
-impl From<&[u8; 4]> for Creator {
-    fn from(data: &[u8; 4]) -> Self {
-        data.to_owned().into()
-    }
-}
 
 #[derive(Debug, Clone, From, Into)]
 pub struct FileTypeString(Vec<u8>);
@@ -713,7 +701,7 @@ impl From<FileCreatorString> for Parameter {
     }
 }
 
-#[derive(Debug, Default, Clone, Copy, From, Into, PartialEq, Eq)]
+#[derive(Debug, Default, Clone, Copy, From, Into, PartialEq, Eq, DekuRead, DekuWrite)]
 pub struct FileCreatedAt(DateParameter);
 
 impl From<SystemTime> for FileCreatedAt {
@@ -729,7 +717,7 @@ impl TryFrom<&Parameter> for FileCreatedAt {
             parameter.clone(),
             TransactionField::FileCreateDate,
         )?;
-        let (tail, date) = DateParameter::parse(&data)
+        let ((tail, _), date) = DateParameter::from_bytes((&data, 0))
             .map_err(|_| ProtocolError::MalformedData(TransactionField::FileCreateDate))?;
         if !tail.is_empty() {
             Err(ProtocolError::MalformedData(TransactionField::FileCreateDate))?;
@@ -743,12 +731,12 @@ impl From<FileCreatedAt> for Parameter {
         let FileCreatedAt(date) = val;
         Parameter::new(
             TransactionField::FileCreateDate,
-            date.pack(),
+            date.to_bytes().unwrap(),
         )
     }
 }
 
-#[derive(Debug, Default, Clone, Copy, From, Into, PartialEq, Eq)]
+#[derive(Debug, Default, Clone, Copy, From, Into, PartialEq, Eq, DekuRead, DekuWrite)]
 pub struct FileModifiedAt(DateParameter);
 
 impl From<SystemTime> for FileModifiedAt {
@@ -764,7 +752,7 @@ impl TryFrom<&Parameter> for FileModifiedAt {
             parameter.clone(),
             TransactionField::FileModifyDate,
         )?;
-        let (tail, date) = DateParameter::parse(&data)
+        let ((tail, _), date) = DateParameter::from_bytes((&data, 0))
             .map_err(|_| ProtocolError::MalformedData(TransactionField::FileModifyDate))?;
         if !tail.is_empty() {
             Err(ProtocolError::MalformedData(TransactionField::FileModifyDate))?;
@@ -778,7 +766,7 @@ impl From<FileModifiedAt> for Parameter {
         let FileModifiedAt(date) = val;
         Parameter::new(
             TransactionField::FileModifyDate,
-            date.pack(),
+            date.to_bytes().unwrap(),
         )
     }
 }
@@ -802,7 +790,8 @@ impl From<TransferSize> for Parameter {
     }
 }
 
-#[derive(Debug, Default, Clone, Copy, From, Into, PartialEq, Eq, PartialOrd, Ord)]
+#[derive(Debug, Default, Clone, Copy, From, Into, PartialEq, Eq, PartialOrd, Ord, DekuRead, DekuWrite)]
+#[deku(endian = "big")]
 pub struct ReferenceNumber(i32);
 
 impl TryFrom<&Parameter> for ReferenceNumber {
@@ -823,12 +812,11 @@ impl From<ReferenceNumber> for Parameter {
 
 impl HotlineProtocol for ReferenceNumber {
     fn into_bytes(self) -> Vec<u8> {
-        let Self(value) = self;
-        value.to_be_bytes().to_vec()
+        self.to_bytes().unwrap()
     }
     fn from_bytes(bytes: &[u8]) -> BIResult<Self> {
-        let (bytes, value) = be_i32(bytes)?;
-        Ok((bytes, Self(value)))
+        let ((bytes, _bits), value) = <Self as DekuContainerRead>::from_bytes((bytes, 0)).unwrap();
+        Ok((bytes, value))
     }
 }
 
