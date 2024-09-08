@@ -2,112 +2,38 @@ use super::{
     ErrorCode,
     ReferenceNumber,
     DataSize,
-    HotlineProtocol,
-    BIResult,
-    be_i16,
-    be_i32,
-    bytes,
+    DekuHotlineProtocol,
 };
+use deku::prelude::*;
 
 use derive_more::{From, Into};
 
-#[derive(Debug, PartialEq, Eq, PartialOrd, Ord)]
+#[derive(Debug, PartialEq, Eq, PartialOrd, Ord, From, Into, DekuRead, DekuWrite)]
+#[deku(endian = "big")]
 pub struct ProtocolId(i32);
 
-impl HotlineProtocol for ProtocolId {
-    fn into_bytes(self) -> Vec<u8> {
-        let Self(value) = self;
-        value.to_be_bytes().into()
-    }
-    fn from_bytes(bytes: &[u8]) -> BIResult<Self> {
-        let (bytes, value) = be_i32(bytes)?;
-        Ok((bytes, Self(value)))
-    }
-}
-
-#[derive(Debug, PartialEq, Eq, PartialOrd, Ord)]
+#[derive(Debug, PartialEq, Eq, PartialOrd, Ord, From, Into, DekuRead, DekuWrite)]
+#[deku(endian = "big")]
 pub struct SubProtocolId(i32);
 
-impl HotlineProtocol for SubProtocolId {
-    fn into_bytes(self) -> Vec<u8> {
-        let Self(value) = self;
-        value.to_be_bytes().into()
-    }
-    fn from_bytes(bytes: &[u8]) -> BIResult<Self> {
-        let (bytes, value) = be_i32(bytes)?;
-        Ok((bytes, Self(value)))
-    }
-}
-
-#[derive(Debug, PartialEq, Eq, PartialOrd, Ord, From, Into)]
+#[derive(Debug, PartialEq, Eq, PartialOrd, Ord, From, Into, DekuRead, DekuWrite)]
+#[deku(endian = "big")]
 pub struct Version(pub i16);
 
-impl HotlineProtocol for Version {
-    fn into_bytes(self) -> Vec<u8> {
-        let Self(value) = self;
-        value.to_be_bytes().into()
-    }
-    fn from_bytes(bytes: &[u8]) -> BIResult<Self> {
-        let (bytes, value) = be_i16(bytes)?;
-        Ok((bytes, Self(value)))
-    }
-}
-
-#[derive(Debug, PartialEq, Eq, PartialOrd, Ord)]
+#[derive(Debug, PartialEq, Eq, PartialOrd, Ord, From, Into, DekuRead, DekuWrite)]
+#[deku(endian = "big")]
 pub struct SubVersion(pub i16);
 
-impl HotlineProtocol for SubVersion {
-    fn into_bytes(self) -> Vec<u8> {
-        let Self(value) = self;
-        value.to_be_bytes().into()
-    }
-    fn from_bytes(bytes: &[u8]) -> BIResult<Self> {
-        let (bytes, value) = be_i16(bytes)?;
-        Ok((bytes, Self(value)))
-    }
-}
-
-#[derive(Debug)]
+#[derive(Debug, DekuRead, DekuWrite)]
+#[deku(magic = b"TRTP")]
 pub struct ClientHandshakeRequest {
     pub sub_protocol_id: SubProtocolId,
     pub version: Version,
     pub sub_version: SubVersion,
 }
 
-impl HotlineProtocol for ClientHandshakeRequest {
-    fn into_bytes(self) -> Vec<u8> {
-        let Self {
-            sub_protocol_id,
-            version,
-            sub_version,
-            ..
-        } = self;
-        let protocol_id = &b"TRTP"[..];
-        let sub_protocol_id = &sub_protocol_id.into_bytes();
-        let version = &version.into_bytes();
-        let sub_version = &sub_version.into_bytes();
-        [
-            protocol_id,
-            sub_protocol_id,
-            version,
-            sub_version,
-        ].concat()
-    }
-    fn from_bytes(bytes: &[u8]) -> BIResult<Self> {
-        let (bytes, _) = bytes::streaming::tag(b"TRTP")(bytes)?;
-        let (bytes, sub_protocol_id) = SubProtocolId::from_bytes(bytes)?;
-        let (bytes, version) = Version::from_bytes(bytes)?;
-        let (bytes, sub_version) = SubVersion::from_bytes(bytes)?;
-        let handshake = Self {
-            sub_protocol_id,
-            version,
-            sub_version,
-        };
-        Ok((bytes, handshake))
-    }
-}
-
-#[derive(Debug)]
+#[derive(Debug, DekuRead, DekuWrite)]
+#[deku(magic = b"TRTP")]
 pub struct ServerHandshakeReply {
     error_code: ErrorCode,
 }
@@ -118,24 +44,12 @@ impl ServerHandshakeReply {
     }
 }
 
-const TRTP: &[u8] = b"TRTP";
-
-impl HotlineProtocol for ServerHandshakeReply {
-    fn into_bytes(self) -> Vec<u8> {
-        let error = &self.error_code.into_bytes();
-        [TRTP, error].concat()
-    }
-    fn from_bytes(bytes: &[u8]) -> BIResult<Self> {
-        let (bytes, _) = bytes::streaming::tag(TRTP)(bytes)?;
-        let (bytes, error_code) = ErrorCode::from_bytes(bytes)?;
-        Ok((bytes, Self { error_code }))
-    }
-}
-
-#[derive(Debug)]
+#[derive(Debug, DekuRead, DekuWrite)]
+#[deku(magic = b"HTXF")]
 pub struct TransferHandshake {
     pub reference: ReferenceNumber,
     pub size: Option<DataSize>,
+    padding: [u8; 4],
 }
 
 impl TransferHandshake {
@@ -144,32 +58,9 @@ impl TransferHandshake {
     }
 }
 
-const HTXF: &[u8; 4] = b"HTXF";
-
-impl HotlineProtocol for TransferHandshake {
-    fn into_bytes(self) -> Vec<u8> {
-        let Self { reference, size } = self;
-        let reference: i32 = reference.into();
-        let reference = reference.to_be_bytes();
-        let size = size.map(i32::from)
-            .unwrap_or_default()
-            .to_be_bytes();
-        [
-            &HTXF[..],
-            &reference[..],
-            &size[..],
-            &[0u8; 4][..],
-        ].concat()
-    }
-    fn from_bytes(bytes: &[u8]) -> BIResult<Self> {
-        let (bytes, _) = bytes::streaming::tag(HTXF)(bytes)?;
-        let (bytes, reference) = ReferenceNumber::from_bytes(bytes)?;
-        let (bytes, size) = DataSize::from_bytes(bytes)?;
-        let size = Some(size).filter(|s| i32::from(*s) != 0);
-        let (bytes, _) = bytes::streaming::take(4usize)(bytes)?;
-        Ok((bytes, Self { reference, size }))
-    }
-}
+impl DekuHotlineProtocol for ClientHandshakeRequest {}
+impl DekuHotlineProtocol for ServerHandshakeReply {}
+impl DekuHotlineProtocol for TransferHandshake {}
 
 #[cfg(test)]
 mod tests {
@@ -186,26 +77,17 @@ mod tests {
 
     #[test]
     fn parse_client_handshake() {
-
-        let (tail, _handshake) = ClientHandshakeRequest::from_bytes(CLIENT_HANDSHAKE)
+        ClientHandshakeRequest::try_from(CLIENT_HANDSHAKE)
             .expect("could not parse client handshake");
-
-        assert!(tail.is_empty());
-
     }
 
     #[test]
     fn parse_server_handshake() {
-
-        let (tail, handshake) = ServerHandshakeReply::from_bytes(SERVER_HANDSHAKE)
+        let handshake = ServerHandshakeReply::try_from(SERVER_HANDSHAKE)
             .expect("could not parse server handshake");
-
-        assert!(tail.is_empty());
-
         assert_eq!(
             handshake.error_code,
             ErrorCode(0),
         );
-
     }
 }
