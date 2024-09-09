@@ -162,6 +162,16 @@ impl Globals {
             .expect("failed to leave chat room");
         self.bus.publish(Notification::ChatRoomLeave(presence));
     }
+    async fn chat_remove(&mut self, user: &UserNameWithInfo) {
+        let chats = self.chats_tx.leave_all(user.user_id)
+            .await
+            .expect("failed to leave all chat rooms");
+        for chat in chats {
+            let presence = ChatRoomPresence::from((chat, user.clone().into()));
+            debug!("chat remove {presence:?}");
+            self.bus.publish(Notification::ChatRoomLeave(presence));
+        }
+    }
     async fn chat_subject_change(&mut self, chat: ChatId, subject: Vec<u8>) {
         let update = ChatRoomSubject::from((chat, subject));
         self.chats_tx.change_subject(update.clone())
@@ -650,6 +660,7 @@ impl <R: AsyncRead + Unpin, W: AsyncWrite + Unpin> Established<R, W> {
         debug!("disconnecting");
         let Self { globals, .. } = self;
         if let Some(user) = globals.user() {
+            globals.chat_remove(&user).await;
             globals.user_remove(&user).await;
         } else {
             debug!("no user to remove");
