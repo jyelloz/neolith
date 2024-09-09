@@ -1,10 +1,5 @@
-use super::{
-    be_i16,
-    be_i32,
-    BIResult,
-    ProtocolError,
-    HotlineProtocol,
-};
+use super::ProtocolError;
+use deku::prelude::*;
 
 use std::time::SystemTime;
 
@@ -16,7 +11,8 @@ use time::{
     ext::NumericalStdDuration as _,
 };
 
-#[derive(Debug, Default, Clone, Copy, PartialEq, Eq)]
+#[derive(Debug, Default, Clone, Copy, PartialEq, Eq, DekuRead, DekuWrite)]
+#[deku(endian = "big")]
 pub struct DateParameter {
     pub year: i16,
     pub milliseconds: i16,
@@ -24,39 +20,6 @@ pub struct DateParameter {
 }
 
 impl DateParameter {
-    fn parse_year(bytes: &[u8]) -> BIResult<i16> {
-        be_i16(bytes)
-    }
-    fn parse_milliseconds(bytes: &[u8]) -> BIResult<i16> {
-        be_i16(bytes)
-    }
-    fn parse_seconds(bytes: &[u8]) -> BIResult<i32> {
-        be_i32(bytes)
-    }
-    pub fn parse(bytes: &[u8]) -> BIResult<Self> {
-        let (bytes, year) = Self::parse_year(bytes)?;
-        let (bytes, milliseconds) = Self::parse_milliseconds(bytes)?;
-        let (bytes, seconds) = Self::parse_seconds(bytes)?;
-        Ok((
-            bytes,
-            Self {
-                year,
-                milliseconds,
-                seconds,
-            },
-        ))
-    }
-    pub fn pack(&self) -> Vec<u8> {
-        let Self { year, milliseconds, seconds } = self;
-        [
-            &year.to_be_bytes()[..],
-            &milliseconds.to_be_bytes()[..],
-            &seconds.to_be_bytes()[..],
-        ].into_iter()
-            .flat_map(|b| b.iter())
-            .copied()
-            .collect()
-    }
     fn try_from(time: SystemTime) -> Result<Self, ProtocolError> {
         let diff = time.duration_since(SystemTime::UNIX_EPOCH)
             .unwrap_or(0.std_seconds());
@@ -83,14 +46,5 @@ impl DateParameter {
 impl From<SystemTime> for DateParameter {
     fn from(time: SystemTime) -> Self {
         Self::try_from(time).unwrap_or_default()
-    }
-}
-
-impl HotlineProtocol for DateParameter {
-    fn into_bytes(self) -> Vec<u8> {
-        self.pack()
-    }
-    fn from_bytes(bytes: &[u8]) -> BIResult<Self> {
-        Self::parse(bytes)
     }
 }
