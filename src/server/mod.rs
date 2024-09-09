@@ -37,6 +37,7 @@ use self::{
     transfers::TransfersService,
     users::{UsersService, Users},
 };
+use deku::prelude::*;
 
 pub mod application;
 pub mod bus;
@@ -501,7 +502,7 @@ impl NeolithServer {
         let reply = proto::GetFileInfoReply {
             filename: name,
             size: (info.size as i32).into(),
-            type_code: info.type_code.bytes().into(),
+            type_code: proto::FileType::try_from(&info.type_code.bytes()[..]).unwrap(),
             creator: info.creator_code.bytes().to_vec().into(),
             comment: info.comment.as_bytes().to_vec().into(),
             created_at: info.created_at.into(),
