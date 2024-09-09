@@ -87,6 +87,9 @@ impl ChatRoom {
             .cloned()
             .collect()
     }
+    pub fn contains(&self, user: &UserId) -> bool {
+        self.users.contains(user)
+    }
 }
 
 #[derive(Debug, Default, Clone)]
@@ -137,6 +140,19 @@ impl Chats {
         }
         self.return_room(room)
     }
+    pub fn leave_all(&mut self, user: UserId) -> Vec<ChatId> {
+        let chats = self.rooms.iter()
+            .filter(|ChatRoomId(_, room)| room.contains(&user))
+            .map(|ChatRoomId(id, _)| id)
+            .cloned()
+            .collect::<Vec<_>>();
+        for chat_id in &chats {
+            let mut room = self.take_room(*chat_id);
+            room.remove(user);
+            self.return_room(room);
+        }
+        chats
+    }
 }
 
 #[derive(Debug)]
@@ -147,6 +163,7 @@ enum Command {
     UserJoin(ChatRoomPresence, oneshot::Sender<()>),
     UserUpdate(ChatRoomPresence, oneshot::Sender<()>),
     UserLeave(ChatRoomPresence, oneshot::Sender<()>),
+    UserLeaveAll(UserId, oneshot::Sender<Vec<ChatId>>),
 }
 
 pub struct ChatUpdateProcessor {
@@ -220,6 +237,15 @@ impl ChatsService {
         bus.publish(message.into());
         Ok(())
     }
+    pub async fn leave_all(
+        &mut self,
+        request: UserId,
+    ) -> Result<Vec<ChatId>> {
+        let (tx, rx) = oneshot::channel();
+        self.0.send(Command::UserLeaveAll(request, tx)).await?;
+        let chats = rx.await?;
+        Ok(chats)
+    }
 }
 
 impl ChatUpdateProcessor {
@@ -267,6 +293,12 @@ impl ChatUpdateProcessor {
                     let ChatRoomSubject(chat, subject) = presence;
                     chats.set_subject(chat, subject);
                     if tx.send(()).is_err() {
+                        Err(ChatError::ServiceUnavailable)?;
+                    }
+                }
+                Command::UserLeaveAll(user, tx) => {
+                    let chats = chats.leave_all(user);
+                    if tx.send(chats).is_err() {
                         Err(ChatError::ServiceUnavailable)?;
                     }
                 }
