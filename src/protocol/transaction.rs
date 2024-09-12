@@ -383,7 +383,7 @@ impl HotlineProtocol for Parameter {
 }
 
 #[derive(Debug, Clone, Copy, From, Into)]
-#[from(types(i8, i16, i32))]
+#[from(i8, i16, i32)]
 pub struct IntParameter(i64);
 
 impl IntParameter {
