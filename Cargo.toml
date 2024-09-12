@@ -16,7 +16,7 @@ anyhow = "*"
 async-stream = "0.3"
 bytes = "1"
 console-subscriber = "0.2"
-derive_more = "*"
+derive_more = { version = "1", features = ["full"] }
 dialoguer = "*"
 encoding_rs = "0.8"
 enumset = { version = "*", features = ["serde"] }
