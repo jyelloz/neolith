@@ -213,10 +213,7 @@ pub struct ProtocolVersion(i16);
 
 impl From<ProtocolVersion> for Parameter {
     fn from(val: ProtocolVersion) -> Self {
-        Parameter::new(
-            TransactionField::Version,
-            val.to_bytes().unwrap(),
-        )
+        Parameter::new_deku(TransactionField::Version, val)
     }
 }
 
@@ -286,8 +283,7 @@ impl TryFrom<TransactionBody> for ShowAgreement {
 impl TryFrom<&Parameter> for ServerBannerType {
     type Error = ProtocolError;
     fn try_from(parameter: &Parameter) -> Result<Self, Self::Error> {
-        let field_data: &[u8] = parameter.borrow();
-        match *field_data {
+        match *parameter.field_data {
             [1] => {
                 Ok(ServerBannerType::Url)
             },
@@ -388,6 +384,7 @@ impl From<&UserNameWithInfo> for NotifyUserChange {
             user_flags,
             user_id,
             username,
+            ..
         } = user.clone();
         Self {
             icon_id,
@@ -467,6 +464,7 @@ impl From<(ChatId, &UserNameWithInfo)> for NotifyChatUserChange {
             icon_id,
             user_flags,
             username,
+            ..
         } = user.clone();
         Self {
             chat_id,
@@ -518,6 +516,7 @@ impl From<(ChatId, &UserNameWithInfo)> for NotifyChatUserDelete {
             icon_id,
             user_flags,
             username,
+            ..
         } = user.clone();
         Self {
             chat_id,
@@ -801,34 +800,22 @@ impl From<GetFileNameListReply> for TransactionFrame {
     }
 }
 
-#[derive(Debug)]
+#[derive(Debug, DekuRead, DekuWrite)]
 pub struct FileNameWithInfo {
     pub file_type: FileType,
     pub creator: Creator,
     pub file_size: FileSize,
+    #[deku(pad_bytes_before = "4")]
     pub name_script: NameScript,
+    #[deku(endian = "big")]
+    pub file_name_size: i16,
+    #[deku(count = "file_name_size")]
     pub file_name: Vec<u8>,
 }
 
 impl From<FileNameWithInfo> for Parameter {
     fn from(val: FileNameWithInfo) -> Self {
-        let filename_size = val.file_name.len() as i16;
-        let data = [
-            &val.file_type.0[..],
-            &val.creator.0[..],
-            &(i32::from(val.file_size)).to_be_bytes()[..],
-            &[0u8; 4][..],
-            &val.name_script.to_bytes().unwrap(),
-            &filename_size.to_be_bytes()[..],
-            &val.file_name[..],
-        ].iter()
-            .flat_map(|bytes| bytes.iter())
-            .copied()
-            .collect();
-        Parameter::new(
-            TransactionField::FileNameWithInfo,
-            data,
-        )
+        Parameter::new_deku(TransactionField::FileNameWithInfo, val)
     }
 }
 
