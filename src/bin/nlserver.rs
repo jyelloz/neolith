@@ -332,8 +332,8 @@ impl <R: AsyncRead + Unpin, W: AsyncWrite + Unpin> Connection<R, W> {
 struct New<R, W>(R, W, Globals);
 impl <R: AsyncRead + Unpin, W: AsyncWrite + Unpin> New<R, W> {
     fn handshake_sync(buf: &[u8]) -> Result<ProtocolVersion> {
-        match ClientHandshakeRequest::from_bytes(buf) {
-            Ok((_, _request)) => {
+        match ClientHandshakeRequest::try_from(buf) {
+            Ok(_request) => {
                 Ok(123i16.into())
             },
             Err(e) => bail!("failed to parse handshake request: {:?}", e),
@@ -391,6 +391,7 @@ impl <R: AsyncRead + Unpin, W: AsyncWrite + Unpin> Unauthenticated<R, W> {
             debug!("old login");
             UserNameWithInfo {
                 icon_id,
+                username_len: username.len() as i16,
                 username,
                 user_flags: 0.into(),
                 user_id: 0.into(),
@@ -405,6 +406,7 @@ impl <R: AsyncRead + Unpin, W: AsyncWrite + Unpin> Unauthenticated<R, W> {
             login.fill_in(username.clone(), icon_id);
             UserNameWithInfo {
                 icon_id,
+                username_len: username.len() as i16,
                 username,
                 user_flags: 0.into(),
                 user_id: 0.into(),
