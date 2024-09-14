@@ -79,6 +79,7 @@ impl Users {
             user_flags: 0.into(),
             icon_id: 0.into(),
             username: vec![].into(),
+            username_len: 0,
         };
         users.get(&fake_user.into())
             .map(|u| &u.0)
