@@ -173,6 +173,10 @@ impl Parameter {
             field_data,
         }
     }
+    pub fn new_deku<F: Into<FieldId>, D: DekuContainerWrite>(field_id: F, field_data: D) -> Self {
+        let field_data: Vec<u8> = field_data.to_bytes().unwrap();
+        Self::new(field_id, field_data)
+    }
     pub fn new_i16<F: Into<FieldId>>(field_id: F, int: i16) -> Self {
         Self::new(field_id, int.to_be_bytes().to_vec())
     }
