@@ -97,7 +97,9 @@ impl From<DirEntry> for proto::FileNameWithInfo {
             .map(|s| MACINTOSH.encode(s).0)
             .map(|b| b.to_vec())
             .unwrap_or(vec![]);
+        let file_name_size = file_name.len() as i16;
         proto::FileNameWithInfo {
+            file_name_size,
             file_name,
             file_size: (size as i32).into(),
             creator: (*creator_code.bytes()).into(),
