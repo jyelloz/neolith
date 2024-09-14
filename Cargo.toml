@@ -15,7 +15,6 @@ default-run = "nlserver"
 anyhow = "*"
 async-stream = "0.3"
 bytes = "1"
-console-subscriber = "0.2"
 deku = "0.18"
 derive_more = { version = "1", features = ["full"] }
 dialoguer = "*"
@@ -28,14 +27,14 @@ maplit = "1"
 num_enum = "0.7"
 pwhash = "1"
 regex = "1"
-serde = "*"
+serde = { version = "*", features = ["derive"] }
 strum = { version = "*", features = ["derive"] }
 thiserror = "*"
 time = "0.3"
 tokio = { version = "1", features = ["full", "tracing"] }
 toml = "*"
 tracing = "0.1"
-tracing-subscriber = "0.3"
+tracing-subscriber = { version = "0.3", features = ["env-filter"] }
 
 [dependencies.nom]
 version = "*"
