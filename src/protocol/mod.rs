@@ -10,7 +10,6 @@ use maplit::hashmap;
 use derive_more::{From, Into};
 use thiserror::Error;
 use std::{
-    borrow::Borrow,
     collections::HashMap,
     num::NonZeroU32,
 };
