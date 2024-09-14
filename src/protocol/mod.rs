@@ -1897,7 +1897,7 @@ pub struct InfoFork {
     pub creator_code: Creator,
     pub flags: FileFlags,
     pub platform_flags: PlatformFlags,
-    #[deku(pad_bytes_before = "4")]
+    #[deku(pad_bytes_before = "32")]
     pub created_at: FileCreatedAt,
     pub modified_at: FileModifiedAt,
     pub name_script: NameScript,
