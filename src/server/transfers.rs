@@ -19,10 +19,7 @@ use thiserror::Error;
 use tracing::{debug, error};
 use deku::prelude::*;
 
-use crate::protocol::{
-    self as proto,
-    HotlineProtocol as _,
-};
+use crate::protocol as proto;
 
 #[derive(Debug, Error)]
 pub enum TransferError {
@@ -233,7 +230,8 @@ impl <S: AsyncRead + AsyncWrite + Unpin + Send> TransferConnection<S> {
         tracing::Span::current()
             .record("reference", format!("{:#x}", i32::from(reference)));
         let id = reference.into();
-        let result = if let Some(size) = size.filter(|s| i32::from(*s) != 0) {
+        let size_int: i32 = size.into();
+        let result = if size_int != 0i32 {
             self.handle_file_upload(id, size).await
         } else {
             self.handle_file_download(id).await
