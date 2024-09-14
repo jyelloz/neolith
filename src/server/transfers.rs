@@ -226,17 +226,15 @@ impl <S: AsyncRead + AsyncWrite + Unpin + Send> TransferConnection<S> {
         let handshake = self.read_handshake().await?;
         let mut transfers = self.transfers.clone();
         debug!("handshake={:?}", &handshake);
-        let proto::TransferHandshake { reference, size, .. } = handshake;
         tracing::Span::current()
-            .record("reference", format!("{:#x}", i32::from(reference)));
-        let id = reference.into();
-        let size_int: i32 = size.into();
-        let result = if size_int != 0i32 {
-            self.handle_file_upload(id, size).await
+            .record("reference", format!("{:#x}", i32::from(handshake.reference)));
+        let id = handshake.reference.into();
+        let result = if handshake.is_upload() {
+            self.handle_file_upload(id, handshake.size).await
         } else {
             self.handle_file_download(id).await
         };
-        transfers.complete(reference).await?;
+        transfers.complete(handshake.reference).await?;
         match result {
             Ok(_) => debug!("successful transfer"),
             Err(e) => error!("unsuccessful transfer: {e:?}"),
