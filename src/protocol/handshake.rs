@@ -48,13 +48,13 @@ impl ServerHandshakeReply {
 #[deku(magic = b"HTXF")]
 pub struct TransferHandshake {
     pub reference: ReferenceNumber,
-    pub size: Option<DataSize>,
-    padding: [u8; 4],
+    #[deku(pad_bytes_after = "4")]
+    pub size: DataSize,
 }
 
 impl TransferHandshake {
     pub fn is_upload(&self) -> bool {
-        self.size.is_some()
+        self.size.0 != 0
     }
 }
 
