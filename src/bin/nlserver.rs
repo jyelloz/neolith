@@ -13,6 +13,7 @@ use derive_more::Into;
 use encoding_rs::MACINTOSH;
 use anyhow::{anyhow, bail};
 use tracing::{debug, trace, warn, instrument};
+use tracing_subscriber::{layer::SubscriberExt as _, util::SubscriberInitExt as _};
 
 type Result<T> = anyhow::Result<T>;
 
@@ -192,7 +193,10 @@ impl Globals {
 #[tokio::main]
 async fn main() -> Result<()> {
 
-    console_subscriber::init();
+    tracing_subscriber::registry()
+        .with(tracing_subscriber::EnvFilter::from_default_env())
+        .with(tracing_subscriber::fmt::layer())
+        .try_init()?;
 
     let host = "0.0.0.0";
     let listener = TcpListener::bind((host, 5500)).await?;
@@ -233,10 +237,7 @@ async fn main() -> Result<()> {
         let (socket, addr) = listener.accept().await?;
         let (r, w) = socket.into_split();
         let mut conn = Connection::new(r, w, globals.clone());
-        let name = format!("{addr}");
-        let _ = tokio::task::Builder::new()
-            .name(&name)
-            .spawn(async move {
+        let _ = tokio::task::spawn(async move {
                 while conn.process().await.is_ok() { }
                 debug!("disconnect from {:?}", addr);
             });
