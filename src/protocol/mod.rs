@@ -2,8 +2,7 @@ use nom::{
     self,
     IResult,
     multi,
-    combinator::{map, verify},
-    bytes::{self, streaming::take},
+    bytes::streaming::take,
     number::streaming::{be_i16, be_i32, be_i64, be_i8},
 };
 use deku::prelude::*;
@@ -208,14 +207,15 @@ impl From<LoginReply> for TransactionFrame {
     }
 }
 
-#[derive(Debug, Clone, Copy, From, Into, PartialEq, Eq, PartialOrd, Ord)]
+#[derive(Debug, Clone, Copy, From, Into, PartialEq, Eq, PartialOrd, Ord, DekuRead, DekuWrite)]
+#[deku(endian = "big")]
 pub struct ProtocolVersion(i16);
 
 impl From<ProtocolVersion> for Parameter {
     fn from(val: ProtocolVersion) -> Self {
-        Parameter::new_int(
+        Parameter::new(
             TransactionField::Version,
-            val.0,
+            val.to_bytes().unwrap(),
         )
     }
 }
@@ -1771,32 +1771,17 @@ impl From<DownloadFileReply> for TransactionFrame {
     }
 }
 
-#[derive(Debug, PartialEq, Eq, PartialOrd, Ord, Clone, Copy, From, Into)]
+#[derive(Debug, PartialEq, Eq, PartialOrd, Ord, Clone, Copy, From, Into, DekuRead, DekuWrite)]
+#[deku(endian = "big")]
 struct ForkCount(i16);
 
-const FILP: &[u8; 4] = b"FILP";
-
-#[derive(Debug, PartialEq, Eq, PartialOrd, Ord, Clone, Copy, From, Into)]
-pub struct FlattenedFileHeader(ForkCount);
-
-impl HotlineProtocol for FlattenedFileHeader {
-    fn from_bytes(bytes: &[u8]) -> BIResult<Self> {
-        let (bytes, _format) = bytes::streaming::tag(FILP)(bytes)?;
-        let (bytes, _version) = verify(be_i16, |i: &i16| *i == 1,)(bytes)?;
-        let (bytes, _reserved) = bytes::streaming::take(16usize)(bytes)?;
-        let (bytes, fork_count) = map(be_i16, ForkCount::from)(bytes)?;
-        let header = Self(fork_count);
-        Ok((bytes, header))
-    }
-    fn into_bytes(self) -> Vec<u8> {
-        let Self(fork_count) = self;
-        [
-            FILP.to_vec(),
-            1i16.to_be_bytes().to_vec(),
-            vec![0u8; 16],
-            fork_count.0.to_be_bytes().to_vec(),
-        ].concat()
-    }
+#[derive(Debug, PartialEq, Eq, PartialOrd, Ord, Clone, Copy, From, Into, DekuRead, DekuWrite)]
+#[deku(magic = b"FILP")]
+pub struct FlattenedFileHeader {
+    #[deku(endian = "big")]
+    version: i16,
+    #[deku(pad_bytes_before = "16")]
+    fork_count: ForkCount,
 }
 
 #[derive(From, Into)]
@@ -1832,7 +1817,10 @@ impl FlattenedFileObject {
     }
     pub fn header(&self) -> FlattenedFileHeader {
         let fork_count = (self.contents.len() + 1) as i16;
-        FlattenedFileHeader(fork_count.into())
+        FlattenedFileHeader {
+            version: 1,
+            fork_count: fork_count.into(),
+        }
     }
     pub fn info(&self) -> (ForkHeader, InfoFork) {
         let data_size = (self.info.size() as i32).into();
@@ -1840,7 +1828,6 @@ impl FlattenedFileObject {
             ForkHeader {
                 fork_type: ForkType::Info,
                 compression_type: Default::default(),
-                padding: [0u8; 4],
                 data_size,
             },
             self.info.clone(),
@@ -1852,7 +1839,6 @@ impl FlattenedFileObject {
                 ForkHeader {
                     fork_type,
                     compression_type: Default::default(),
-                    padding: [0u8; 4],
                     data_size: (fork.0 as usize).into(),
                 },
                 fork,
@@ -1914,7 +1900,7 @@ pub struct PlatformFlags(i32);
 pub struct ForkHeader {
     pub fork_type: ForkType,
     pub compression_type: CompressionType,
-    pub padding: [u8; 4],
+    #[deku(pad_bytes_before = "4")]
     pub data_size: DataSize,
 }
 
@@ -1925,7 +1911,7 @@ pub struct InfoFork {
     pub creator_code: Creator,
     pub flags: FileFlags,
     pub platform_flags: PlatformFlags,
-    pub padding: [u8; 4],
+    #[deku(pad_bytes_before = "4")]
     pub created_at: FileCreatedAt,
     pub modified_at: FileModifiedAt,
     pub name_script: NameScript,
