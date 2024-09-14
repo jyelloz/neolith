@@ -54,8 +54,7 @@ pub struct TransferHandshake {
 
 impl TransferHandshake {
     pub fn is_upload(&self) -> bool {
-        let size: i32 = self.size.into();
-        size != 0
+        i32::from(self.size) != 0
     }
 }
 
