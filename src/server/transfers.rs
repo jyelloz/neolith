@@ -273,7 +273,7 @@ impl <S: AsyncRead + AsyncWrite + Unpin + Send> TransferConnection<S> {
         let mut file = proto::FlattenedFileObject::with_data(info, data);
         let (info_header, info) = file.info();
         let header = file.header();
-        let header = header.into_bytes();
+        let header = header.to_bytes().unwrap();
         socket.write_all(&header).await?;
         let info_header = info_header.to_bytes().unwrap();
         socket.write_all(&info_header).await?;
@@ -301,8 +301,8 @@ impl <S: AsyncRead + AsyncWrite + Unpin + Send> TransferConnection<S> {
     async fn read_file_header(&mut self) -> Result<proto::FlattenedFileHeader> {
         let mut buf = [0u8; 24];
         self.socket.read_exact(&mut buf).await?;
-        match proto::FlattenedFileHeader::from_bytes(&buf) {
-            Ok((_, header)) => Ok(header),
+        match proto::FlattenedFileHeader::try_from(&buf[..]) {
+            Ok(header) => Ok(header),
             _ => Err(proto::ProtocolError::ParseHeader.into()),
         }
     }
