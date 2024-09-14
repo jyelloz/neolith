@@ -218,12 +218,6 @@ impl Parameter {
     }
 }
 
-impl std::borrow::Borrow<[u8]> for Parameter {
-    fn borrow(&self) -> &[u8] {
-        &self.field_data
-    }
-}
-
 #[derive(Debug, Clone, Copy, From, Into)]
 #[from(i8, i16, i32)]
 pub struct IntParameter(i64);
