@@ -151,7 +151,6 @@ impl Files {
             creator_code: proto::Creator::try_from(&b"dosa"[..]).unwrap(),
             flags: Default::default(),
             platform_flags: Default::default(),
-            padding: [0u8; 4],
             created_at: Default::default(),
             modified_at: Default::default(),
             name_script: Default::default(),
