@@ -13,7 +13,6 @@ use super::{
 use derive_more::{From, Into};
 use encoding_rs::MACINTOSH;
 use std::{
-    borrow::Borrow,
     time::SystemTime,
     fmt::{Debug, Formatter, self},
     path::PathBuf,
@@ -30,8 +29,9 @@ fn invert_credential(data: &[u8]) -> Vec<u8> {
         .collect()
 }
 
-#[derive(Clone, PartialEq, Eq, PartialOrd, Ord, From, Into)]
-pub struct Nickname(Vec<u8>);
+#[derive(Clone, PartialEq, Eq, PartialOrd, Ord, From, DekuRead, DekuWrite)]
+#[deku(ctx = "len: usize", ctx_default = "0")]
+pub struct Nickname(#[deku(count = "len")] Vec<u8>);
 
 impl Nickname {
     pub fn new(nickname: Vec<u8>) -> Self {
@@ -39,6 +39,9 @@ impl Nickname {
     }
     pub fn take(self) -> Vec<u8> {
         self.0
+    }
+    pub fn len(&self) -> usize {
+        self.0.len()
     }
 }
 
@@ -171,7 +174,8 @@ impl Credential for Password {
     }
 }
 
-#[derive(Debug, Default, From, Into, PartialEq, Eq, PartialOrd, Ord)]
+#[derive(Debug, Default, From, Into, PartialEq, Eq, PartialOrd, Ord, DekuRead, DekuWrite)]
+#[deku(endian = "big")]
 pub struct UserAccess(i64);
 
 impl TryFrom<&Parameter> for UserAccess {
@@ -187,11 +191,12 @@ impl TryFrom<&Parameter> for UserAccess {
 
 impl From<UserAccess> for Parameter {
     fn from(val: UserAccess) -> Self {
-        Parameter::new(TransactionField::UserAccess, val.0.to_be_bytes().to_vec())
+        Parameter::new_deku(TransactionField::UserAccess, val)
     }
 }
 
-#[derive(Debug, Clone, Copy, From, Into)]
+#[derive(Debug, Clone, Copy, From, Into, DekuRead, DekuWrite)]
+#[deku(endian = "big")]
 pub struct ChatOptions(i32);
 
 impl ChatOptions {
@@ -219,7 +224,7 @@ impl TryFrom<&Parameter> for ChatOptions {
 
 impl From<ChatOptions> for Parameter {
     fn from(val: ChatOptions) -> Self {
-        Parameter::new_i32(TransactionField::ChatOptions, val.0)
+        Parameter::new_deku(TransactionField::ChatOptions, val)
     }
 }
 
@@ -269,12 +274,13 @@ impl From<ChatSubject> for Parameter {
     }
 }
 
-#[derive(Debug, Clone, Copy, From, Into, PartialEq, Eq, PartialOrd, Ord)]
+#[derive(Debug, Clone, Copy, From, Into, PartialEq, Eq, PartialOrd, Ord, DekuRead, DekuWrite)]
+#[deku(endian = "big")]
 pub struct IconId(i16);
 
 impl From<IconId> for Parameter {
     fn from(val: IconId) -> Self {
-        Parameter::new_i16(TransactionField::UserIconId, val.0)
+        Parameter::new_deku(TransactionField::UserIconId, val)
     }
 }
 
@@ -288,14 +294,8 @@ impl TryFrom<&Parameter> for IconId {
     }
 }
 
-#[derive(
-    Debug, Clone, Copy,
-    From, Into,
-    PartialEq, Eq,
-    PartialOrd, Ord,
-    Hash,
-    Default,
-)]
+#[derive(Debug, Clone, Copy, From, Into, PartialEq, Eq, PartialOrd, Ord, Hash, Default, DekuRead, DekuWrite)]
+#[deku(endian = "big")]
 pub struct UserId(i16);
 
 impl TryFrom<&Parameter> for UserId {
@@ -310,16 +310,17 @@ impl TryFrom<&Parameter> for UserId {
 
 impl From<UserId> for Parameter {
     fn from(val: UserId) -> Self {
-        Parameter::new_i16(TransactionField::UserId, val.0)
+        Parameter::new_deku(TransactionField::UserId, val)
     }
 }
 
-#[derive(Debug, Default, Clone, Copy, From, Into, PartialEq, Eq, PartialOrd, Ord)]
+#[derive(Debug, Default, Clone, Copy, From, Into, PartialEq, Eq, PartialOrd, Ord, DekuRead, DekuWrite)]
+#[deku(endian = "big")]
 pub struct UserFlags(i16);
 
 impl From<UserFlags> for Parameter {
     fn from(val: UserFlags) -> Self {
-        Parameter::new_i16(TransactionField::UserFlags, val.0)
+        Parameter::new_deku(TransactionField::UserFlags, val)
     }
 }
 
@@ -333,85 +334,40 @@ impl TryFrom<&Parameter> for UserFlags {
     }
 }
 
-#[derive(Debug, Clone, PartialEq, Eq)]
+#[derive(Debug, Clone, PartialEq, Eq, DekuRead, DekuWrite)]
 pub struct UserNameWithInfo {
     pub user_id: UserId,
     pub icon_id: IconId,
     pub user_flags: UserFlags,
+    #[deku(endian = "big", update = "self.username.len() as i16")]
+    pub username_len: i16,
+    #[deku(ctx = "*username_len as usize")]
     pub username: Nickname,
 }
 
 impl UserNameWithInfo {
     pub fn anonymous(username: Nickname, icon_id: IconId) -> Self {
         Self {
+            username_len: username.len() as i16,
             username,
             icon_id,
             user_flags: Default::default(),
             user_id: Default::default(),
         }
     }
-    fn user_id(bytes: &[u8]) -> BIResult<UserId> {
-        let (bytes, id) = be_i16(bytes)?;
-        Ok((bytes, id.into()))
-    }
-    fn icon_id(bytes: &[u8]) -> BIResult<IconId> {
-        let (bytes, id) = be_i16(bytes)?;
-        Ok((bytes, id.into()))
-    }
-    fn user_flags(bytes: &[u8]) -> BIResult<UserFlags> {
-        let (bytes, flags) = be_i16(bytes)?;
-        Ok((bytes, flags.into()))
-    }
-    fn username(bytes: &[u8]) -> BIResult<Nickname> {
-        let (bytes, len) = be_i16(bytes)?;
-        let (bytes, username) = take(len as usize)(bytes)?;
-        Ok((bytes, username.to_vec().into()))
-    }
-    fn from_bytes(bytes: &[u8]) -> BIResult<Self> {
-        let (bytes, user_id) = Self::user_id(bytes)?;
-        let (bytes, icon_id) = Self::icon_id(bytes)?;
-        let (bytes, user_flags) = Self::user_flags(bytes)?;
-        let (bytes, username) = Self::username(bytes)?;
-        Ok((
-            bytes,
-            Self {
-                user_id,
-                icon_id,
-                user_flags,
-                username,
-            },
-        ))
-    }
 }
 
 impl TryFrom<&Parameter> for UserNameWithInfo {
     type Error = ProtocolError;
     fn try_from(p: &Parameter) -> Result<Self, Self::Error> {
-        let bytes = p.borrow();
-        Self::from_bytes(bytes)
-            .map(|(_, user)| user)
+        Self::try_from(&p.field_data[..])
             .map_err(|_| ProtocolError::MalformedData(TransactionField::UserNameWithInfo))
     }
 }
 
 impl From<UserNameWithInfo> for Parameter {
     fn from(val: UserNameWithInfo) -> Self {
-        let username = val.username.take();
-        let username_len = username.len() as i16;
-        let data = [
-            &val.user_id.0.to_be_bytes()[..],
-            &val.icon_id.0.to_be_bytes()[..],
-            &val.user_flags.0.to_be_bytes()[..],
-            &username_len.to_be_bytes()[..],
-            &username[..],
-        ].into_iter()
-            .flat_map(|bytes| bytes.iter())
-            .copied()
-            .collect();
-        Parameter::new(
-            TransactionField::UserNameWithInfo,
-            data,
-        )
+        Parameter::new_deku(TransactionField::UserNameWithInfo, val)
     }
 }
 
@@ -467,7 +423,8 @@ impl From<&FileName> for PathBuf {
     }
 }
 
-#[derive(Debug, Default, Clone, Copy, From, Into, PartialEq, Eq, PartialOrd, Ord)]
+#[derive(Debug, Default, Clone, Copy, From, Into, PartialEq, Eq, PartialOrd, Ord, DekuRead, DekuWrite)]
+#[deku(endian = "big")]
 pub struct FileSize(i32);
 
 impl TryFrom<&Parameter> for FileSize {
@@ -482,7 +439,7 @@ impl TryFrom<&Parameter> for FileSize {
 
 impl From<FileSize> for Parameter {
     fn from(val: FileSize) -> Self {
-        Self::new_i32(TransactionField::FileSize, val.0)
+        Self::new_deku(TransactionField::FileSize, val)
     }
 }
 
@@ -717,12 +674,9 @@ impl TryFrom<&Parameter> for FileCreatedAt {
             parameter.clone(),
             TransactionField::FileCreateDate,
         )?;
-        let ((tail, _), date) = DateParameter::from_bytes((&data, 0))
-            .map_err(|_| ProtocolError::MalformedData(TransactionField::FileCreateDate))?;
-        if !tail.is_empty() {
-            Err(ProtocolError::MalformedData(TransactionField::FileCreateDate))?;
-        }
-        Ok(Self(date))
+        DateParameter::try_from(&data[..])
+            .map(Self)
+            .map_err(|_| ProtocolError::MalformedData(TransactionField::FileCreateDate))
     }
 }
 
@@ -771,7 +725,8 @@ impl From<FileModifiedAt> for Parameter {
     }
 }
 
-#[derive(Debug, Default, Clone, Copy, From, Into, PartialEq, Eq, PartialOrd, Ord)]
+#[derive(Debug, Default, Clone, Copy, From, Into, PartialEq, Eq, PartialOrd, Ord, DekuRead, DekuWrite)]
+#[deku(endian = "big")]
 pub struct TransferSize(i32);
 
 impl TryFrom<&Parameter> for TransferSize {
@@ -786,7 +741,7 @@ impl TryFrom<&Parameter> for TransferSize {
 
 impl From<TransferSize> for Parameter {
     fn from(val: TransferSize) -> Self {
-        Self::new_i32(TransactionField::TransferSize, val.0)
+        Self::new_deku(TransactionField::TransferSize, val)
     }
 }
 
@@ -806,7 +761,7 @@ impl TryFrom<&Parameter> for ReferenceNumber {
 
 impl From<ReferenceNumber> for Parameter {
     fn from(val: ReferenceNumber) -> Self {
-        Self::new_i32(TransactionField::ReferenceNumber, val.0)
+        Self::new_deku(TransactionField::ReferenceNumber, val)
     }
 }
 
@@ -820,7 +775,8 @@ impl HotlineProtocol for ReferenceNumber {
     }
 }
 
-#[derive(Debug, Default, Clone, Copy, From, Into, PartialEq, Eq, PartialOrd, Ord)]
+#[derive(Debug, Default, Clone, Copy, From, Into, PartialEq, Eq, PartialOrd, Ord, DekuRead, DekuWrite)]
+#[deku(endian = "big")]
 pub struct WaitingCount(i32);
 
 impl TryFrom<&Parameter> for WaitingCount {
@@ -835,11 +791,12 @@ impl TryFrom<&Parameter> for WaitingCount {
 
 impl From<WaitingCount> for Parameter {
     fn from(val: WaitingCount) -> Self {
-        Self::new_i32(TransactionField::WaitingCount, val.0)
+        Self::new_deku(TransactionField::WaitingCount, val)
     }
 }
 
-#[derive(Debug, Default, Clone, Copy, From, Into)]
+#[derive(Debug, Default, Clone, Copy, From, Into, DekuRead, DekuWrite)]
+#[deku(endian = "big")]
 pub struct TransactionOptions(i32);
 
 impl TryFrom<&Parameter> for TransactionOptions {
@@ -855,7 +812,7 @@ impl TryFrom<&Parameter> for TransactionOptions {
 
 impl From<TransactionOptions> for Parameter {
     fn from(val: TransactionOptions) -> Self {
-        Parameter::new_i32(TransactionField::Options, val.0)
+        Parameter::new_deku(TransactionField::Options, val)
     }
 }
 
