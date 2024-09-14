@@ -181,11 +181,8 @@ pub struct UserAccess(i64);
 impl TryFrom<&Parameter> for UserAccess {
     type Error = ProtocolError;
     fn try_from(parameter: &Parameter) -> Result<Self, Self::Error> {
-        let value = parameter.clone()
-            .int()
-            .ok_or(ProtocolError::MalformedData(TransactionField::UserAccess))?
-            .into();
-        Ok(Self(value))
+        Self::try_from(parameter.field_data.as_slice())
+            .map_err(|_| ProtocolError::MalformedData(TransactionField::UserAccess))
     }
 }
 
@@ -214,11 +211,8 @@ impl Default for ChatOptions {
 impl TryFrom<&Parameter> for ChatOptions {
     type Error = ProtocolError;
     fn try_from(parameter: &Parameter) -> Result<Self, Self::Error> {
-        parameter.clone()
-         .int()
-         .and_then(|i| i.i32())
-         .map(Self)
-         .ok_or(ProtocolError::MalformedData(TransactionField::ChatOptions))
+        Self::try_from(parameter.field_data.as_slice())
+         .map_err(|_| ProtocolError::MalformedData(TransactionField::ChatOptions))
     }
 }
 
@@ -228,7 +222,8 @@ impl From<ChatOptions> for Parameter {
     }
 }
 
-#[derive(Debug, Clone, Copy, From, Into, PartialEq, Eq, PartialOrd, Ord)]
+#[derive(Debug, Clone, Copy, From, Into, PartialEq, Eq, PartialOrd, Ord, DekuRead, DekuWrite)]
+#[deku(endian = "big")]
 pub struct ChatId(i32);
 
 impl Default for ChatId {
@@ -240,17 +235,14 @@ impl Default for ChatId {
 impl TryFrom<&Parameter> for ChatId {
     type Error = ProtocolError;
     fn try_from(parameter: &Parameter) -> Result<Self, Self::Error> {
-        parameter.clone()
-         .int()
-         .and_then(|i| i.i32())
-         .map(Self)
-         .ok_or(ProtocolError::MalformedData(TransactionField::ChatId))
+        Self::try_from(parameter.field_data.as_slice())
+         .map_err(|_| ProtocolError::MalformedData(TransactionField::ChatId))
     }
 }
 
 impl From<ChatId> for Parameter {
     fn from(val: ChatId) -> Self {
-        Parameter::new_i32(TransactionField::ChatId, val.0)
+        Parameter::new_deku(TransactionField::ChatId, val)
     }
 }
 
@@ -732,10 +724,8 @@ pub struct TransferSize(i32);
 impl TryFrom<&Parameter> for TransferSize {
     type Error = ProtocolError;
     fn try_from(parameter: &Parameter) -> Result<Self, Self::Error> {
-        let size = parameter.int()
-            .and_then(|i| i.i32())
-            .ok_or(ProtocolError::MalformedData(TransactionField::TransferSize))?;
-        Ok(Self(size))
+        Self::try_from(parameter.field_data.as_slice())
+            .map_err(|_| ProtocolError::MalformedData(TransactionField::TransferSize))
     }
 }
 
@@ -752,10 +742,8 @@ pub struct ReferenceNumber(i32);
 impl TryFrom<&Parameter> for ReferenceNumber {
     type Error = ProtocolError;
     fn try_from(parameter: &Parameter) -> Result<Self, Self::Error> {
-        let reference = parameter.int()
-            .and_then(|i| i.i32())
-            .ok_or(ProtocolError::MalformedData(TransactionField::ReferenceNumber))?;
-        Ok(Self(reference))
+        Self::try_from(parameter.field_data.as_slice())
+            .map_err(|_| ProtocolError::MalformedData(TransactionField::ReferenceNumber))
     }
 }
 
@@ -782,10 +770,8 @@ pub struct WaitingCount(i32);
 impl TryFrom<&Parameter> for WaitingCount {
     type Error = ProtocolError;
     fn try_from(parameter: &Parameter) -> Result<Self, Self::Error> {
-        let reference = parameter.int()
-            .and_then(|i| i.i32())
-            .ok_or(ProtocolError::MalformedData(TransactionField::WaitingCount))?;
-        Ok(Self(reference))
+        Self::try_from(parameter.field_data.as_slice())
+            .map_err(|_| ProtocolError::MalformedData(TransactionField::WaitingCount))
     }
 }
 
@@ -802,11 +788,8 @@ pub struct TransactionOptions(i32);
 impl TryFrom<&Parameter> for TransactionOptions {
     type Error = ProtocolError;
     fn try_from(parameter: &Parameter) -> Result<Self, Self::Error> {
-        parameter.clone()
-         .int()
-         .and_then(|i| i.i32())
-         .map(Self)
-         .ok_or(ProtocolError::MalformedData(TransactionField::Options))
+        Self::try_from(parameter.field_data.as_slice())
+         .map_err(|_| ProtocolError::MalformedData(TransactionField::Options))
     }
 }
 
