@@ -207,6 +207,10 @@ impl Parameter {
     pub fn int(&self) -> Option<IntParameter> {
         self.into()
     }
+    pub fn read_deku<D: for<'a> DekuContainerRead<'a>>(&self) -> anyhow::Result<D> {
+        let (_, d) = D::from_bytes((self.field_data.as_slice(), 0))?;
+        Ok(d)
+    }
     pub fn compute_length(&self) -> usize {
         std::mem::size_of_val(&self.field_id) + std::mem::size_of_val(&self.field_size) + self.field_data.len()
     }
