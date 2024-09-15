@@ -227,10 +227,7 @@ pub struct ServerAgreement(pub Vec<u8>);
 
 impl From<ServerAgreement> for Parameter {
     fn from(val: ServerAgreement) -> Self {
-        Parameter::new(
-            TransactionField::Data,
-            val.0,
-        )
+        Parameter::new_data(val.0)
     }
 }
 
@@ -967,7 +964,7 @@ impl From<SendChat> for TransactionFrame {
         let header = TransactionType::SendChat.into();
         let SendChat { message, chat_id, options } = val;
         let body = vec![
-            Some(Parameter::new(TransactionField::Data, message)),
+            Some(Parameter::new_data(message)),
             chat_id.map(ChatId::into),
             Some(options.into()),
         ].into_iter()
@@ -1006,10 +1003,7 @@ impl From<ChatMessage> for TransactionFrame {
     fn from(val: ChatMessage) -> Self {
         let header = TransactionType::ChatMessage.into();
         let ChatMessage { message, chat_id } = val;
-        let message = Parameter::new(
-            TransactionField::Data,
-            message,
-        );
+        let message = Parameter::new_data(message);
         let chat_id = chat_id.map(ChatId::into);
         let body = [
             Some(message),
@@ -1032,10 +1026,7 @@ impl From<ServerMessage> for TransactionFrame {
     fn from(val: ServerMessage) -> Self {
         let header = TransactionType::ServerMessage.into();
         let ServerMessage { message, user_id, user_name } = val;
-        let message = Parameter::new(
-            TransactionField::Data,
-            message,
-        );
+        let message = Parameter::new_data(message);
         let user_id = user_id.map(UserId::into);
         let user_name = user_name.map(Nickname::into);
         let body = vec![
@@ -1070,10 +1061,7 @@ impl From<DisconnectMessage> for TransactionFrame {
     fn from(val: DisconnectMessage) -> Self {
         let header = TransactionType::DisconnectMessage.into();
         let DisconnectMessage { message } = val;
-        let message = Parameter::new(
-            TransactionField::Data,
-            message,
-        );
+        let message = Parameter::new_data(message);
         let body = vec![message].into();
         Self { header, body }
     }
@@ -1109,7 +1097,7 @@ impl From<SendInstantMessage> for TransactionFrame {
         let SendInstantMessage { user_id, message } = val;
         let body = vec![
             user_id.into(),
-            Parameter::new(TransactionField::Data, message),
+            Parameter::new_data(message),
         ].into();
         Self { header, body }
     }
@@ -1437,7 +1425,7 @@ impl From<GetClientInfoTextReply> for TransactionFrame {
         let GetClientInfoTextReply { user_name, text } = val;
         let body = vec![
             user_name.into(),
-            Parameter::new(TransactionField::Data, text),
+            Parameter::new_data(text),
         ].into();
         Self { header, body }
     }
@@ -1466,9 +1454,7 @@ impl From<SendBroadcast> for TransactionFrame {
     fn from(val: SendBroadcast) -> Self {
         let header = TransactionType::GetClientInfoText.into();
         let SendBroadcast { message } = val;
-        let body = vec![
-            Parameter::new(TransactionField::Data, message),
-        ].into();
+        let body = vec![Parameter::new_data(message)].into();
         Self { header, body }
     }
 }
