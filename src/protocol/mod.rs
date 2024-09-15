@@ -622,9 +622,7 @@ impl TryFrom<TransactionFrame> for DisconnectUser {
         let user_id = body.require_field(TransactionField::UserId)
             .and_then(UserId::try_from)?;
         let options = body.borrow_field(TransactionField::Options)
-            .and_then(Parameter::int)
-            .and_then(|i| i.i32())
-            .map(TransactionOptions::from);
+            .and_then(|p| TransactionOptions::try_from(p).ok());
         let data = body.borrow_field(TransactionField::Data)
             .cloned()
             .map(Parameter::take);
