@@ -3,6 +3,7 @@ use std::{
     fs,
     io::{self, Read as _, Write as _},
 };
+use deku::prelude::*;
 
 use neolith::apple::AppleSingleHeader;
 
@@ -23,7 +24,7 @@ fn main() -> io::Result<()> {
         applesingle.read_to_end(&mut data)?;
         data
     };
-    let (_, header) = AppleSingleHeader::from_bytes(&applesingle_data)
+    let (_, header) = AppleSingleHeader::from_bytes((applesingle_data.as_slice(), 0))
         .expect("failed to parse applesingle header");
 
     let data_fork = header.data_fork()
