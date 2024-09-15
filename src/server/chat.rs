@@ -41,7 +41,7 @@ pub struct ChatRoomId(ChatId, ChatRoom);
 impl ChatRoomId {
     pub fn next(&self) -> Self {
         let Self(id, _) = self;
-        let id: i32 = i32::from(*id) + 1i32;
+        let id: i16 = (i32::from(*id) + 1i32) as i16;
         Self(id.into(), Default::default())
     }
 }
