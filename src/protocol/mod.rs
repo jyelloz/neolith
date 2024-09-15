@@ -472,13 +472,10 @@ impl From<(ChatId, &UserNameWithInfo)> for NotifyChatUserChange {
     }
 }
 
-#[derive(Debug, PartialEq, Eq, PartialOrd, Ord)]
+#[derive(Debug, PartialEq, Eq, PartialOrd, Ord, From)]
 pub struct NotifyChatUserDelete {
     pub chat_id: ChatId,
     pub user_id: UserId,
-    pub icon_id: IconId,
-    pub user_flags: UserFlags,
-    pub user_name: Nickname,
 }
 
 impl From<NotifyChatUserDelete> for TransactionFrame {
@@ -487,40 +484,12 @@ impl From<NotifyChatUserDelete> for TransactionFrame {
             type_: TransactionType::NotifyChatUserDelete.into(),
             ..Default::default()
         };
-        let NotifyChatUserDelete {
-            chat_id,
-            user_id,
-            icon_id,
-            user_flags,
-            user_name,
-        } = val;
+        let NotifyChatUserDelete { chat_id, user_id } = val;
         let body = vec![
             chat_id.into(),
             user_id.into(),
-            icon_id.into(),
-            user_flags.into(),
-            user_name.into(),
         ].into();
         Self { header, body }
-    }
-}
-
-impl From<(ChatId, &UserNameWithInfo)> for NotifyChatUserDelete {
-    fn from((chat_id, user): (ChatId, &UserNameWithInfo)) -> Self {
-        let UserNameWithInfo {
-            user_id,
-            icon_id,
-            user_flags,
-            username,
-            ..
-        } = user.clone();
-        Self {
-            chat_id,
-            user_id,
-            icon_id,
-            user_flags,
-            user_name: username,
-        }
     }
 }
 
