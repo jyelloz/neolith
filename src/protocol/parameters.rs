@@ -181,7 +181,7 @@ pub struct UserAccess(i64);
 impl TryFrom<&Parameter> for UserAccess {
     type Error = ProtocolError;
     fn try_from(parameter: &Parameter) -> Result<Self, Self::Error> {
-        Self::try_from(parameter.field_data.as_slice())
+        parameter.read_deku()
             .map_err(|_| ProtocolError::MalformedData(TransactionField::UserAccess))
     }
 }
@@ -211,8 +211,8 @@ impl Default for ChatOptions {
 impl TryFrom<&Parameter> for ChatOptions {
     type Error = ProtocolError;
     fn try_from(parameter: &Parameter) -> Result<Self, Self::Error> {
-        Self::try_from(parameter.field_data.as_slice())
-         .map_err(|_| ProtocolError::MalformedData(TransactionField::ChatOptions))
+        parameter.read_deku()
+            .map_err(|_| ProtocolError::MalformedData(TransactionField::ChatOptions))
     }
 }
 
@@ -236,7 +236,7 @@ impl Default for ChatId {
 impl TryFrom<&Parameter> for ChatId {
     type Error = ProtocolError;
     fn try_from(parameter: &Parameter) -> Result<Self, Self::Error> {
-        Self::try_from(parameter.field_data.as_slice())
+        parameter.read_deku()
             .map_err(|_| ProtocolError::MalformedData(TransactionField::ChatId))
     }
 }
@@ -280,7 +280,7 @@ impl From<IconId> for Parameter {
 impl TryFrom<&Parameter> for IconId {
     type Error = ProtocolError;
     fn try_from(parameter: &Parameter) -> Result<Self, Self::Error> {
-        Self::try_from(parameter.field_data.as_slice())
+        parameter.read_deku()
             .map_err(|_| ProtocolError::MalformedData(TransactionField::UserIconId))
     }
 }
@@ -292,7 +292,7 @@ pub struct UserId(i16);
 impl TryFrom<&Parameter> for UserId {
     type Error = ProtocolError;
     fn try_from(parameter: &Parameter) -> Result<Self, Self::Error> {
-        Self::try_from(parameter.field_data.as_slice())
+        parameter.read_deku()
             .map_err(|_| ProtocolError::MalformedData(TransactionField::UserId))
     }
 }
@@ -316,7 +316,7 @@ impl From<UserFlags> for Parameter {
 impl TryFrom<&Parameter> for UserFlags {
     type Error = ProtocolError;
     fn try_from(parameter: &Parameter) -> Result<Self, Self::Error> {
-        Self::try_from(parameter.field_data.as_slice())
+        parameter.read_deku()
             .map_err(|_| ProtocolError::MalformedData(TransactionField::UserFlags))
     }
 }
@@ -347,7 +347,7 @@ impl UserNameWithInfo {
 impl TryFrom<&Parameter> for UserNameWithInfo {
     type Error = ProtocolError;
     fn try_from(parameter: &Parameter) -> Result<Self, Self::Error> {
-        Self::try_from(parameter.field_data.as_slice())
+        parameter.read_deku()
             .map_err(|_| ProtocolError::MalformedData(TransactionField::UserNameWithInfo))
     }
 }
@@ -417,7 +417,7 @@ pub struct FileSize(i32);
 impl TryFrom<&Parameter> for FileSize {
     type Error = ProtocolError;
     fn try_from(parameter: &Parameter) -> Result<Self, Self::Error> {
-        Self::try_from(parameter.field_data.as_slice())
+        parameter.read_deku()
             .map_err(|_| ProtocolError::MalformedData(TransactionField::FileSize))
     }
 }
@@ -704,7 +704,7 @@ pub struct TransferSize(i32);
 impl TryFrom<&Parameter> for TransferSize {
     type Error = ProtocolError;
     fn try_from(parameter: &Parameter) -> Result<Self, Self::Error> {
-        Self::try_from(parameter.field_data.as_slice())
+        parameter.read_deku()
             .map_err(|_| ProtocolError::MalformedData(TransactionField::TransferSize))
     }
 }
@@ -722,7 +722,7 @@ pub struct ReferenceNumber(i32);
 impl TryFrom<&Parameter> for ReferenceNumber {
     type Error = ProtocolError;
     fn try_from(parameter: &Parameter) -> Result<Self, Self::Error> {
-        Self::try_from(parameter.field_data.as_slice())
+        parameter.read_deku()
             .map_err(|_| ProtocolError::MalformedData(TransactionField::ReferenceNumber))
     }
 }
@@ -750,7 +750,7 @@ pub struct WaitingCount(i32);
 impl TryFrom<&Parameter> for WaitingCount {
     type Error = ProtocolError;
     fn try_from(parameter: &Parameter) -> Result<Self, Self::Error> {
-        Self::try_from(parameter.field_data.as_slice())
+        parameter.read_deku()
             .map_err(|_| ProtocolError::MalformedData(TransactionField::WaitingCount))
     }
 }
@@ -768,7 +768,7 @@ pub struct TransactionOptions(i32);
 impl TryFrom<&Parameter> for TransactionOptions {
     type Error = ProtocolError;
     fn try_from(parameter: &Parameter) -> Result<Self, Self::Error> {
-        Self::try_from(parameter.field_data.as_slice())
+        parameter.read_deku()
          .map_err(|_| ProtocolError::MalformedData(TransactionField::Options))
     }
 }
