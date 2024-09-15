@@ -245,18 +245,6 @@ impl IntParameter {
             None
         }
     }
-    pub fn i8(&self) -> Option<i8> {
-        let Self(int) = self;
-        i8::try_from(*int).ok()
-    }
-    pub fn i16(&self) -> Option<i16> {
-        let Self(int) = self;
-        i16::try_from(*int).ok()
-    }
-    pub fn i32(&self) -> Option<i32> {
-        let Self(int) = self;
-        i32::try_from(*int).ok()
-    }
 }
 
 impl From<&Parameter> for Option<IntParameter> {
