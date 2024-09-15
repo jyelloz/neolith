@@ -208,7 +208,7 @@ impl Parameter {
         self.into()
     }
     pub fn compute_length(&self) -> usize {
-        2 + 2 + self.field_data.len()
+        std::mem::size_of_val(&self.field_id) + std::mem::size_of_val(&self.field_size) + self.field_data.len()
     }
 }
 
