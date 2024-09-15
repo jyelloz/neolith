@@ -236,7 +236,7 @@ impl TryFrom<&Parameter> for ChatId {
     type Error = ProtocolError;
     fn try_from(parameter: &Parameter) -> Result<Self, Self::Error> {
         Self::try_from(parameter.field_data.as_slice())
-         .map_err(|_| ProtocolError::MalformedData(TransactionField::ChatId))
+            .map_err(|_| ProtocolError::MalformedData(TransactionField::ChatId))
     }
 }
 
@@ -279,10 +279,8 @@ impl From<IconId> for Parameter {
 impl TryFrom<&Parameter> for IconId {
     type Error = ProtocolError;
     fn try_from(parameter: &Parameter) -> Result<Self, Self::Error> {
-        parameter.int()
-            .and_then(|int| int.i16())
-            .map(Self::from)
-            .ok_or(ProtocolError::MalformedData(TransactionField::UserIconId))
+        Self::try_from(parameter.field_data.as_slice())
+            .map_err(|_| ProtocolError::MalformedData(TransactionField::UserIconId))
     }
 }
 
@@ -293,10 +291,8 @@ pub struct UserId(i16);
 impl TryFrom<&Parameter> for UserId {
     type Error = ProtocolError;
     fn try_from(parameter: &Parameter) -> Result<Self, Self::Error> {
-        parameter.int()
-            .and_then(|i| i.i16())
-            .map(Self::from)
-            .ok_or(ProtocolError::MalformedData(TransactionField::UserId))
+        Self::try_from(parameter.field_data.as_slice())
+            .map_err(|_| ProtocolError::MalformedData(TransactionField::UserId))
     }
 }
 
@@ -319,10 +315,8 @@ impl From<UserFlags> for Parameter {
 impl TryFrom<&Parameter> for UserFlags {
     type Error = ProtocolError;
     fn try_from(parameter: &Parameter) -> Result<Self, Self::Error> {
-        parameter.int()
-            .and_then(|i| i.i16())
-            .map(Self::from)
-            .ok_or(ProtocolError::MalformedData(TransactionField::UserFlags))
+        Self::try_from(parameter.field_data.as_slice())
+            .map_err(|_| ProtocolError::MalformedData(TransactionField::UserFlags))
     }
 }
 
@@ -351,8 +345,8 @@ impl UserNameWithInfo {
 
 impl TryFrom<&Parameter> for UserNameWithInfo {
     type Error = ProtocolError;
-    fn try_from(p: &Parameter) -> Result<Self, Self::Error> {
-        Self::try_from(&p.field_data[..])
+    fn try_from(parameter: &Parameter) -> Result<Self, Self::Error> {
+        Self::try_from(parameter.field_data.as_slice())
             .map_err(|_| ProtocolError::MalformedData(TransactionField::UserNameWithInfo))
     }
 }
@@ -380,7 +374,7 @@ impl From<&Parameter> for Message {
 
 impl From<Message> for Parameter {
     fn from(val: Message) -> Self {
-        Parameter::new(TransactionField::Data, val.0)
+        Parameter::new_data(val.0)
     }
 }
 
