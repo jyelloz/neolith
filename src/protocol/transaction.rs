@@ -177,12 +177,6 @@ impl Parameter {
         let field_data: Vec<u8> = field_data.to_bytes().unwrap();
         Self::new(field_id, field_data)
     }
-    pub fn new_i16<F: Into<FieldId>>(field_id: F, int: i16) -> Self {
-        Self::new(field_id, int.to_be_bytes().to_vec())
-    }
-    pub fn new_i32<F: Into<FieldId>>(field_id: F, int: i32) -> Self {
-        Self::new(field_id, int.to_be_bytes().to_vec())
-    }
     pub fn new_int<F, I>(field_id: F, int: I) -> Self
         where F: Into<FieldId>,
               I: Into<IntParameter> {
