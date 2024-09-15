@@ -356,12 +356,13 @@ impl TransactionFrame {
         self.header.require_transaction_type(expected)?;
         Ok(self)
     }
-    pub fn reply_to(self, request: &TransactionHeader) -> Self {
-        let Self { header, body } = self;
-        Self {
-            header: header.reply_to(request),
-            body,
-        }
+    pub fn reply_to(mut self, request: &TransactionHeader) -> Self {
+        self.header = self.header.reply_to(request);
+        self
+    }
+    pub fn id(mut self, id: Id) -> Self {
+        self.header.id = id;
+        self
     }
 }
 
@@ -375,6 +376,7 @@ impl From<(TransactionHeader, TransactionBody)> for TransactionFrame {
 pub trait IntoFrameExt {
     fn framed(self) -> TransactionFrame;
     fn reply_to(self, request: &TransactionHeader) -> TransactionFrame;
+    fn id(self, id: Id) -> TransactionFrame;
 }
 
 impl <F: Into<TransactionFrame>> IntoFrameExt for F {
@@ -383,6 +385,9 @@ impl <F: Into<TransactionFrame>> IntoFrameExt for F {
     }
     fn reply_to(self, request: &TransactionHeader) -> TransactionFrame {
         self.framed().reply_to(request)
+    }
+    fn id(self, id: Id) -> TransactionFrame {
+        self.framed().id(id)
     }
 }
 
