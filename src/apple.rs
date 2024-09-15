@@ -3,18 +3,9 @@ use num_enum::{
     IntoPrimitive,
 };
 
-use nom::{
-    IResult,
-    combinator::verify,
-    multi,
-    bytes::streaming::take,
-    number::streaming::{be_u32, be_u16},
-};
+use deku::prelude::*;
 
 use derive_more::From;
-
-const MAGIC: u32 =   0x0005_1600;
-const VERSION: u32 = 0x0002_0000;
 
 #[derive(
     Debug,
@@ -41,7 +32,8 @@ pub enum EntryId {
     DirectoryID,
 }
 
-#[derive(Debug, Copy, Clone)]
+#[derive(Debug, Copy, Clone, DekuRead, DekuWrite)]
+#[deku(endian = "big")]
 pub struct EntryDescriptor {
     pub id: u32,
     pub offset: u32,
@@ -49,72 +41,29 @@ pub struct EntryDescriptor {
 }
 
 impl EntryDescriptor {
-    fn to_bytes(self) -> Vec<u8> {
-        [
-            self.id.to_be_bytes(),
-            self.offset.to_be_bytes(),
-            self.length.to_be_bytes(),
-        ].into_iter()
-            .flat_map(|b| b.into_iter())
-            .collect()
-    }
-    fn from_bytes(bytes: &[u8]) -> IResult<&[u8], Self> {
-        let (bytes, id) = nom::number::streaming::be_u32(bytes)?;
-        let (bytes, offset) = nom::number::streaming::be_u32(bytes)?;
-        let (bytes, length) = nom::number::streaming::be_u32(bytes)?;
-        let descriptor = Self { id, offset, length };
-        Ok((bytes, descriptor))
-    }
     pub fn next_offset(&self) -> u32 {
         self.offset + self.length
     }
 }
 
-#[derive(Debug, Clone, From)]
+#[derive(Debug, Clone, From, DekuRead, DekuWrite)]
+#[deku(magic = b"\x00\x05\x16\x00\x00\x02\x00\x00")]
 pub struct AppleSingleHeader {
+    #[deku(pad_bytes_before = "16", update = "self.descriptors.len() as u16", endian = "big")]
+    pub n_descriptors: u16,
+    #[deku(count = "n_descriptors")]
     pub descriptors: Vec<EntryDescriptor>,
 }
 
 impl AppleSingleHeader {
+    pub fn new(descriptors: Vec<EntryDescriptor>) -> Self {
+        Self {
+            n_descriptors: descriptors.len() as u16,
+            descriptors,
+        }
+    }
     pub fn calculate_size(n_entries: u32) -> u32 {
         26 + (n_entries * 12)
-    }
-    pub fn size(&self) -> u32 {
-        Self::calculate_size(self.descriptors.len() as u32)
-    }
-    pub fn to_bytes(&self) -> Vec<u8> {
-        let Self { descriptors } = self;
-        let n_descriptors = descriptors.len() as u16;
-        let entry_descriptors = descriptors.iter()
-            .map(|d| d.to_bytes())
-            .flat_map(|bytes| bytes.into_iter());
-        [
-            &MAGIC.to_be_bytes()[..],
-            &VERSION.to_be_bytes()[..],
-            &[0u8; 16][..],
-            &n_descriptors.to_be_bytes()[..],
-        ].into_iter()
-            .flat_map(|bytes| bytes.iter())
-            .copied()
-            .chain(entry_descriptors)
-            .collect()
-    }
-    fn magic(bytes: &[u8]) -> IResult<&[u8], u32> {
-        verify(be_u32, |magic| *magic == MAGIC)(bytes)
-    }
-    fn version(bytes: &[u8]) -> IResult<&[u8], u32> {
-        verify(be_u32, |version| *version == VERSION)(bytes)
-    }
-    pub fn from_bytes(bytes: &[u8]) -> IResult<&[u8], Self> {
-        let (bytes, _magic) = Self::magic(bytes)?;
-        let (bytes, _version) = Self::version(bytes)?;
-        let (bytes, _filler) = take(16usize)(bytes)?;
-        let (bytes, n_entries) = be_u16(bytes)?;
-        let (bytes, descriptors) = multi::count(
-            EntryDescriptor::from_bytes,
-            n_entries as usize,
-        )(bytes)?;
-        Ok((bytes, descriptors.into()))
     }
     pub fn data_fork(&self) -> Option<EntryDescriptor> {
         self.descriptors.iter()
