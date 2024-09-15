@@ -416,10 +416,8 @@ pub struct FileSize(i32);
 impl TryFrom<&Parameter> for FileSize {
     type Error = ProtocolError;
     fn try_from(parameter: &Parameter) -> Result<Self, Self::Error> {
-        parameter.int()
-            .and_then(|i| i.i32())
-            .ok_or(ProtocolError::MalformedData(TransactionField::FileSize))
-            .map(Self)
+        Self::try_from(parameter.field_data.as_slice())
+            .map_err(|_| ProtocolError::MalformedData(TransactionField::FileSize))
     }
 }
 
@@ -660,19 +658,14 @@ impl TryFrom<&Parameter> for FileCreatedAt {
             parameter.clone(),
             TransactionField::FileCreateDate,
         )?;
-        DateParameter::try_from(&data[..])
-            .map(Self)
+        Self::try_from(&data[..])
             .map_err(|_| ProtocolError::MalformedData(TransactionField::FileCreateDate))
     }
 }
 
 impl From<FileCreatedAt> for Parameter {
     fn from(val: FileCreatedAt) -> Self {
-        let FileCreatedAt(date) = val;
-        Parameter::new(
-            TransactionField::FileCreateDate,
-            date.to_bytes().unwrap(),
-        )
+        Parameter::new_deku(TransactionField::FileCreateDate, val)
     }
 }
 
@@ -692,22 +685,14 @@ impl TryFrom<&Parameter> for FileModifiedAt {
             parameter.clone(),
             TransactionField::FileModifyDate,
         )?;
-        let ((tail, _), date) = DateParameter::from_bytes((&data, 0))
-            .map_err(|_| ProtocolError::MalformedData(TransactionField::FileModifyDate))?;
-        if !tail.is_empty() {
-            Err(ProtocolError::MalformedData(TransactionField::FileModifyDate))?;
-        }
-        Ok(Self(date))
+        Self::try_from(&data[..])
+            .map_err(|_| ProtocolError::MalformedData(TransactionField::FileModifyDate))
     }
 }
 
 impl From<FileModifiedAt> for Parameter {
     fn from(val: FileModifiedAt) -> Self {
-        let FileModifiedAt(date) = val;
-        Parameter::new(
-            TransactionField::FileModifyDate,
-            date.to_bytes().unwrap(),
-        )
+        Parameter::new_deku(TransactionField::FileModifyDate, val)
     }
 }
 
