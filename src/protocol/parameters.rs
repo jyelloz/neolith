@@ -224,7 +224,8 @@ impl From<ChatOptions> for Parameter {
 
 #[derive(Debug, Clone, Copy, From, Into, PartialEq, Eq, PartialOrd, Ord, DekuRead, DekuWrite)]
 #[deku(endian = "big")]
-pub struct ChatId(i32);
+#[into(i16, i32)]
+pub struct ChatId(i16);
 
 impl Default for ChatId {
     fn default() -> Self {
