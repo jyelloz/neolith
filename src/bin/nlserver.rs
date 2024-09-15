@@ -547,7 +547,7 @@ impl <R: AsyncRead + Unpin, W: AsyncWrite + Unpin> Established<R, W> {
             globals.chat_leave(req.into(), &user).await;
             None
         } else if let Ok(req) = SetChatSubject::try_from(frame.clone()) {
-            debug!("leave: {:?}", &req);
+            debug!("set chat subject: {req:?}");
             let (chat_id, subject) = req.into();
             globals.chat_subject_change(chat_id, subject.into()).await;
             None
