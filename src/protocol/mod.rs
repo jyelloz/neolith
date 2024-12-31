@@ -1629,6 +1629,40 @@ impl From<GetUserReply> for TransactionFrame {
 }
 
 #[derive(Debug)]
+pub struct DownloadInfo {
+    pub reference: ReferenceNumber,
+    pub waiting_count: WaitingCount,
+}
+
+impl TryFrom<TransactionFrame> for DownloadInfo {
+    type Error = ProtocolError;
+    fn try_from(frame: TransactionFrame) -> Result<Self, Self::Error> {
+        let TransactionFrame { body, .. } =
+            frame.require_transaction_type(TransactionType::DownloadInfo)?;
+        let reference = body
+            .require_field(TransactionField::ReferenceNumber)
+            .and_then(ReferenceNumber::try_from)?;
+        let waiting_count = body
+            .require_field(TransactionField::WaitingCount)
+            .and_then(WaitingCount::try_from)?;
+        Ok(Self {
+            reference,
+            waiting_count,
+        })
+    }
+}
+
+impl From<DownloadInfo> for TransactionFrame {
+    fn from(val: DownloadInfo) -> Self {
+        let DownloadInfo { reference, waiting_count } = val;
+        let body = [reference.into(), waiting_count.into()]
+            .into_iter()
+            .collect::<TransactionBody>();
+        Self::new(TransactionType::DownloadInfo, body)
+    }
+}
+
+#[derive(Debug)]
 pub struct DownloadFile {
     pub filename: FileName,
     pub file_path: FilePath,

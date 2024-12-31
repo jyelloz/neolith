@@ -47,6 +47,7 @@ pub enum TransactionType {
     MoveFile,
     MakeFileAlias,
     DownloadFolder,
+    DownloadInfo,
     DownloadBanner,
     UploadFolder,
 
