@@ -1,15 +1,23 @@
-use crate::protocol::{self as proto, UserId, UserNameWithInfo};
+use crate::protocol::{self as proto, Credential as _, UserId, UserNameWithInfo};
 
 use derive_more::{From, Into};
+use encoding_rs::MACINTOSH;
 use thiserror::Error;
 
-use std::collections::HashSet;
+use std::{
+    collections::{HashMap, HashSet},
+    fs,
+    path::{Path, PathBuf},
+};
 
 use tokio::sync::{mpsc, oneshot, watch};
 
 use tracing::debug;
 
-use super::bus::{Bus, Notification};
+use super::{
+    application::UserAccount,
+    bus::{Bus, Notification},
+};
 
 #[derive(Debug, Error)]
 pub enum UsersError {
@@ -189,5 +197,60 @@ impl UserUpdateProcessor {
     }
     pub fn subscribe(&self) -> watch::Receiver<Users> {
         self.updates.subscribe()
+    }
+}
+
+#[derive(Default, Debug, Clone)]
+pub struct UserAccounts {
+    users: HashMap<String, UserAccount>,
+}
+
+impl UserAccounts {
+    pub fn with_root<P: Into<PathBuf>>(root: P) -> anyhow::Result<Self> {
+        let root = root.into();
+        let users = Self::load(&root)?;
+        Ok(Self { users })
+    }
+    fn load(path: &Path) -> anyhow::Result<HashMap<String, UserAccount>> {
+        let mut users: HashMap<String, UserAccount> = HashMap::default();
+        for file in fs::read_dir(path)? {
+            let Ok(file) = file else {
+                tracing::error!("failed to load user directory entry from within {:?}", path);
+                continue;
+            };
+            let path = file.path();
+            let Ok(data) = fs::read_to_string(&path) else {
+                tracing::error!("failed to read user account file {path:?}");
+                continue;
+            };
+            let Ok(account) = toml::from_str::<UserAccount>(&data) else {
+                tracing::error!("failed to decode data from user account file {path:?}");
+                continue;
+            };
+            let username = account.identity.login.clone();
+            users.insert(username, account);
+        }
+        Ok(users)
+    }
+    pub fn get(&self, login: proto::UserLogin) -> Option<&UserAccount> {
+        let username = login.text();
+        self.users.get(&username)
+    }
+    pub fn verify(
+        &self,
+        login: proto::UserLogin,
+        password: proto::Password,
+    ) -> Option<&UserAccount> {
+        let account = self.get(login)?;
+        let password = password.deobfuscate();
+        let (password, _, decode_failed) = MACINTOSH.decode(&password);
+        if decode_failed {
+            tracing::error!("invalid password data");
+            return None;
+        }
+        if !account.identity.password.verify(&password) {
+            return None;
+        }
+        Some(account)
     }
 }
