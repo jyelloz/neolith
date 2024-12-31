@@ -228,6 +228,7 @@ pub enum ClientRequest {
     DeleteUser(proto::DeleteUser),
     GetUser(proto::GetUser),
     SetUser(proto::SetUser),
+    UserAccess,
     SendBroadcast(proto::SendBroadcast),
 }
 
@@ -245,6 +246,9 @@ pub enum ServerResponse {
     DeleteFileReply(proto::DeleteFileReply),
     MoveFileReply(proto::MoveFileReply),
     GetUserReply(proto::GetUserReply),
+    SetUserReply,
+    NewUserReply,
+    DeleteUserReply,
     Rejected(Option<String>),
 }
 
@@ -275,6 +279,9 @@ impl From<ServerResponse> for TransactionFrame {
             ServerResponse::MoveFileReply(reply) => reply.into(),
             ServerResponse::GetUserReply(reply) => reply.into(),
             ServerResponse::Rejected(message) => ServerResponse::reject(message),
+            ServerResponse::SetUserReply => GenericReply.into(),
+            ServerResponse::NewUserReply => GenericReply.into(),
+            ServerResponse::DeleteUserReply => GenericReply.into(),
         }
     }
 }
@@ -468,6 +475,24 @@ impl NeolithServer {
             ClientRequest::MoveFile(_) => {
                 Ok(Some(proto::MoveFileReply.into()))
             },
+            ClientRequest::GetUser(req) => {
+                if let Some(account) = users::UserAccounts.get(req.0) {
+                    Ok(Some(ServerResponse::GetUserReply(account.into())))
+                } else {
+                    Ok(Some(ServerResponse::Rejected(Some(
+                        "User account not found".to_string(),
+                    ))))
+                }
+            }
+            ClientRequest::SetUser(..) => {
+                Ok(Some(ServerResponse::SetUserReply))
+            }
+            ClientRequest::NewUser(..) => {
+                Ok(Some(ServerResponse::NewUserReply))
+            }
+            ClientRequest::DeleteUser(..) => {
+                Ok(Some(ServerResponse::DeleteUserReply))
+            }
             _ => Ok(Some(ServerResponse::Rejected(Some("todo".to_string())))),
         }
     }
