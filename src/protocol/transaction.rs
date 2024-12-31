@@ -1,20 +1,11 @@
 use super::{
-    ErrorCode,
-    ProtocolError,
+    DekuHotlineProtocol, ErrorCode, HotlineProtocol, ProtocolError, TransactionField,
     TransactionType,
-    TransactionField,
-    HotlineProtocol,
-    DekuHotlineProtocol,
-    BIResult,
-    be_i8,
-    be_i16,
-    be_i32,
-    be_i64,
 };
 
+use deku::prelude::*;
 use derive_more::{From, Into};
 use encoding_rs::MACINTOSH;
-use deku::prelude::*;
 
 #[derive(Debug, Clone, Copy, From, Into, DekuRead, DekuWrite)]
 pub struct Flags(i8);
@@ -91,7 +82,10 @@ impl TransactionHeader {
         TransactionType::try_from(type_id)
             .map_err(|_| ProtocolError::UnsupportedTransaction(type_id))
     }
-    pub fn require_transaction_type(self, expected: TransactionType) -> Result<Self, ProtocolError> {
+    pub fn require_transaction_type(
+        self,
+        expected: TransactionType,
+    ) -> Result<Self, ProtocolError> {
         let _type = self.transaction_type()?;
         if _type == expected {
             Ok(self)
@@ -178,8 +172,10 @@ impl Parameter {
         Self::new(field_id, field_data)
     }
     pub fn new_int<F, I>(field_id: F, int: I) -> Self
-        where F: Into<FieldId>,
-              I: Into<IntParameter> {
+    where
+        F: Into<FieldId>,
+        I: Into<IntParameter>,
+    {
         let field_id = field_id.into();
         let param = int.into();
         let field_data: Vec<u8> = param.into();
@@ -207,12 +203,14 @@ impl Parameter {
     pub fn int(&self) -> Option<IntParameter> {
         self.into()
     }
-    pub fn read_deku<D: for<'a> DekuContainerRead<'a>>(&self) -> anyhow::Result<D> {
+    pub fn read_deku<D: for<'a> DekuContainerRead<'a>>(&self) -> Result<D, DekuError> {
         let (_, d) = D::from_bytes((self.field_data.as_slice(), 0))?;
         Ok(d)
     }
     pub fn compute_length(&self) -> usize {
-        std::mem::size_of_val(&self.field_id) + std::mem::size_of_val(&self.field_size) + self.field_data.len()
+        std::mem::size_of_val(&self.field_id)
+            + std::mem::size_of_val(&self.field_size)
+            + self.field_data.len()
     }
 }
 
@@ -222,32 +220,20 @@ pub struct IntParameter(i64);
 
 impl IntParameter {
     pub fn from_i8(data: &[u8]) -> Option<i64> {
-        if let Ok((b"", i)) = be_i8::<_, nom::error::Error<_>>(data) {
-            Some(i as i64)
-        } else {
-            None
-        }
+        let data: &[u8; 1] = data.try_into().ok()?;
+        Some(i8::from_be_bytes(*data) as i64)
     }
     pub fn from_i16(data: &[u8]) -> Option<i64> {
-        if let Ok((b"", i)) = be_i16::<_, nom::error::Error<_>>(data) {
-            Some(i as i64)
-        } else {
-            None
-        }
+        let data: &[u8; 2] = data.try_into().ok()?;
+        Some(i16::from_be_bytes(*data) as i64)
     }
     pub fn from_i32(data: &[u8]) -> Option<i64> {
-        if let Ok((b"", i)) = be_i32::<_, nom::error::Error<_>>(data) {
-            Some(i as i64)
-        } else {
-            None
-        }
+        let data: &[u8; 4] = data.try_into().ok()?;
+        Some(i32::from_be_bytes(*data) as i64)
     }
     pub fn from_i64(data: &[u8]) -> Option<i64> {
-        if let Ok((b"", i)) = be_i64::<_, nom::error::Error<_>>(data) {
-            Some(i)
-        } else {
-            None
-        }
+        let data: &[u8; 8] = data.try_into().ok()?;
+        Some(i64::from_be_bytes(*data))
     }
 }
 
@@ -293,12 +279,12 @@ pub struct TransactionBody {
 impl TransactionBody {
     pub fn borrow_field(&self, field: TransactionField) -> Option<&Parameter> {
         let Self { parameters, .. } = self;
-        parameters.iter()
-            .find(|p| p.field_matches(field))
+        parameters.iter().find(|p| p.field_matches(field))
     }
     pub fn borrow_fields(&self, field: TransactionField) -> Vec<&Parameter> {
         let Self { parameters, .. } = self;
-        parameters.iter()
+        parameters
+            .iter()
             .filter(|p| p.field_matches(field))
             .collect()
     }
@@ -307,12 +293,16 @@ impl TransactionBody {
             .ok_or(ProtocolError::MissingField(field))
     }
     pub fn compute_length(&self) -> usize {
-        2 + self.parameters.iter().map(Parameter::compute_length).sum::<usize>()
+        2 + self
+            .parameters
+            .iter()
+            .map(Parameter::compute_length)
+            .sum::<usize>()
     }
 }
 
 impl FromIterator<Parameter> for TransactionBody {
-    fn from_iter<I: IntoIterator<Item=Parameter>>(iter: I) -> Self {
+    fn from_iter<I: IntoIterator<Item = Parameter>>(iter: I) -> Self {
         Vec::from_iter(iter).into()
     }
 }
@@ -343,16 +333,16 @@ impl TransactionFrame {
             body: Default::default(),
         }
     }
-    pub fn new<H: Into<TransactionHeader>, B: Into<TransactionBody>>(
-        header: H,
-        body: B,
-    ) -> Self {
+    pub fn new<H: Into<TransactionHeader>, B: Into<TransactionBody>>(header: H, body: B) -> Self {
         Self {
             header: header.into(),
             body: body.into(),
         }
     }
-    pub fn require_transaction_type(self, expected: TransactionType) -> Result<Self, ProtocolError> {
+    pub fn require_transaction_type(
+        self,
+        expected: TransactionType,
+    ) -> Result<Self, ProtocolError> {
         self.header.require_transaction_type(expected)?;
         Ok(self)
     }
@@ -379,7 +369,7 @@ pub trait IntoFrameExt {
     fn id(self, id: Id) -> TransactionFrame;
 }
 
-impl <F: Into<TransactionFrame>> IntoFrameExt for F {
+impl<F: Into<TransactionFrame>> IntoFrameExt for F {
     fn framed(self) -> TransactionFrame {
         self.into()
     }
@@ -399,8 +389,8 @@ impl HotlineProtocol for TransactionFrame {
         self.update().unwrap();
         self.to_bytes().unwrap()
     }
-    fn from_bytes(bytes: &[u8]) -> BIResult<Self> {
-        let ((bytes, _bits), value) = <Self as DekuContainerRead>::from_bytes((bytes, 0)).unwrap();
-        Ok((bytes, value))
+    fn from_bytes(bytes: &[u8]) -> Result<Self, ProtocolError> {
+        let (_, value) = <Self as DekuContainerRead>::from_bytes((bytes, 0)).unwrap();
+        Ok(value)
     }
 }

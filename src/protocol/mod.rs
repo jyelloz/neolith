@@ -1,10 +1,3 @@
-use nom::{
-    self,
-    IResult,
-    multi,
-    bytes::streaming::take,
-    number::streaming::{be_i16, be_i32, be_i64, be_i8},
-};
 use deku::prelude::*;
 use derive_more::{From, Into};
 use maplit::hashmap;
@@ -21,27 +14,33 @@ mod transaction_type;
 
 pub trait HotlineProtocol: Sized {
     fn into_bytes(self) -> Vec<u8>;
-    fn from_bytes(bytes: &[u8]) -> BIResult<Self>;
+    fn from_bytes(bytes: &[u8]) -> Result<Self, ProtocolError>;
 }
 
 trait DekuHotlineProtocol {}
 
-impl <D> HotlineProtocol for D where D: DekuHotlineProtocol, D: DekuContainerWrite, D: for<'a> DekuContainerRead<'a> {
+impl<D> HotlineProtocol for D
+where
+    D: DekuHotlineProtocol,
+    D: DekuContainerWrite,
+    D: for<'a> DekuContainerRead<'a>,
+{
     fn into_bytes(self) -> Vec<u8> {
         self.to_bytes().unwrap()
     }
-    fn from_bytes(bytes: &[u8]) -> BIResult<Self> {
-        let ((bytes, _bits), value) = <Self as DekuContainerRead>::from_bytes((bytes, 0)).unwrap();
-        Ok((bytes, value))
+    fn from_bytes(bytes: &[u8]) -> Result<Self, ProtocolError> {
+        let (_, value) =
+            <Self as DekuContainerRead>::from_bytes((bytes, 0)).map_err(ProtocolError::from)?;
+        Ok(value)
     }
 }
-
-type BIResult<'a, T> = IResult<&'a [u8], T>;
 
 #[derive(Debug, Error)]
 pub enum ProtocolError {
     #[error("i/o error")]
     IO(#[from] std::io::Error),
+    #[error("failed to parse protocol data")]
+    Parse(#[from] DekuError),
     #[error("failed to parse transaction header")]
     ParseHeader,
     #[error("failed to parse transaction body")]
@@ -2212,26 +2211,19 @@ mod tests {
     use super::*;
 
     static AUTHENTICATED_LOGIN: &[u8] = &[
-        0x00, 0x00, 0x00, 0x6b, 0x00, 0x00, 0x00, 0x01,
-        0x00, 0x00, 0x00, 0x00, 0x00, 0x00, 0x00, 0x28,
-        0x00, 0x00, 0x00, 0x28, 0x00, 0x04, 0x00, 0x69,
-        0x00, 0x07, 0x95, 0x86, 0x9a, 0x93, 0x93, 0x90,
-        0x85, 0x00, 0x6a, 0x00, 0x06, 0xce, 0xcd, 0xcc,
-        0xcb, 0xca, 0xc9, 0x00, 0x66, 0x00, 0x07, 0x6a,
-        0x79, 0x65, 0x6c, 0x6c, 0x6f, 0x7a, 0x00, 0x68,
-        0x00, 0x02, 0x00, 0x91,
+        0x00, 0x00, 0x00, 0x6b, 0x00, 0x00, 0x00, 0x01, 0x00, 0x00, 0x00, 0x00, 0x00, 0x00, 0x00,
+        0x28, 0x00, 0x00, 0x00, 0x28, 0x00, 0x04, 0x00, 0x69, 0x00, 0x07, 0x95, 0x86, 0x9a, 0x93,
+        0x93, 0x90, 0x85, 0x00, 0x6a, 0x00, 0x06, 0xce, 0xcd, 0xcc, 0xcb, 0xca, 0xc9, 0x00, 0x66,
+        0x00, 0x07, 0x6a, 0x79, 0x65, 0x6c, 0x6c, 0x6f, 0x7a, 0x00, 0x68, 0x00, 0x02, 0x00, 0x91,
     ];
 
     #[test]
     fn parse_authenticated_login() {
-
-        let (tail, frame) = <TransactionFrame as HotlineProtocol>::from_bytes(AUTHENTICATED_LOGIN)
+        let frame = <TransactionFrame as HotlineProtocol>::from_bytes(AUTHENTICATED_LOGIN)
             .expect("could not parse valid login packet");
 
-        assert!(tail.is_empty());
-
-        let login = LoginRequest::try_from(frame)
-            .expect("could not view transaction as login request");
+        let login =
+            LoginRequest::try_from(frame).expect("could not view transaction as login request");
 
         assert_eq!(
             login,

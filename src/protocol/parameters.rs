@@ -1,32 +1,22 @@
 use super::{
-    HotlineProtocol,
-    ProtocolError,
-    transaction::Parameter,
-    transaction_field::TransactionField,
-    multi,
-    take,
-    be_i8,
-    be_i16,
-    BIResult,
-    date::DateParameter,
-};
-use derive_more::{From, Into};
-use encoding_rs::MACINTOSH;
-use std::{
-    time::SystemTime,
-    fmt::{Debug, Formatter, self},
-    path::PathBuf,
+    date::DateParameter, transaction::Parameter, transaction_field::TransactionField,
+    HotlineProtocol, ProtocolError,
 };
 use deku::prelude::*;
+use derive_more::{Display, From, Into};
+use encoding_rs::MACINTOSH;
+use std::{
+    fmt::{self, Debug, Formatter},
+    path::PathBuf,
+    time::SystemTime,
+};
 
 pub trait Credential {
     fn deobfuscate(&self) -> Vec<u8>;
 }
 
 fn invert_credential(data: &[u8]) -> Vec<u8> {
-    data.iter()
-        .map(|b| !b)
-        .collect()
+    data.iter().map(|b| !b).collect()
 }
 
 #[derive(Clone, PartialEq, Eq, PartialOrd, Ord, From, DekuRead, DekuWrite)]
@@ -55,9 +45,7 @@ impl std::fmt::Display for Nickname {
 impl Debug for Nickname {
     fn fmt(&self, f: &mut std::fmt::Formatter<'_>) -> std::fmt::Result {
         let (text, _, _) = MACINTOSH.decode(&self.0);
-        f.debug_tuple("Nickname")
-            .field(&text)
-            .finish()
+        f.debug_tuple("Nickname").field(&text).finish()
     }
 }
 
@@ -76,10 +64,7 @@ impl From<String> for Nickname {
 impl TryFrom<&Parameter> for Nickname {
     type Error = ProtocolError;
     fn try_from(parameter: &Parameter) -> Result<Self, Self::Error> {
-        let data = take_if_matches(
-            parameter.clone(),
-            TransactionField::UserName,
-        )?;
+        let data = take_if_matches(parameter.clone(), TransactionField::UserName)?;
         Ok(Self::new(data))
     }
 }
@@ -119,10 +104,7 @@ impl UserLogin {
 impl TryFrom<&Parameter> for UserLogin {
     type Error = ProtocolError;
     fn try_from(parameter: &Parameter) -> Result<Self, Self::Error> {
-        let data = take_if_matches(
-            parameter.clone(),
-            TransactionField::UserLogin,
-        )?;
+        let data = take_if_matches(parameter.clone(), TransactionField::UserLogin)?;
         Ok(Self::new(data))
     }
 }
@@ -154,10 +136,7 @@ impl Password {
 impl TryFrom<&Parameter> for Password {
     type Error = ProtocolError;
     fn try_from(parameter: &Parameter) -> Result<Self, Self::Error> {
-        let data = take_if_matches(
-            parameter.clone(),
-            TransactionField::UserPassword,
-        )?;
+        let data = take_if_matches(parameter.clone(), TransactionField::UserPassword)?;
         Ok(Self::new(data))
     }
 }
@@ -181,7 +160,8 @@ pub struct UserAccess(i64);
 impl TryFrom<&Parameter> for UserAccess {
     type Error = ProtocolError;
     fn try_from(parameter: &Parameter) -> Result<Self, Self::Error> {
-        parameter.read_deku()
+        parameter
+            .read_deku()
             .map_err(|_| ProtocolError::MalformedData(TransactionField::UserAccess))
     }
 }
@@ -211,7 +191,8 @@ impl Default for ChatOptions {
 impl TryFrom<&Parameter> for ChatOptions {
     type Error = ProtocolError;
     fn try_from(parameter: &Parameter) -> Result<Self, Self::Error> {
-        parameter.read_deku()
+        parameter
+            .read_deku()
             .map_err(|_| ProtocolError::MalformedData(TransactionField::ChatOptions))
     }
 }
@@ -236,7 +217,8 @@ impl Default for ChatId {
 impl TryFrom<&Parameter> for ChatId {
     type Error = ProtocolError;
     fn try_from(parameter: &Parameter) -> Result<Self, Self::Error> {
-        parameter.read_deku()
+        parameter
+            .read_deku()
             .map_err(|_| ProtocolError::MalformedData(TransactionField::ChatId))
     }
 }
@@ -253,10 +235,7 @@ pub struct ChatSubject(Vec<u8>);
 impl TryFrom<&Parameter> for ChatSubject {
     type Error = ProtocolError;
     fn try_from(parameter: &Parameter) -> Result<Self, Self::Error> {
-        let subject = take_if_matches(
-            parameter.clone(),
-            TransactionField::ChatSubject,
-        )?;
+        let subject = take_if_matches(parameter.clone(), TransactionField::ChatSubject)?;
         Ok(subject.into())
     }
 }
@@ -280,19 +259,35 @@ impl From<IconId> for Parameter {
 impl TryFrom<&Parameter> for IconId {
     type Error = ProtocolError;
     fn try_from(parameter: &Parameter) -> Result<Self, Self::Error> {
-        parameter.read_deku()
+        parameter
+            .read_deku()
             .map_err(|_| ProtocolError::MalformedData(TransactionField::UserIconId))
     }
 }
 
-#[derive(Debug, Clone, Copy, From, Into, PartialEq, Eq, PartialOrd, Ord, Hash, Default, DekuRead, DekuWrite)]
+#[derive(
+    Debug,
+    Clone,
+    Copy,
+    From,
+    Into,
+    PartialEq,
+    Eq,
+    PartialOrd,
+    Ord,
+    Hash,
+    Default,
+    DekuRead,
+    DekuWrite,
+)]
 #[deku(endian = "big")]
 pub struct UserId(i16);
 
 impl TryFrom<&Parameter> for UserId {
     type Error = ProtocolError;
     fn try_from(parameter: &Parameter) -> Result<Self, Self::Error> {
-        parameter.read_deku()
+        parameter
+            .read_deku()
             .map_err(|_| ProtocolError::MalformedData(TransactionField::UserId))
     }
 }
@@ -303,7 +298,9 @@ impl From<UserId> for Parameter {
     }
 }
 
-#[derive(Debug, Default, Clone, Copy, From, Into, PartialEq, Eq, PartialOrd, Ord, DekuRead, DekuWrite)]
+#[derive(
+    Debug, Default, Clone, Copy, From, Into, PartialEq, Eq, PartialOrd, Ord, DekuRead, DekuWrite,
+)]
 #[deku(endian = "big")]
 pub struct UserFlags(i16);
 
@@ -316,7 +313,8 @@ impl From<UserFlags> for Parameter {
 impl TryFrom<&Parameter> for UserFlags {
     type Error = ProtocolError;
     fn try_from(parameter: &Parameter) -> Result<Self, Self::Error> {
-        parameter.read_deku()
+        parameter
+            .read_deku()
             .map_err(|_| ProtocolError::MalformedData(TransactionField::UserFlags))
     }
 }
@@ -347,7 +345,8 @@ impl UserNameWithInfo {
 impl TryFrom<&Parameter> for UserNameWithInfo {
     type Error = ProtocolError;
     fn try_from(parameter: &Parameter) -> Result<Self, Self::Error> {
-        parameter.read_deku()
+        parameter
+            .read_deku()
             .map_err(|_| ProtocolError::MalformedData(TransactionField::UserNameWithInfo))
     }
 }
@@ -397,9 +396,7 @@ impl From<FileName> for Parameter {
 impl Debug for FileName {
     fn fmt(&self, f: &mut std::fmt::Formatter<'_>) -> std::fmt::Result {
         let text = MACINTOSH.decode(&self.0);
-        f.debug_tuple("FileName")
-            .field(&text)
-            .finish()
+        f.debug_tuple("FileName").field(&text).finish()
     }
 }
 
@@ -410,14 +407,17 @@ impl From<&FileName> for PathBuf {
     }
 }
 
-#[derive(Debug, Default, Clone, Copy, From, Into, PartialEq, Eq, PartialOrd, Ord, DekuRead, DekuWrite)]
+#[derive(
+    Debug, Default, Clone, Copy, From, Into, PartialEq, Eq, PartialOrd, Ord, DekuRead, DekuWrite,
+)]
 #[deku(endian = "big")]
 pub struct FileSize(i32);
 
 impl TryFrom<&Parameter> for FileSize {
     type Error = ProtocolError;
     fn try_from(parameter: &Parameter) -> Result<Self, Self::Error> {
-        parameter.read_deku()
+        parameter
+            .read_deku()
             .map_err(|_| ProtocolError::MalformedData(TransactionField::FileSize))
     }
 }
@@ -425,6 +425,37 @@ impl TryFrom<&Parameter> for FileSize {
 impl From<FileSize> for Parameter {
     fn from(val: FileSize) -> Self {
         Self::new_deku(TransactionField::FileSize, val)
+    }
+}
+
+#[derive(Debug, DekuRead, DekuWrite, PartialEq, Eq, Clone)]
+struct DekuFilePath {
+    #[deku(update = "self.components.len()")]
+    #[deku(endian = "big")]
+    depth: u16,
+    #[deku(count = "depth")]
+    components: Vec<DekuFilePathComponent>,
+}
+
+#[derive(Debug, DekuRead, DekuWrite, PartialEq, Eq, Clone)]
+#[deku(endian = "big")]
+struct DekuFilePathComponent {
+    #[deku(pad_bytes_before = "2", update = "self.name.len()")]
+    size: u8,
+    #[deku(count = "size")]
+    name: Vec<u8>,
+}
+
+impl DekuFilePathComponent {
+    fn new(name: Vec<u8>) -> anyhow::Result<Self> {
+        let len = name.len();
+        if len > u8::MAX as usize {
+            anyhow::bail!("invalid filename length {len}");
+        }
+        Ok(Self {
+            size: len as u8,
+            name,
+        })
     }
 }
 
@@ -442,43 +473,18 @@ impl FilePath {
             None
         }
     }
-    fn parse_depth(bytes: &[u8]) -> BIResult<usize> {
-        let (bytes, depth) = be_i16(bytes)?;
-        Ok((bytes, depth as usize))
-    }
-    fn parse_path_component(bytes: &[u8]) -> BIResult<&[u8]> {
-        let (bytes, _) = take(2usize)(bytes)?;
-        let (bytes, length) = be_i8(bytes)?;
-        let (bytes, name) = take(length as usize)(bytes)?;
-        Ok((bytes, name))
-    }
-    fn parse_path(bytes: &[u8]) -> BIResult<Vec<&[u8]>> {
-        let (bytes, depth) = Self::parse_depth(bytes)?;
-        multi::count(Self::parse_path_component, depth)(bytes)
-    }
-    fn encode_path_component(component: Vec<u8>) -> Vec<u8> {
-        let component_length = component.len() as i8;
-        [
-            &[0u8; 2][..],
-            &component_length.to_be_bytes(),
-            component.as_slice(),
-        ].iter()
-            .flat_map(|b| b.iter())
-            .copied()
-            .collect()
+    fn parse_path(bytes: &[u8]) -> Result<DekuFilePath, ProtocolError> {
+        DekuFilePath::try_from(bytes).map_err(ProtocolError::from)
     }
     fn encode_parameter(components: Vec<Vec<u8>>) -> Parameter {
-        let depth = components.len() as i16;
-        let components = components.into_iter()
-            .map(Self::encode_path_component);
-        let data = std::iter::once(depth.to_be_bytes().to_vec())
-            .chain(components)
-            .flat_map(|b| b.into_iter())
+        let depth = components.len() as u16;
+        let components = components
+            .into_iter()
+            .map(|name| DekuFilePathComponent::new(name).unwrap())
             .collect();
-        Parameter::new(
-            TransactionField::FilePath,
-            data,
-        )
+        let path = DekuFilePath { depth, components };
+        let data = path.try_into().unwrap();
+        Parameter::new(TransactionField::FilePath, data)
     }
 }
 
@@ -493,13 +499,14 @@ impl fmt::Debug for FilePath {
         match self {
             Self::Root => write!(f, "{:?}", "::"),
             Self::Directory(parts) => {
-                let pathname: String = parts.iter()
+                let pathname: String = parts
+                    .iter()
                     .map(|part| MACINTOSH.decode(part))
                     .map(|enc| enc.0)
                     .collect::<Vec<_>>()
                     .join(":");
                 write!(f, "{:?}", pathname)
-            },
+            }
         }
     }
 }
@@ -507,14 +514,16 @@ impl fmt::Debug for FilePath {
 impl TryFrom<&[u8]> for FilePath {
     type Error = ProtocolError;
     fn try_from(bytes: &[u8]) -> Result<Self, Self::Error> {
-        match Self::parse_path(bytes) {
-            Ok((_, components)) => {
-                let components = components.iter()
-                    .map(|c| c.to_vec())
-                    .collect();
-                Ok(Self::Directory(components))
-            },
-            Err(_) => Err(ProtocolError::MalformedData(TransactionField::FilePath))
+        let path = Self::parse_path(bytes)?;
+        let components = path
+            .components
+            .into_iter()
+            .map(|c| c.name)
+            .collect::<Vec<_>>();
+        if components.len() > 0 {
+            Ok(Self::Directory(components))
+        } else {
+            Ok(Self::Root)
         }
     }
 }
@@ -609,10 +618,7 @@ impl From<&FileType> for FileTypeString {
 impl TryFrom<&Parameter> for FileTypeString {
     type Error = ProtocolError;
     fn try_from(parameter: &Parameter) -> Result<Self, Self::Error> {
-        let data = take_if_matches(
-            parameter.clone(),
-            TransactionField::FileTypeString,
-        )?;
+        let data = take_if_matches(parameter.clone(), TransactionField::FileTypeString)?;
         Ok(data.into())
     }
 }
@@ -629,10 +635,7 @@ pub struct FileCreatorString(Vec<u8>);
 impl TryFrom<&Parameter> for FileCreatorString {
     type Error = ProtocolError;
     fn try_from(parameter: &Parameter) -> Result<Self, Self::Error> {
-        let data = take_if_matches(
-            parameter.clone(),
-            TransactionField::FileCreatorString,
-        )?;
+        let data = take_if_matches(parameter.clone(), TransactionField::FileCreatorString)?;
         Ok(data.into())
     }
 }
@@ -655,10 +658,7 @@ impl From<SystemTime> for FileCreatedAt {
 impl TryFrom<&Parameter> for FileCreatedAt {
     type Error = ProtocolError;
     fn try_from(parameter: &Parameter) -> Result<Self, Self::Error> {
-        let data = take_if_matches(
-            parameter.clone(),
-            TransactionField::FileCreateDate,
-        )?;
+        let data = take_if_matches(parameter.clone(), TransactionField::FileCreateDate)?;
         Self::try_from(&data[..])
             .map_err(|_| ProtocolError::MalformedData(TransactionField::FileCreateDate))
     }
@@ -682,10 +682,7 @@ impl From<SystemTime> for FileModifiedAt {
 impl TryFrom<&Parameter> for FileModifiedAt {
     type Error = ProtocolError;
     fn try_from(parameter: &Parameter) -> Result<Self, Self::Error> {
-        let data = take_if_matches(
-            parameter.clone(),
-            TransactionField::FileModifyDate,
-        )?;
+        let data = take_if_matches(parameter.clone(), TransactionField::FileModifyDate)?;
         Self::try_from(&data[..])
             .map_err(|_| ProtocolError::MalformedData(TransactionField::FileModifyDate))
     }
@@ -697,14 +694,17 @@ impl From<FileModifiedAt> for Parameter {
     }
 }
 
-#[derive(Debug, Default, Clone, Copy, From, Into, PartialEq, Eq, PartialOrd, Ord, DekuRead, DekuWrite)]
+#[derive(
+    Debug, Default, Clone, Copy, From, Into, PartialEq, Eq, PartialOrd, Ord, DekuRead, DekuWrite,
+)]
 #[deku(endian = "big")]
 pub struct TransferSize(i32);
 
 impl TryFrom<&Parameter> for TransferSize {
     type Error = ProtocolError;
     fn try_from(parameter: &Parameter) -> Result<Self, Self::Error> {
-        parameter.read_deku()
+        parameter
+            .read_deku()
             .map_err(|_| ProtocolError::MalformedData(TransactionField::TransferSize))
     }
 }
@@ -715,14 +715,30 @@ impl From<TransferSize> for Parameter {
     }
 }
 
-#[derive(Debug, Default, Clone, Copy, From, Into, PartialEq, Eq, PartialOrd, Ord, DekuRead, DekuWrite)]
+#[derive(
+    Debug,
+    Default,
+    Clone,
+    Copy,
+    From,
+    Into,
+    PartialEq,
+    Eq,
+    PartialOrd,
+    Ord,
+    DekuRead,
+    DekuWrite,
+    Display,
+)]
 #[deku(endian = "big")]
-pub struct ReferenceNumber(i32);
+#[into(u32, u64, i64)]
+pub struct ReferenceNumber(u32);
 
 impl TryFrom<&Parameter> for ReferenceNumber {
     type Error = ProtocolError;
     fn try_from(parameter: &Parameter) -> Result<Self, Self::Error> {
-        parameter.read_deku()
+        parameter
+            .read_deku()
             .map_err(|_| ProtocolError::MalformedData(TransactionField::ReferenceNumber))
     }
 }
@@ -737,20 +753,23 @@ impl HotlineProtocol for ReferenceNumber {
     fn into_bytes(self) -> Vec<u8> {
         self.to_bytes().unwrap()
     }
-    fn from_bytes(bytes: &[u8]) -> BIResult<Self> {
-        let ((bytes, _bits), value) = <Self as DekuContainerRead>::from_bytes((bytes, 0)).unwrap();
-        Ok((bytes, value))
+    fn from_bytes(bytes: &[u8]) -> Result<Self, ProtocolError> {
+        let (_, value) = <Self as DekuContainerRead>::from_bytes((bytes, 0)).unwrap();
+        Ok(value)
     }
 }
 
-#[derive(Debug, Default, Clone, Copy, From, Into, PartialEq, Eq, PartialOrd, Ord, DekuRead, DekuWrite)]
+#[derive(
+    Debug, Default, Clone, Copy, From, Into, PartialEq, Eq, PartialOrd, Ord, DekuRead, DekuWrite,
+)]
 #[deku(endian = "big")]
-pub struct WaitingCount(i32);
+pub struct WaitingCount(pub i32);
 
 impl TryFrom<&Parameter> for WaitingCount {
     type Error = ProtocolError;
     fn try_from(parameter: &Parameter) -> Result<Self, Self::Error> {
-        parameter.read_deku()
+        parameter
+            .read_deku()
             .map_err(|_| ProtocolError::MalformedData(TransactionField::WaitingCount))
     }
 }
@@ -768,8 +787,9 @@ pub struct TransactionOptions(i32);
 impl TryFrom<&Parameter> for TransactionOptions {
     type Error = ProtocolError;
     fn try_from(parameter: &Parameter) -> Result<Self, Self::Error> {
-        parameter.read_deku()
-         .map_err(|_| ProtocolError::MalformedData(TransactionField::Options))
+        parameter
+            .read_deku()
+            .map_err(|_| ProtocolError::MalformedData(TransactionField::Options))
     }
 }
 
