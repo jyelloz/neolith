@@ -736,6 +736,7 @@ impl From<TransferSize> for Parameter {
     DekuRead,
     DekuWrite,
     Display,
+    Hash,
 )]
 #[deku(endian = "big")]
 #[into(u32, u64, i64)]
