@@ -25,7 +25,7 @@ impl<T> From<mpsc::error::SendError<T>> for UsersError {
     }
 }
 
-type Result<T> = ::core::result::Result<T, UsersError>;
+type UsersResult<T> = Result<T, UsersError>;
 
 #[derive(Debug, Clone)]
 pub struct Users(HashSet<User>, i16);
@@ -108,7 +108,7 @@ impl UsersService {
         let process = UserUpdateProcessor::new(rx);
         (service, process)
     }
-    pub async fn add(&mut self, mut user: UserNameWithInfo) -> Result<UserId> {
+    pub async fn add(&mut self, mut user: UserNameWithInfo) -> UsersResult<UserId> {
         let (tx, rx) = oneshot::channel();
         let command = Command::Connect(user.clone(), tx);
         let Self(tx, bus) = self;
@@ -119,7 +119,7 @@ impl UsersService {
         bus.publish(notification);
         Ok(id)
     }
-    pub async fn update(&mut self, user: UserNameWithInfo) -> Result<()> {
+    pub async fn update(&mut self, user: UserNameWithInfo) -> UsersResult<()> {
         let (tx, rx) = oneshot::channel();
         let notification = Notification::UserUpdate(user.clone().into());
         let command = Command::Update(user, tx);
@@ -129,7 +129,7 @@ impl UsersService {
         bus.publish(notification);
         Ok(())
     }
-    pub async fn delete(&mut self, user: UserNameWithInfo) -> Result<()> {
+    pub async fn delete(&mut self, user: UserNameWithInfo) -> UsersResult<()> {
         let (tx, rx) = oneshot::channel();
         let notification = Notification::UserDisconnect(user.clone().into());
         let command = Command::Disconnect(user, tx);
@@ -158,7 +158,7 @@ impl UserUpdateProcessor {
         }
     }
     #[tracing::instrument(name = "UserUpdateProcessor", skip(self))]
-    pub async fn run(self) -> Result<()> {
+    pub async fn run(self) -> UsersResult<()> {
         let Self {
             mut users,
             mut queue,
