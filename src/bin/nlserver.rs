@@ -393,7 +393,7 @@ impl <R: AsyncRead + Unpin, W: AsyncWrite + Unpin> Unauthenticated<R, W> {
                 icon_id,
                 username_len: username.len() as i16,
                 username,
-                user_flags: 0.into(),
+                user_flags: proto::UserFlags::default(),
                 user_id: 0.into(),
             }
         } else {
@@ -408,7 +408,7 @@ impl <R: AsyncRead + Unpin, W: AsyncWrite + Unpin> Unauthenticated<R, W> {
                 icon_id,
                 username_len: username.len() as i16,
                 username,
-                user_flags: 0.into(),
+                user_flags: proto::UserFlags::default(),
                 user_id: 0.into(),
             }
         };
