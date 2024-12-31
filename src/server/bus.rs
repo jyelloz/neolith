@@ -3,14 +3,8 @@ use tokio::sync::broadcast;
 use derive_more::{From, Into};
 
 use super::{
-    ChatMessage,
-    ChatRoomInvite,
-    ChatRoomPresence,
-    ChatRoomSubject,
-    User,
-    Article,
-    Broadcast,
-    InstantMessage,
+    Article, Broadcast, ChatMessage, ChatRoomInvite, ChatRoomLeave, ChatRoomPresence,
+    ChatRoomSubject, InstantMessage, User,
 };
 
 #[derive(Debug, Clone)]
@@ -20,7 +14,7 @@ pub enum Notification {
     ChatRoomSubjectUpdate(ChatRoomSubject),
     ChatRoomInvite(ChatRoomInvite),
     ChatRoomJoin(ChatRoomPresence),
-    ChatRoomLeave(ChatRoomPresence),
+    ChatRoomLeave(ChatRoomLeave),
     Broadcast(Broadcast),
     News(Article),
     InstantMessage(InstantMessage),
