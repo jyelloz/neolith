@@ -69,6 +69,7 @@ impl InteractiveUserEditor {
         account.identity.password = Password::new()
             .with_prompt("Password")
             .with_confirmation("Re-enter password", "password entry mismatch")
+            .allow_empty_password(true)
             .interact()?
             .try_into()?;
         Ok(())
