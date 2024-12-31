@@ -4,7 +4,7 @@ use derive_more::{From, Into};
 
 use super::{
     Article, Broadcast, ChatMessage, ChatRoomInvite, ChatRoomLeave, ChatRoomPresence,
-    ChatRoomSubject, InstantMessage, User,
+    ChatRoomSubject, DownloadInfo, InstantMessage, User,
 };
 
 #[derive(Debug, Clone)]
@@ -16,6 +16,7 @@ pub enum Notification {
     ChatRoomJoin(ChatRoomPresence),
     ChatRoomLeave(ChatRoomLeave),
     Broadcast(Broadcast),
+    DownloadInfo(DownloadInfo),
     News(Article),
     InstantMessage(InstantMessage),
     UserConnect(User),
