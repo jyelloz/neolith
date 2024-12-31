@@ -298,11 +298,18 @@ impl From<UserId> for Parameter {
     }
 }
 
-#[derive(
-    Debug, Default, Clone, Copy, From, Into, PartialEq, Eq, PartialOrd, Ord, DekuRead, DekuWrite,
-)]
+#[derive(Debug, Default, Clone, Copy, PartialEq, Eq, PartialOrd, Ord, DekuRead, DekuWrite)]
 #[deku(endian = "big")]
-pub struct UserFlags(i16);
+pub struct UserFlags {
+    #[deku(bits = 1, pad_bits_before = "12")]
+    pub dnd_chat: bool,
+    #[deku(bits = 1)]
+    pub dnd_message: bool,
+    #[deku(bits = 1)]
+    pub admin: bool,
+    #[deku(bits = 1)]
+    pub away: bool,
+}
 
 impl From<UserFlags> for Parameter {
     fn from(val: UserFlags) -> Self {
