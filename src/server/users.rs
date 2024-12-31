@@ -73,7 +73,7 @@ impl Users {
         let Self(users, ..) = self;
         let fake_user = UserNameWithInfo {
             user_id: id,
-            user_flags: 0.into(),
+            user_flags: proto::UserFlags::default(),
             icon_id: 0.into(),
             username: vec![].into(),
             username_len: 0,
