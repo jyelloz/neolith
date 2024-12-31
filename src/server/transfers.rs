@@ -13,9 +13,9 @@ use tokio::{
 };
 use tracing::{debug, error, warn};
 
-use crate::protocol as proto;
+use crate::apple;
+use crate::protocol::{self as proto, HotlineProtocol, ReferenceNumber};
 use crate::server::bus::Bus;
-use crate::{apple, protocol::HotlineProtocol};
 
 #[derive(Debug, Error)]
 pub enum TransferError {
@@ -28,22 +28,6 @@ pub enum TransferError {
 }
 
 type TransferResult<T> = Result<T, TransferError>;
-
-#[derive(Debug, Clone, Copy, PartialEq, Eq, PartialOrd, Ord, From, Into, Hash)]
-struct RequestId(u32);
-
-impl From<proto::ReferenceNumber> for RequestId {
-    fn from(reference: proto::ReferenceNumber) -> Self {
-        Self(reference.into())
-    }
-}
-
-impl From<RequestId> for proto::ReferenceNumber {
-    fn from(val: RequestId) -> Self {
-        let RequestId(value) = val;
-        value.into()
-    }
-}
 
 #[derive(Debug, Clone, PartialEq, Eq, PartialOrd, Ord)]
 enum Request {
@@ -71,7 +55,7 @@ impl From<proto::UploadFileReply> for TransferReply {
 
 #[derive(Debug, Default, Clone)]
 pub struct Requests {
-    requests: HashMap<RequestId, Request>,
+    requests: HashMap<ReferenceNumber, Request>,
     next_id: u32,
 }
 
@@ -82,26 +66,26 @@ impl Requests {
             next_id: u32::MIN,
         }
     }
-    fn add_download(&mut self, root: PathBuf, path: PathBuf) -> RequestId {
+    fn add_download(&mut self, root: PathBuf, path: PathBuf) -> ReferenceNumber {
         let id = self.next_id();
         self.requests
             .insert(id, Request::FileDownload { root, path });
         debug!("added transfer {id:?}, size={}", self.requests.len());
         id
     }
-    fn add_upload(&mut self, root: PathBuf, path: PathBuf) -> RequestId {
+    fn add_upload(&mut self, root: PathBuf, path: PathBuf) -> ReferenceNumber {
         let id = self.next_id();
         self.requests.insert(id, Request::FileUpload { root, path });
         id
     }
-    fn get(&self, id: RequestId) -> Option<&Request> {
+    fn get(&self, id: ReferenceNumber) -> Option<&Request> {
         self.requests.get(&id)
     }
-    fn remove(&mut self, id: RequestId) {
+    fn remove(&mut self, id: ReferenceNumber) {
         self.requests.remove(&id);
         warn!("removed transfer {id:?}, size={}", self.requests.len());
     }
-    fn next_id(&mut self) -> RequestId {
+    fn next_id(&mut self) -> ReferenceNumber {
         let id = self.next_id.into();
         self.next_id += 1;
         id
@@ -281,20 +265,20 @@ pub struct TransferConnection<S> {
 }
 
 impl<S> TransferConnection<S> {
-    fn get_request(&self, id: RequestId) -> TransferResult<Request> {
+    fn get_request(&self, id: ReferenceNumber) -> TransferResult<Request> {
         self.requests
             .borrow()
             .get(id)
             .cloned()
             .ok_or(TransferError::InvalidRequest)
     }
-    fn get_file_download(&self, id: RequestId) -> TransferResult<PathBuf> {
+    fn get_file_download(&self, id: ReferenceNumber) -> TransferResult<PathBuf> {
         match self.get_request(id)? {
             Request::FileDownload { path, .. } => Ok(path),
             _ => Err(TransferError::InvalidRequest),
         }
     }
-    fn get_file_upload(&self, id: RequestId) -> TransferResult<PathBuf> {
+    fn get_file_upload(&self, id: ReferenceNumber) -> TransferResult<PathBuf> {
         match self.get_request(id)? {
             Request::FileUpload { path, .. } => Ok(path),
             _ => Err(TransferError::InvalidRequest),
@@ -366,7 +350,7 @@ impl<S: AsyncRead + AsyncWrite + Unpin + Send> TransferConnection<S> {
             .expect("no filename");
         path.to_path_buf().with_file_name(basename)
     }
-    async fn handle_file_download(self, id: RequestId) -> TransferResult<()> {
+    async fn handle_file_download(self, id: ReferenceNumber) -> TransferResult<()> {
         let path = self.get_file_download(id)?;
         debug!("path {path:?}");
         let Self {
@@ -405,7 +389,11 @@ impl<S: AsyncRead + AsyncWrite + Unpin + Send> TransferConnection<S> {
         debug!("done");
         Ok(())
     }
-    async fn handle_file_upload(mut self, id: RequestId, _: proto::DataSize) -> TransferResult<()> {
+    async fn handle_file_upload(
+        mut self,
+        id: ReferenceNumber,
+        _: proto::DataSize,
+    ) -> TransferResult<()> {
         let path = self.get_file_upload(id)?;
         let header = self.read_file_header().await?;
         debug!("got header {header:?}");
@@ -515,7 +503,7 @@ impl<S: AsyncRead + AsyncWrite + Unpin + Send> TransferConnection<S> {
 
 enum Command {
     Transfer(Request, oneshot::Sender<TransferReply>),
-    Complete(RequestId, oneshot::Sender<()>),
+    Complete(ReferenceNumber, oneshot::Sender<()>),
 }
 
 #[derive(Debug, Clone)]
