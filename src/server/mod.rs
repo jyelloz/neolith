@@ -111,6 +111,9 @@ pub struct ChatRoomCreationRequest(pub Vec<UserId>);
 pub struct ChatRoomPresence(pub ChatId, pub User);
 
 #[derive(Debug, Clone, From, Into)]
+pub struct ChatRoomLeave(pub ChatId, pub UserId);
+
+#[derive(Debug, Clone, From, Into)]
 pub struct ChatRoomInvite(pub ChatId, pub UserId);
 
 #[derive(Debug, Clone)]
@@ -289,7 +292,7 @@ pub enum ServerRequest {
     ChatRoomSubjectUpdate(ChatRoomSubject),
     ChatRoomInvite(ChatRoomInvite),
     ChatRoomJoin(ChatRoomPresence),
-    ChatRoomLeave(ChatRoomPresence),
+    ChatRoomLeave(ChatRoomLeave),
     Broadcast(Broadcast),
     News(Article),
     InstantMessage(InstantMessage),
