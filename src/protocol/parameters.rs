@@ -75,7 +75,7 @@ impl From<Nickname> for Parameter {
     }
 }
 
-#[derive(Debug, Clone, PartialEq, Eq, PartialOrd, Ord)]
+#[derive(Debug, Clone, From, Into, PartialEq, Eq, PartialOrd, Ord)]
 pub struct UserLogin(Vec<u8>);
 
 impl UserLogin {
@@ -115,7 +115,13 @@ impl From<UserLogin> for Parameter {
     }
 }
 
-#[derive(Debug, PartialEq, Eq, PartialOrd, Ord)]
+impl From<String> for UserLogin {
+    fn from(s: String) -> Self {
+        s.into_bytes().into()
+    }
+}
+
+#[derive(Debug, Clone, PartialEq, Eq, PartialOrd, Ord)]
 pub struct Password(Vec<u8>);
 
 impl Password {
@@ -153,7 +159,9 @@ impl Credential for Password {
     }
 }
 
-#[derive(Debug, Default, From, Into, PartialEq, Eq, PartialOrd, Ord, DekuRead, DekuWrite)]
+#[derive(
+    Debug, Default, Clone, Copy, From, Into, PartialEq, Eq, PartialOrd, Ord, DekuRead, DekuWrite,
+)]
 #[deku(endian = "big")]
 pub struct UserAccess(i64);
 
