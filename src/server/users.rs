@@ -1,7 +1,4 @@
-use crate::protocol::{
-    UserId,
-    UserNameWithInfo,
-};
+use crate::protocol::{self as proto, UserId, UserNameWithInfo};
 
 use derive_more::{From, Into};
 use thiserror::Error;
@@ -22,7 +19,7 @@ pub enum UsersError {
     ServiceUnavailable,
 }
 
-impl <T> From<mpsc::error::SendError<T>> for UsersError {
+impl<T> From<mpsc::error::SendError<T>> for UsersError {
     fn from(_: mpsc::error::SendError<T>) -> Self {
         Self::ServiceUnavailable
     }
@@ -81,14 +78,10 @@ impl Users {
             username: vec![].into(),
             username_len: 0,
         };
-        users.get(&fake_user.into())
-            .map(|u| &u.0)
+        users.get(&fake_user.into()).map(|u| &u.0)
     }
     pub fn to_vec(&self) -> Vec<UserNameWithInfo> {
-        self.0.iter()
-            .cloned()
-            .map(User::into)
-            .collect()
+        self.0.iter().cloned().map(User::into).collect()
     }
 }
 
@@ -115,10 +108,7 @@ impl UsersService {
         let process = UserUpdateProcessor::new(rx);
         (service, process)
     }
-    pub async fn add(
-        &mut self,
-        mut user: UserNameWithInfo,
-    ) -> Result<UserId> {
+    pub async fn add(&mut self, mut user: UserNameWithInfo) -> Result<UserId> {
         let (tx, rx) = oneshot::channel();
         let command = Command::Connect(user.clone(), tx);
         let Self(tx, bus) = self;
@@ -129,10 +119,7 @@ impl UsersService {
         bus.publish(notification);
         Ok(id)
     }
-    pub async fn update(
-        &mut self,
-        user: UserNameWithInfo,
-    ) -> Result<()> {
+    pub async fn update(&mut self, user: UserNameWithInfo) -> Result<()> {
         let (tx, rx) = oneshot::channel();
         let notification = Notification::UserUpdate(user.clone().into());
         let command = Command::Update(user, tx);
@@ -142,10 +129,7 @@ impl UsersService {
         bus.publish(notification);
         Ok(())
     }
-    pub async fn delete(
-        &mut self,
-        user: UserNameWithInfo,
-    ) -> Result<()> {
+    pub async fn delete(&mut self, user: UserNameWithInfo) -> Result<()> {
         let (tx, rx) = oneshot::channel();
         let notification = Notification::UserDisconnect(user.clone().into());
         let command = Command::Disconnect(user, tx);
@@ -175,22 +159,26 @@ impl UserUpdateProcessor {
     }
     #[tracing::instrument(name = "UserUpdateProcessor", skip(self))]
     pub async fn run(self) -> Result<()> {
-        let Self { mut users, mut queue, updates } = self;
+        let Self {
+            mut users,
+            mut queue,
+            updates,
+        } = self;
         while let Some(command) = queue.recv().await {
             debug!("handling update: {:?}", &command);
             match command {
                 Command::Connect(mut user, tx) => {
                     let id = users.add(&mut user);
                     tx.send(id).ok();
-                },
+                }
                 Command::Update(user, tx) => {
                     users.update(&user);
                     tx.send(()).ok();
-                },
+                }
                 Command::Disconnect(user, tx) => {
                     users.remove(&user);
                     tx.send(()).ok();
-                },
+                }
             }
             if updates.send(users.clone()).is_err() {
                 debug!("UserUpdateProcessor: shutting down");

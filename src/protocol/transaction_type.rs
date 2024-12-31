@@ -1,14 +1,8 @@
-use num_enum::{
-    IntoPrimitive,
-    TryFromPrimitive,
-};
+use num_enum::{IntoPrimitive, TryFromPrimitive};
 
-#[derive(
-    Debug, Eq, PartialEq, Ord, PartialOrd, IntoPrimitive, TryFromPrimitive
-)]
+#[derive(Debug, Eq, PartialEq, Ord, PartialOrd, IntoPrimitive, TryFromPrimitive)]
 #[repr(i16)]
 pub enum TransactionType {
-
     Reply = 0,
 
     Error = 100,
@@ -77,5 +71,4 @@ pub enum TransactionType {
     DeleteNewsArticle,
 
     ConnectionKeepAlive = 500,
-
 }

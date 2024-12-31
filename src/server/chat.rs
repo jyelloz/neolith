@@ -1,15 +1,7 @@
 use crate::{
-    protocol::{
-        self as proto,
-        ChatId,
-        UserId,
-    },
+    protocol::{self as proto, ChatId, UserId},
     server::{
-        bus::Bus,
-        ChatRoomCreationRequest,
-        ChatRoomSubject,
-        ChatRoomPresence,
-        InstantMessage,
+        bus::Bus, ChatRoomCreationRequest, ChatRoomPresence, ChatRoomSubject, InstantMessage,
     },
 };
 
@@ -27,7 +19,7 @@ pub enum ChatError {
     ServiceUnavailable,
 }
 
-impl <T> From<mpsc::error::SendError<T>> for ChatError {
+impl<T> From<mpsc::error::SendError<T>> for ChatError {
     fn from(_: mpsc::error::SendError<T>) -> Self {
         Self::ServiceUnavailable
     }
@@ -83,9 +75,7 @@ impl ChatRoom {
         self.users.remove(&user);
     }
     pub fn users(&self) -> Vec<UserId> {
-        self.users.iter()
-            .cloned()
-            .collect()
+        self.users.iter().cloned().collect()
     }
     pub fn contains(&self, user: &UserId) -> bool {
         self.users.contains(user)
@@ -104,8 +94,7 @@ impl Chats {
     }
     fn take_room(&mut self, chat_id: ChatId) -> ChatRoomId {
         let tester = ChatRoomId(chat_id, ChatRoom::default());
-        self.rooms.take(&tester)
-            .unwrap_or(tester)
+        self.rooms.take(&tester).unwrap_or(tester)
     }
     fn return_room(&mut self, room: ChatRoomId) {
         self.rooms.insert(room);
@@ -129,7 +118,8 @@ impl Chats {
         self.return_room(room);
     }
     pub fn room(&self, chat_id: ChatId) -> Option<&ChatRoom> {
-        self.rooms.get(&ChatRoomId(chat_id, ChatRoom::default()))
+        self.rooms
+            .get(&ChatRoomId(chat_id, ChatRoom::default()))
             .map(|room| &room.1)
     }
     pub fn set_subject(&mut self, chat_id: ChatId, subject: Vec<u8>) {
@@ -141,7 +131,9 @@ impl Chats {
         self.return_room(room)
     }
     pub fn leave_all(&mut self, user: UserId) -> Vec<ChatId> {
-        let chats = self.rooms.iter()
+        let chats = self
+            .rooms
+            .iter()
             .filter(|ChatRoomId(_, room)| room.contains(&user))
             .map(|ChatRoomId(id, _)| id)
             .cloned()
@@ -182,46 +174,31 @@ impl ChatsService {
         let process = ChatUpdateProcessor::new(rx);
         (service, process)
     }
-    pub async fn create(
-        &mut self,
-        request: ChatRoomCreationRequest,
-    ) -> Result<ChatId> {
+    pub async fn create(&mut self, request: ChatRoomCreationRequest) -> Result<ChatId> {
         let (tx, rx) = oneshot::channel();
         self.0.send(Command::Create(request, tx)).await?;
         let id = rx.await?;
         Ok(id)
     }
-    pub async fn join(
-        &mut self,
-        request: ChatRoomPresence,
-    ) -> Result<()> {
+    pub async fn join(&mut self, request: ChatRoomPresence) -> Result<()> {
         let (tx, rx) = oneshot::channel();
         self.0.send(Command::UserJoin(request, tx)).await?;
         rx.await?;
         Ok(())
     }
-    pub async fn update(
-        &mut self,
-        request: ChatRoomPresence,
-    ) -> Result<()> {
+    pub async fn update(&mut self, request: ChatRoomPresence) -> Result<()> {
         let (tx, rx) = oneshot::channel();
         self.0.send(Command::UserUpdate(request, tx)).await?;
         rx.await?;
         Ok(())
     }
-    pub async fn leave(
-        &mut self,
-        request: ChatRoomPresence,
-    ) -> Result<()> {
+    pub async fn leave(&mut self, request: ChatRoomPresence) -> Result<()> {
         let (tx, rx) = oneshot::channel();
         self.0.send(Command::UserLeave(request, tx)).await?;
         rx.await?;
         Ok(())
     }
-    pub async fn change_subject(
-        &mut self,
-        request: ChatRoomSubject,
-    ) -> Result<()> {
+    pub async fn change_subject(&mut self, request: ChatRoomSubject) -> Result<()> {
         let (tx, rx) = oneshot::channel();
         self.0.send(Command::SubjectUpdate(request, tx)).await?;
         rx.await?;
@@ -237,10 +214,7 @@ impl ChatsService {
         bus.publish(message.into());
         Ok(())
     }
-    pub async fn leave_all(
-        &mut self,
-        request: UserId,
-    ) -> Result<Vec<ChatId>> {
+    pub async fn leave_all(&mut self, request: UserId) -> Result<Vec<ChatId>> {
         let (tx, rx) = oneshot::channel();
         self.0.send(Command::UserLeaveAll(request, tx)).await?;
         let chats = rx.await?;
@@ -260,7 +234,11 @@ impl ChatUpdateProcessor {
     }
     #[tracing::instrument(name = "ChatUpdateProcessor", skip(self))]
     pub async fn run(self) -> Result<()> {
-        let Self { mut chats, mut queue, updates } = self;
+        let Self {
+            mut chats,
+            mut queue,
+            updates,
+        } = self;
         while let Some(command) = queue.recv().await {
             debug!("handling update: {:?}", &command);
             match command {

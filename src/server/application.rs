@@ -1,10 +1,10 @@
-use std::{future::Future, fmt, marker::PhantomData, pin::Pin};
 use derive_more::{From, Into};
-use enumset::{EnumSetType, EnumSet, EnumSetIter, enum_set};
-use serde::{de::Visitor, ser::SerializeMap, Serialize, Deserialize, Serializer, Deserializer};
-use strum::{EnumIter, Display, IntoEnumIterator, EnumString};
+use enumset::{enum_set, EnumSet, EnumSetIter, EnumSetType};
+use serde::{de::Visitor, ser::SerializeMap, Deserialize, Deserializer, Serialize, Serializer};
+use std::{fmt, future::Future, marker::PhantomData, pin::Pin};
+use strum::{Display, EnumIter, EnumString, IntoEnumIterator};
 
-type Pbdf<O> = Pin<Box<dyn Future<Output=O>>>;
+type Pbdf<O> = Pin<Box<dyn Future<Output = O>>>;
 type Ppdfr<O> = Pbdf<Result<O, Error>>;
 
 #[derive(Debug, thiserror::Error)]
@@ -26,7 +26,9 @@ pub struct Credentials {
     password: String,
 }
 
-#[derive(Debug, Serialize, Deserialize, Display, PartialOrd, Ord, EnumIter, EnumString, EnumSetType)]
+#[derive(
+    Debug, Serialize, Deserialize, Display, PartialOrd, Ord, EnumIter, EnumString, EnumSetType,
+)]
 #[strum(serialize_all = "snake_case")]
 #[serde(rename_all = "snake_case")]
 pub enum FileOperation {
@@ -46,7 +48,9 @@ pub enum FileOperation {
     CreateAlias = 31,
 }
 
-#[derive(Debug, Serialize, Deserialize, Display, PartialOrd, Ord, EnumIter, EnumString, EnumSetType)]
+#[derive(
+    Debug, Serialize, Deserialize, Display, PartialOrd, Ord, EnumIter, EnumString, EnumSetType,
+)]
 #[strum(serialize_all = "snake_case")]
 #[serde(rename_all = "snake_case")]
 pub enum UserOperation {
@@ -59,7 +63,9 @@ pub enum UserOperation {
     CannotBeDisconnected = 23,
 }
 
-#[derive(Debug, Serialize, Deserialize, Display, PartialOrd, Ord, EnumIter, EnumString, EnumSetType)]
+#[derive(
+    Debug, Serialize, Deserialize, Display, PartialOrd, Ord, EnumIter, EnumString, EnumSetType,
+)]
 #[strum(serialize_all = "snake_case")]
 #[serde(rename_all = "snake_case")]
 pub enum NewsOperation {
@@ -67,7 +73,9 @@ pub enum NewsOperation {
     PostNews = 21,
 }
 
-#[derive(Debug, Serialize, Deserialize, Display, PartialOrd, Ord, EnumIter, EnumString, EnumSetType)]
+#[derive(
+    Debug, Serialize, Deserialize, Display, PartialOrd, Ord, EnumIter, EnumString, EnumSetType,
+)]
 #[strum(serialize_all = "snake_case")]
 #[serde(rename_all = "snake_case")]
 pub enum ChatOperation {
@@ -75,7 +83,9 @@ pub enum ChatOperation {
     SendChat = 10,
 }
 
-#[derive(Debug, Serialize, Deserialize, Display, PartialOrd, Ord, EnumIter, EnumString, EnumSetType)]
+#[derive(
+    Debug, Serialize, Deserialize, Display, PartialOrd, Ord, EnumIter, EnumString, EnumSetType,
+)]
 #[strum(serialize_all = "snake_case")]
 #[serde(rename_all = "snake_case")]
 pub enum MiscOperation {
@@ -86,21 +96,25 @@ pub enum MiscOperation {
 #[derive(Debug, Clone, From, Into, PartialOrd, Ord, PartialEq, Eq)]
 struct FlagSet<T: EnumSetType + IntoEnumIterator + fmt::Display>(EnumSet<T>);
 
-impl <T: EnumSetType + IntoEnumIterator + fmt::Display> FlagSet<T> {
+impl<T: EnumSetType + IntoEnumIterator + fmt::Display> FlagSet<T> {
     pub fn empty() -> Self {
         Self(EnumSet::new())
     }
 }
 
-impl <F> FromIterator<F> for FlagSet<F>
-    where F: EnumSetType + IntoEnumIterator + fmt::Display {
+impl<F> FromIterator<F> for FlagSet<F>
+where
+    F: EnumSetType + IntoEnumIterator + fmt::Display,
+{
     fn from_iter<T: IntoIterator<Item = F>>(iter: T) -> Self {
         iter.into_iter().collect::<EnumSet<F>>().into()
     }
 }
 
-impl <T> Serialize for FlagSet<T>
-    where T: EnumSetType + IntoEnumIterator + fmt::Display {
+impl<T> Serialize for FlagSet<T>
+where
+    T: EnumSetType + IntoEnumIterator + fmt::Display,
+{
     fn serialize<S: Serializer>(&self, ser: S) -> Result<S::Ok, S::Error> {
         let Self(flags) = self;
         let mut map = ser.serialize_map(None)?;
@@ -113,12 +127,16 @@ impl <T> Serialize for FlagSet<T>
 
 struct FlagSetVisitor<T>(PhantomData<T>);
 
-impl <T> FlagSetVisitor<T> {
-    fn new() -> Self { Self(PhantomData) }
+impl<T> FlagSetVisitor<T> {
+    fn new() -> Self {
+        Self(PhantomData)
+    }
 }
 
-impl <'de, E> Visitor<'de> for FlagSetVisitor<FlagSet<E>>
-    where E: EnumSetType + IntoEnumIterator + Deserialize<'de> + fmt::Display {
+impl<'de, E> Visitor<'de> for FlagSetVisitor<FlagSet<E>>
+where
+    E: EnumSetType + IntoEnumIterator + Deserialize<'de> + fmt::Display,
+{
     type Value = FlagSet<E>;
 
     fn expecting(&self, formatter: &mut fmt::Formatter) -> fmt::Result {
@@ -126,7 +144,9 @@ impl <'de, E> Visitor<'de> for FlagSetVisitor<FlagSet<E>>
     }
 
     fn visit_map<A>(self, mut map: A) -> Result<Self::Value, A::Error>
-        where A: serde::de::MapAccess<'de> {
+    where
+        A: serde::de::MapAccess<'de>,
+    {
         let mut flags = EnumSet::empty();
         while let Some((key, value)) = map.next_entry::<E, bool>()? {
             if value {
@@ -137,8 +157,10 @@ impl <'de, E> Visitor<'de> for FlagSetVisitor<FlagSet<E>>
     }
 }
 
-impl <'de, T> Deserialize<'de> for FlagSet<T>
-    where T: EnumSetType + IntoEnumIterator + Deserialize<'de> + fmt::Display {
+impl<'de, T> Deserialize<'de> for FlagSet<T>
+where
+    T: EnumSetType + IntoEnumIterator + Deserialize<'de> + fmt::Display,
+{
     fn deserialize<D: Deserializer<'de>>(deserializer: D) -> Result<Self, D::Error> {
         deserializer.deserialize_map(FlagSetVisitor::new())
     }
@@ -150,7 +172,7 @@ pub struct FilePermissions(FlagSet<FileOperation>);
 
 impl Permissions<FileOperation> for FilePermissions {
     fn can(&self, op: FileOperation) -> bool {
-        self.0.0.contains(op)
+        self.0 .0.contains(op)
     }
 }
 
@@ -159,7 +181,7 @@ impl IntoIterator for FilePermissions {
     type IntoIter = EnumSetIter<Self::Item>;
 
     fn into_iter(self) -> Self::IntoIter {
-        self.0.0.into_iter()
+        self.0 .0.into_iter()
     }
 }
 
@@ -199,7 +221,7 @@ pub struct UserPermissions(FlagSet<UserOperation>);
 
 impl Permissions<UserOperation> for UserPermissions {
     fn can(&self, op: UserOperation) -> bool {
-        self.0.0.contains(op)
+        self.0 .0.contains(op)
     }
 }
 
@@ -208,7 +230,7 @@ impl IntoIterator for UserPermissions {
     type IntoIter = EnumSetIter<Self::Item>;
 
     fn into_iter(self) -> Self::IntoIter {
-        self.0.0.into_iter()
+        self.0 .0.into_iter()
     }
 }
 
@@ -248,7 +270,7 @@ pub struct NewsPermissions(FlagSet<NewsOperation>);
 
 impl Permissions<NewsOperation> for NewsPermissions {
     fn can(&self, op: NewsOperation) -> bool {
-        self.0.0.contains(op)
+        self.0 .0.contains(op)
     }
 }
 
@@ -257,7 +279,7 @@ impl IntoIterator for NewsPermissions {
     type IntoIter = EnumSetIter<Self::Item>;
 
     fn into_iter(self) -> Self::IntoIter {
-        self.0.0.into_iter()
+        self.0 .0.into_iter()
     }
 }
 
@@ -297,7 +319,7 @@ pub struct ChatPermissions(FlagSet<ChatOperation>);
 
 impl Permissions<ChatOperation> for ChatPermissions {
     fn can(&self, op: ChatOperation) -> bool {
-        self.0.0.contains(op)
+        self.0 .0.contains(op)
     }
 }
 
@@ -305,7 +327,7 @@ impl IntoIterator for ChatPermissions {
     type Item = ChatOperation;
     type IntoIter = EnumSetIter<Self::Item>;
     fn into_iter(self) -> Self::IntoIter {
-        self.0.0.into_iter()
+        self.0 .0.into_iter()
     }
 }
 
@@ -344,7 +366,7 @@ impl From<ChatPermissions> for i64 {
 pub struct MiscPermissions(FlagSet<MiscOperation>);
 impl Permissions<MiscOperation> for MiscPermissions {
     fn can(&self, op: MiscOperation) -> bool {
-        self.0.0.contains(op)
+        self.0 .0.contains(op)
     }
 }
 
@@ -352,7 +374,7 @@ impl IntoIterator for MiscPermissions {
     type Item = MiscOperation;
     type IntoIter = EnumSetIter<Self::Item>;
     fn into_iter(self) -> Self::IntoIter {
-        self.0.0.into_iter()
+        self.0 .0.into_iter()
     }
 }
 
@@ -485,7 +507,9 @@ pub struct UserAccount {
     pub permissions: UserAccountPermissions,
 }
 
-#[derive(Debug, Clone, Serialize, Deserialize, PartialEq, Eq, PartialOrd, Ord, Default, From, Into)]
+#[derive(
+    Debug, Clone, Serialize, Deserialize, PartialEq, Eq, PartialOrd, Ord, Default, From, Into,
+)]
 #[serde(transparent)]
 pub struct UserDataFile(UserAccount);
 
@@ -523,7 +547,7 @@ pub struct Application<U: Users, F: Files, N: News, M: Messages> {
     messages: M,
 }
 
-impl <U: Users, F: Files, N: News, M: Messages> Application<U, F, N, M> {
+impl<U: Users, F: Files, N: News, M: Messages> Application<U, F, N, M> {
     async fn login(&self, credentials: &Credentials) -> Result<(), Error> {
         let result = self.users.authenticate(credentials).await?;
         if result {
@@ -581,7 +605,9 @@ mod tests {
 
     impl Users for TestUsers {
         fn online(&self) -> Ppdfr<UserList> {
-            let users = UserList { users: vec![test_user()] };
+            let users = UserList {
+                users: vec![test_user()],
+            };
             pbfutrok(users)
         }
         fn info(&self, _: &OnlineUser) -> Ppdfr<UserInfo> {
@@ -605,7 +631,7 @@ mod tests {
             messages: EmptyMessages,
         };
         let who = application.who().await?;
-        assert_eq!(who.users, vec![ test_user() ]);
+        assert_eq!(who.users, vec![test_user()]);
         Ok(())
     }
 

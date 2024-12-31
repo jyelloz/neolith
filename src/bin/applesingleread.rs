@@ -1,18 +1,13 @@
+use deku::prelude::*;
 use std::{
-    env,
-    fs,
+    env, fs,
     io::{self, Read as _, Write as _},
 };
-use deku::prelude::*;
 
 use neolith::apple::AppleSingleHeader;
 
 fn main() -> io::Result<()> {
-    let file: String = env::args()
-        .skip(1)
-        .take(1)
-        .next()
-        .expect("no args");
+    let file: String = env::args().skip(1).take(1).next().expect("no args");
     let rsrc = format!("{}.rsrc", &file);
     let data = format!("{}.data", &file);
 
@@ -27,10 +22,8 @@ fn main() -> io::Result<()> {
     let (_, header) = AppleSingleHeader::from_bytes((applesingle_data.as_slice(), 0))
         .expect("failed to parse applesingle header");
 
-    let data_fork = header.data_fork()
-        .expect("no data fork");
-    let rsrc_fork = header.resource_fork()
-        .expect("no resource fork");
+    let data_fork = header.data_fork().expect("no data fork");
+    let rsrc_fork = header.resource_fork().expect("no resource fork");
 
     let data_offset = data_fork.offset as usize;
     let rsrc_offset = rsrc_fork.offset as usize;

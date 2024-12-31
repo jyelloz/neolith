@@ -1,25 +1,17 @@
 use std::fmt::Display;
 
 use anyhow::Result;
-use dialoguer::{
-    Input,
-    Password,
-    MultiSelect,
-};
+use dialoguer::{Input, MultiSelect, Password};
 use strum::IntoEnumIterator;
 
-use super::application::{
-    UserAccount,
-    UserDataFile,
-    Permissions,
-};
+use super::application::{Permissions, UserAccount, UserDataFile};
 
 fn input_permissions<F, P>(prompt: &str, perms: &mut P) -> Result<()>
-    where P: Permissions<F> + FromIterator<F>,
-          F: Copy + IntoEnumIterator + Display {
-    let items: Vec<_> = F::iter()
-        .map(|op| (op, perms.can(op)))
-        .collect();
+where
+    P: Permissions<F> + FromIterator<F>,
+    F: Copy + IntoEnumIterator + Display,
+{
+    let items: Vec<_> = F::iter().map(|op| (op, perms.can(op))).collect();
     *perms = MultiSelect::new()
         .with_prompt(prompt)
         .items_checked(&items)
@@ -54,7 +46,9 @@ impl InteractiveUserEditor {
                 if username_pattern.is_match(s) {
                     Ok(())
                 } else {
-                    Err(format!("Invalid Username: must match regex {username_pattern}"))
+                    Err(format!(
+                        "Invalid Username: must match regex {username_pattern}"
+                    ))
                 }
             })
             .default(account.identity.login.clone())
@@ -69,7 +63,7 @@ impl InteractiveUserEditor {
                     Err("Invalid Nickname: length out of range 1..32")
                 }
             })
-        .default(account.identity.name.clone())
+            .default(account.identity.name.clone())
             .interact_text()?;
 
         account.identity.password = Password::new()

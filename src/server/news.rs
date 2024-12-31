@@ -27,9 +27,7 @@ pub struct News {
 impl std::fmt::Debug for News {
     fn fmt(&self, f: &mut std::fmt::Formatter<'_>) -> std::fmt::Result {
         let Self { articles, .. } = self;
-        f.debug_struct("News")
-            .field("articles", articles)
-            .finish()
+        f.debug_struct("News").field("articles", articles).finish()
     }
 }
 
@@ -47,7 +45,8 @@ impl News {
     }
     pub fn all(&self) -> Vec<u8> {
         let Self { articles, .. } = self;
-        let news = articles.iter()
+        let news = articles
+            .iter()
             .map(String::as_str)
             .rev()
             .collect::<Vec<&str>>()
@@ -80,14 +79,9 @@ impl NewsService {
     pub async fn post(&mut self, article: Vec<u8>) {
         let (tx, rx) = oneshot::channel();
         let notification = Notification::News(article.clone().into());
-        let command = Command {
-            article,
-            tx,
-        };
+        let command = Command { article, tx };
         let Self(tx, bus) = self;
-        tx.send(command)
-            .await
-            .ok();
+        tx.send(command).await.ok();
         rx.await.ok();
         bus.publish(notification);
     }
@@ -103,11 +97,19 @@ impl NewsUpdateProcessor {
     fn new(queue: mpsc::Receiver<Command>, encoding: &'static Encoding) -> Self {
         let news = News::new(encoding);
         let (updates, _) = watch::channel(news.clone());
-        Self { queue, news, updates }
+        Self {
+            queue,
+            news,
+            updates,
+        }
     }
     #[tracing::instrument(name = "NewsUpdateProcessor", skip(self))]
     pub async fn run(self) -> Result<()> {
-        let Self { mut queue, mut news, updates: notifications } = self;
+        let Self {
+            mut queue,
+            mut news,
+            updates: notifications,
+        } = self;
         while let Some(command) = queue.recv().await {
             let Command { article, tx } = command;
             news.post(article);

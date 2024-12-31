@@ -1,15 +1,6 @@
-use num_enum::{
-    TryFromPrimitive,
-    IntoPrimitive,
-};
+use num_enum::{IntoPrimitive, TryFromPrimitive};
 
-#[derive(
-    Debug,
-    Copy, Clone,
-    Eq, PartialEq,
-    Ord, PartialOrd,
-    TryFromPrimitive, IntoPrimitive,
-)]
+#[derive(Debug, Copy, Clone, Eq, PartialEq, Ord, PartialOrd, TryFromPrimitive, IntoPrimitive)]
 #[repr(i16)]
 pub enum TransactionField {
     ErrorText = 100,
@@ -80,5 +71,4 @@ pub enum TransactionField {
     NewsArticleParentArticle,
     NewsArticleFirstChildArticle,
     NewsArticleRecursiveDelete,
-
 }

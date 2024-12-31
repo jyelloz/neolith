@@ -3,13 +3,7 @@ use deku::prelude::*;
 
 use std::time::SystemTime;
 
-use time::{
-    Date,
-    Duration,
-    OffsetDateTime,
-    UtcOffset,
-    ext::NumericalStdDuration as _,
-};
+use time::{ext::NumericalStdDuration as _, Date, Duration, OffsetDateTime, UtcOffset};
 
 #[derive(Debug, Default, Clone, Copy, PartialEq, Eq, DekuRead, DekuWrite)]
 #[deku(endian = "big")]
@@ -21,10 +15,12 @@ pub struct DateParameter {
 
 impl DateParameter {
     fn try_from(time: SystemTime) -> Result<Self, ProtocolError> {
-        let diff = time.duration_since(SystemTime::UNIX_EPOCH)
+        let diff = time
+            .duration_since(SystemTime::UNIX_EPOCH)
             .unwrap_or(0.std_seconds());
         let diff = Duration::ZERO + diff;
-        let chronodate = OffsetDateTime::UNIX_EPOCH.checked_add(diff)
+        let chronodate = OffsetDateTime::UNIX_EPOCH
+            .checked_add(diff)
             .ok_or(ProtocolError::SystemError)?;
         let year = chronodate.year();
         let year_start = Date::from_ordinal_date(year, 1)

@@ -1,16 +1,7 @@
-use tokio::io::{
-    AsyncRead,
-    AsyncWrite,
-    AsyncReadExt as _,
-    AsyncWriteExt as _,
-};
+use tokio::io::{AsyncRead, AsyncReadExt as _, AsyncWrite, AsyncWriteExt as _};
 
 use super::protocol::{
-    TransactionHeader,
-    TransactionBody,
-    TransactionFrame,
-    ProtocolError,
-    HotlineProtocol as _,
+    HotlineProtocol as _, ProtocolError, TransactionBody, TransactionFrame, TransactionHeader,
 };
 
 type Result<T> = ::core::result::Result<T, ProtocolError>;
@@ -19,7 +10,7 @@ pub struct Connection<S> {
     socket: S,
 }
 
-impl <S: AsyncRead + AsyncWrite + Unpin> Connection<S> {
+impl<S: AsyncRead + AsyncWrite + Unpin> Connection<S> {
     pub async fn read_frame(&mut self) -> Result<TransactionFrame> {
         let header = self.header().await?;
         let size = header.body_len();
@@ -48,5 +39,4 @@ impl <S: AsyncRead + AsyncWrite + Unpin> Connection<S> {
         self.socket.write_all(&frame.into_bytes()).await?;
         Ok(())
     }
-
 }

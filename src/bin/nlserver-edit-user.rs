@@ -1,6 +1,6 @@
 use std::fs;
 
-use anyhow::{Result, anyhow};
+use anyhow::{anyhow, Result};
 use dialoguer::Confirm;
 
 use neolith::server::user_editor::InteractiveUserEditor;

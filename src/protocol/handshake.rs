@@ -1,9 +1,4 @@
-use super::{
-    ErrorCode,
-    ReferenceNumber,
-    DataSize,
-    DekuHotlineProtocol,
-};
+use super::{DataSize, DekuHotlineProtocol, ErrorCode, ReferenceNumber};
 use deku::prelude::*;
 
 use derive_more::{From, Into};
@@ -40,7 +35,9 @@ pub struct ServerHandshakeReply {
 
 impl ServerHandshakeReply {
     pub fn ok() -> Self {
-        Self { error_code: ErrorCode(0) }
+        Self {
+            error_code: ErrorCode(0),
+        }
     }
 }
 
@@ -67,13 +64,10 @@ mod tests {
     use super::*;
 
     static CLIENT_HANDSHAKE: &'static [u8] = &[
-        0x54, 0x52, 0x54, 0x50, 0x48, 0x4f, 0x54, 0x4c,
-        0x00, 0x01, 0x00, 0x02,
+        0x54, 0x52, 0x54, 0x50, 0x48, 0x4f, 0x54, 0x4c, 0x00, 0x01, 0x00, 0x02,
     ];
 
-    static SERVER_HANDSHAKE: &'static [u8] = &[
-        0x54, 0x52, 0x54, 0x50, 0x00, 0x00, 0x00, 0x00,
-    ];
+    static SERVER_HANDSHAKE: &'static [u8] = &[0x54, 0x52, 0x54, 0x50, 0x00, 0x00, 0x00, 0x00];
 
     #[test]
     fn parse_client_handshake() {
@@ -85,9 +79,6 @@ mod tests {
     fn parse_server_handshake() {
         let handshake = ServerHandshakeReply::try_from(SERVER_HANDSHAKE)
             .expect("could not parse server handshake");
-        assert_eq!(
-            handshake.error_code,
-            ErrorCode(0),
-        );
+        assert_eq!(handshake.error_code, ErrorCode(0),);
     }
 }
