@@ -4,6 +4,8 @@ use serde::{de::Visitor, ser::SerializeMap, Deserialize, Deserializer, Serialize
 use std::{fmt, future::Future, marker::PhantomData, pin::Pin};
 use strum::{Display, EnumIter, EnumString, IntoEnumIterator};
 
+use crate::protocol as proto;
+
 type Pbdf<O> = Pin<Box<dyn Future<Output = O>>>;
 type Ppdfr<O> = Pbdf<Result<O, Error>>;
 
@@ -470,6 +472,12 @@ impl From<UserAccountPermissions> for i64 {
     }
 }
 
+impl From<UserAccountPermissions> for proto::UserAccess {
+    fn from(value: UserAccountPermissions) -> Self {
+        Self::from(i64::from(value))
+    }
+}
+
 #[derive(Debug, Clone, Serialize, Deserialize, PartialEq, Eq, PartialOrd, Ord, Default)]
 #[serde(transparent)]
 pub struct Password(String);
@@ -505,6 +513,21 @@ pub struct UserAccountIdentity {
 pub struct UserAccount {
     pub identity: UserAccountIdentity,
     pub permissions: UserAccountPermissions,
+}
+
+impl From<UserAccount> for proto::GetUserReply {
+    fn from(value: UserAccount) -> Self {
+        let username = proto::Nickname::from(value.identity.name);
+        let user_login = proto::UserLogin::from(value.identity.login).invert();
+        let user_password = proto::Password::from_cleartext(&[]);
+        let user_access = proto::UserAccess::from(value.permissions);
+        Self {
+            username,
+            user_login,
+            user_password,
+            user_access,
+        }
+    }
 }
 
 #[derive(
