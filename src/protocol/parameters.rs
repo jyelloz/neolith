@@ -124,7 +124,7 @@ impl From<String> for UserLogin {
     }
 }
 
-#[derive(Debug, Clone, PartialEq, Eq, PartialOrd, Ord)]
+#[derive(Debug, Default, Clone, PartialEq, Eq, PartialOrd, Ord)]
 pub struct Password(Vec<u8>);
 
 impl Password {
