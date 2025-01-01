@@ -5,7 +5,7 @@ use self::{
     news::{News, NewsService},
     transaction_stream::Frames,
     transfers::TransfersService,
-    users::{Users, UsersService},
+    users::{UserAccounts, Users, UsersService},
 };
 use crate::protocol::{
     self as proto, ChatId, ChatMessage, GenericReply, Message, NotifyNewsMessage, ProtocolError,
@@ -378,6 +378,7 @@ pub struct NeolithServer {
     chats: watch::Receiver<Chats>,
     chats_tx: ChatsService,
     transfers_tx: TransfersService,
+    accounts: UserAccounts,
 }
 
 type ServerResult<T> = anyhow::Result<T>;
@@ -387,6 +388,7 @@ impl NeolithServer {
     pub fn new<P: Into<PathBuf>>(
         user_id: proto::UserId,
         files_root: P,
+        accounts: UserAccounts,
         users: watch::Receiver<Users>,
         users_tx: UsersService,
         news: watch::Receiver<News>,
@@ -398,6 +400,7 @@ impl NeolithServer {
         Self {
             user_id,
             files_root: files_root.into(),
+            accounts,
             users,
             users_tx,
             news,
@@ -456,8 +459,8 @@ impl NeolithServer {
                 .file_upload(req.file_path, req.filename)
                 .await
                 .map(Some),
-            ClientRequest::GetUser(req) => {
-                if let Some(account) = users::UserAccounts.get(req.0) {
+            ClientRequest::GetUser(proto::GetUser(login)) => {
+                if let Some(account) = self.accounts.get(login).cloned() {
                     Ok(Some(ServerResponse::GetUserReply(account.into())))
                 } else {
                     Ok(Some(ServerResponse::Rejected(Some(
