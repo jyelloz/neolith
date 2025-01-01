@@ -344,6 +344,17 @@ impl VersionedLoginRequest {
         req.nickname = Some(nickname);
         req.icon_id = Some(icon_id);
     }
+    fn login(&self) -> proto::UserLogin {
+        let Self(req) = self;
+        req.login
+            .clone()
+            .unwrap_or_else(proto::UserLogin::guest)
+            .invert()
+    }
+    fn password(&self) -> proto::Password {
+        let Self(req) = self;
+        req.password.clone().unwrap_or_default()
+    }
 }
 
 struct Unauthenticated<R, W>(R, W, Globals);
@@ -358,38 +369,51 @@ impl<R: AsyncRead + Unpin, W: AsyncWrite + Unpin> Unauthenticated<R, W> {
         let frame = frames.next_frame().await?;
         let TransactionFrame { header, .. } = frame;
 
-        let mut login = VersionedLoginRequest(LoginRequest::try_from(frame)?);
+        let mut request = VersionedLoginRequest(LoginRequest::try_from(frame)?);
+        let login = request.login();
+        let password = request.password();
+
+        let Some(account) = globals.accounts.verify(login, password) else {
+            anyhow::bail!("login failure");
+        };
+
+        debug!("login ok");
+
+        let user_flags = proto::UserFlags {
+            admin: account.is_admin(),
+            ..Default::default()
+        };
 
         let reply = LoginReply::default().reply_to(&header);
         write_frame(w, reply).await?;
 
-        debug!("login request {login:?}");
-        let user = if let Some((username, icon_id)) = login.old_style() {
+        debug!("login request {request:?}");
+        let user = if let Some((username, icon_id)) = request.old_style() {
             debug!("old login");
             UserNameWithInfo {
                 icon_id,
                 username_len: username.len() as i16,
                 username,
-                user_flags: proto::UserFlags::default(),
+                user_flags,
                 user_id: 0.into(),
             }
         } else {
             debug!("new login, awaiting SetClientUserInfo");
             let frame = frames.next_frame().await?;
             let SetClientUserInfo { username, icon_id } = SetClientUserInfo::try_from(frame)?;
-            login.fill_in(username.clone(), icon_id);
+            request.fill_in(username.clone(), icon_id);
             UserNameWithInfo {
                 icon_id,
                 username_len: username.len() as i16,
                 username,
-                user_flags: proto::UserFlags::default(),
+                user_flags,
                 user_id: 0.into(),
             }
         };
         debug!("adding user {user:?}");
         globals.user_add(&user).await;
 
-        Ok(login.into())
+        Ok(request.into())
     }
 }
 
