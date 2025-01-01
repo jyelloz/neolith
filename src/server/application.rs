@@ -515,6 +515,12 @@ pub struct UserAccount {
     pub permissions: UserAccountPermissions,
 }
 
+impl UserAccount {
+    pub fn is_admin(&self) -> bool {
+        self.permissions.user.can(UserOperation::CanDisconnectUsers)
+    }
+}
+
 impl From<UserAccount> for proto::GetUserReply {
     fn from(value: UserAccount) -> Self {
         let username = proto::Nickname::from(value.identity.name);
