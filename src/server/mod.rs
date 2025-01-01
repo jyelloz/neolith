@@ -137,6 +137,19 @@ impl From<Broadcast> for ServerMessage {
 }
 
 #[derive(Debug, Clone, From, Into)]
+pub struct DownloadInfo(pub proto::ReferenceNumber, pub proto::WaitingCount);
+
+impl From<DownloadInfo> for proto::DownloadInfo {
+    fn from(value: DownloadInfo) -> Self {
+        let DownloadInfo(reference, waiting_count) = value;
+        Self {
+            reference,
+            waiting_count,
+        }
+    }
+}
+
+#[derive(Debug, Clone, From, Into)]
 pub struct Article(pub Vec<u8>);
 
 impl From<Article> for NotifyNewsMessage {
