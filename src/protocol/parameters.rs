@@ -82,6 +82,9 @@ impl UserLogin {
     pub fn new(login: Vec<u8>) -> Self {
         Self(login)
     }
+    pub fn guest() -> Self {
+        Self::from_cleartext(b"guest")
+    }
     pub fn from_cleartext(clear: &[u8]) -> Self {
         Self(invert_credential(clear))
     }
