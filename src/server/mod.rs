@@ -504,7 +504,7 @@ impl NeolithServer {
         let files = files
             .list(&path)?
             .into_iter()
-            .map(proto::FileNameWithInfo::from)
+            .filter_map(|path| proto::FileNameWithInfo::try_from(path).ok())
             .collect::<Vec<_>>();
         Ok(proto::GetFileNameListReply::with_files(files))
     }
