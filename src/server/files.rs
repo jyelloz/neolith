@@ -54,8 +54,6 @@ impl Default for Creator {
     }
 }
 
-pub struct Comment(String);
-
 pub struct DirEntry {
     pub path: PathBuf,
     pub data_len: u64,
