@@ -153,7 +153,6 @@ enum Command {
     Create(ChatRoomCreationRequest, oneshot::Sender<ChatId>),
     SubjectUpdate(ChatRoomSubject, oneshot::Sender<()>),
     UserJoin(ChatRoomPresence, oneshot::Sender<()>),
-    UserUpdate(ChatRoomPresence, oneshot::Sender<()>),
     UserLeave(ChatRoomPresence, oneshot::Sender<()>),
     UserLeaveAll(UserId, oneshot::Sender<Vec<ChatId>>),
 }
@@ -183,12 +182,6 @@ impl ChatsService {
     pub async fn join(&mut self, request: ChatRoomPresence) -> Result<()> {
         let (tx, rx) = oneshot::channel();
         self.0.send(Command::UserJoin(request, tx)).await?;
-        rx.await?;
-        Ok(())
-    }
-    pub async fn update(&mut self, request: ChatRoomPresence) -> Result<()> {
-        let (tx, rx) = oneshot::channel();
-        self.0.send(Command::UserUpdate(request, tx)).await?;
         rx.await?;
         Ok(())
     }
@@ -251,11 +244,6 @@ impl ChatUpdateProcessor {
                 Command::UserJoin(presence, tx) => {
                     let ChatRoomPresence(chat, user) = presence;
                     chats.join(chat, user.into());
-                    if tx.send(()).is_err() {
-                        Err(ChatError::ServiceUnavailable)?;
-                    }
-                }
-                Command::UserUpdate(_, tx) => {
                     if tx.send(()).is_err() {
                         Err(ChatError::ServiceUnavailable)?;
                     }
