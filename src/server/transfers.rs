@@ -185,7 +185,7 @@ impl Files {
             .into_bytes();
         debug!("found filename {file_name:?}");
         let len = stat.len();
-        let (len, info) = match self.get_appledouble_info(&path).await {
+        let (len, info) = match self.get_appledouble_info(path).await {
             Ok((rsrc_len, info)) => {
                 debug!("for appledouble'd file {path:?} have data length {len}, rsrc length {rsrc_len}");
                 (len + rsrc_len, info)
@@ -310,7 +310,7 @@ impl<S: AsyncRead + AsyncWrite + Unpin + Send> TransferConnection<S> {
             "reference",
             format!("{:#x}", u32::from(handshake.reference)),
         );
-        let id = handshake.reference.into();
+        let id = handshake.reference;
         let result = if handshake.is_upload() {
             self.handle_file_upload(id, handshake.size).await
         } else {
@@ -552,7 +552,7 @@ impl TransfersService {
     pub async fn complete(&mut self, reference: proto::ReferenceNumber) -> TransferResult<()> {
         let Self { tx: queue, .. } = self;
         let (tx, rx) = oneshot::channel();
-        let cmd = Command::Complete(reference.into(), tx);
+        let cmd = Command::Complete(reference, tx);
         queue.send(cmd).await.ok();
         rx.await.ok();
         Ok(())
@@ -614,7 +614,7 @@ impl TransfersUpdateProcessor {
         let reply = proto::DownloadFileReply {
             transfer_size: transfer_size.into(),
             file_size: (len as i32).into(),
-            reference: reference.into(),
+            reference,
             waiting_count: None,
         };
         Ok(reply)
@@ -626,9 +626,7 @@ impl TransfersUpdateProcessor {
         requests: &mut Requests,
     ) -> TransferResult<proto::UploadFileReply> {
         let reference = requests.add_upload(root.to_path_buf(), path.to_path_buf());
-        Ok(proto::UploadFileReply {
-            reference: reference.into(),
-        })
+        Ok(proto::UploadFileReply { reference })
     }
     pub fn subscribe(&self) -> watch::Receiver<Requests> {
         self.updates.subscribe()
