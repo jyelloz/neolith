@@ -217,7 +217,7 @@ async fn main() -> Result<()> {
         let (socket, addr) = listener.accept().await?;
         let (r, w) = socket.into_split();
         let mut conn = Connection::new(r, w, globals.clone());
-        let _ = tokio::task::spawn(async move {
+        tokio::task::spawn(async move {
             while conn.process().await.is_ok() {}
             debug!("disconnect from {:?}", addr);
         });
