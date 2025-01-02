@@ -33,6 +33,9 @@ impl Nickname {
     pub fn len(&self) -> usize {
         self.0.len()
     }
+    pub fn is_empty(&self) -> bool {
+        self.0.is_empty()
+    }
 }
 
 impl std::fmt::Display for Nickname {
@@ -538,10 +541,10 @@ impl TryFrom<&[u8]> for FilePath {
             .into_iter()
             .map(|c| c.name)
             .collect::<Vec<_>>();
-        if components.len() > 0 {
-            Ok(Self::Directory(components))
-        } else {
+        if components.is_empty() {
             Ok(Self::Root)
+        } else {
+            Ok(Self::Directory(components))
         }
     }
 }
