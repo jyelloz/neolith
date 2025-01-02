@@ -235,7 +235,7 @@ impl OsFiles {
             .filter_map(|e| e.ok())
             .filter(|e| !Self::is_appledouble(e))
             .map(|e| self.listing_context(e))
-            .map(|e| DirEntry::try_from(e))
+            .map(DirEntry::try_from)
             .collect()
     }
     pub fn get_info(&self, path: &Path) -> io::Result<FileInfo> {
