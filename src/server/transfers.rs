@@ -451,7 +451,7 @@ impl<S: AsyncRead + AsyncWrite + Unpin + Send> TransferConnection<S> {
                     self.socket = socket.into_inner();
                     debug!("copied rsrc fork");
                 }
-                fork @ _ => {
+                fork => {
                     error!("ignoring {fork:?} fork");
                     tokio::io::copy(&mut self.socket, &mut tokio::io::sink()).await?;
                 }
