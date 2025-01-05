@@ -24,8 +24,8 @@ use neolith::{
         UserNameWithInfo,
     },
     server::{
-        application::UserAccountPermissions, users::UserAccounts, ChatRoomLeave, ClientRequest,
-        NeolithServer,
+        application::UserAccountPermissions, files::OsFiles, users::UserAccounts, ChatRoomLeave,
+        ClientRequest, NeolithServer,
     },
 };
 
@@ -50,6 +50,7 @@ struct Globals {
     chats_tx: ChatsService,
     news_tx: NewsService,
     transfers_tx: TransfersService,
+    files: OsFiles,
     accounts: UserAccounts,
     bus: Bus,
     transaction_id: i32,
@@ -187,6 +188,7 @@ async fn main() -> Result<()> {
     let (news_tx, news_rx) = NewsService::new(MACINTOSH, bus.clone());
     let (transfers_tx, transfers_rx) = TransfersService::new(bus.clone());
 
+    let files = OsFiles::with_root("files")?;
     let accounts = UserAccounts::with_root("users")?;
 
     let globals = Globals {
@@ -198,6 +200,7 @@ async fn main() -> Result<()> {
         chats_tx,
         news_tx,
         transfers_tx: transfers_tx.clone(),
+        files,
         accounts,
         bus,
         transaction_id: 0,
@@ -457,7 +460,7 @@ impl<R: AsyncRead + Unpin, W: AsyncWrite + Unpin> Established<R, W> {
         let TransactionFrame { header, body } = frame.clone();
         let mut server = NeolithServer::new(
             globals.user_id.unwrap_or_default(),
-            "files",
+            globals.files.clone(),
             globals.accounts.clone(),
             globals.users.clone(),
             globals.users_tx.clone(),
