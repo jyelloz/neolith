@@ -461,7 +461,7 @@ impl NeolithServer {
                 .map(Some),
             ClientRequest::GetUser(proto::GetUser(login)) => {
                 if let Some(account) = self.accounts.get(login).cloned() {
-                    Ok(Some(ServerResponse::GetUserReply(account.into())))
+                    Ok(Some(ServerResponse::GetUserReply(account.try_into()?)))
                 } else {
                     Ok(Some(ServerResponse::Rejected(Some(
                         "User account not found".to_string(),
