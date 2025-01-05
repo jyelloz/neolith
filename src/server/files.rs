@@ -453,6 +453,20 @@ impl AppleDoubleFile {
         }
         Ok(apple::AppleSingleHeader::new_double(entries))
     }
+    async fn read_comment(
+        &self,
+        header: &apple::AppleSingleHeader,
+        mut reader: impl AsyncRead + AsyncSeek + Unpin,
+    ) -> io::Result<Vec<u8>> {
+        let Some(entry) = header.entry(apple::EntryId::Comment) else {
+            return Ok(vec![]);
+        };
+        Self::seek_to(&mut reader, entry).await?;
+        let len = entry.length as usize;
+        let mut comment = vec![0u8; len];
+        reader.read_exact(&mut comment[..len]).await?;
+        Ok(comment)
+    }
     async fn read_info_fork(&self) -> io::Result<proto::InfoFork> {
         let mut file = tokio::fs::File::open(&self.appledouble_path).await?;
         let header = Self::read_appledouble_header(&mut file).await?;
@@ -471,20 +485,22 @@ impl AppleDoubleFile {
         if failed {
             panic!("bad filename");
         }
+        let comment = self.read_comment(&header, &mut file).await?;
+        let platform_flags = u16::from(finf.flags) as u32;
         let file_name = file_name.into_owned();
         let fork = proto::InfoFork {
             platform: proto::PlatformType::AppleMac,
             type_code,
             creator_code,
             flags: Default::default(),
-            platform_flags: Default::default(),
+            platform_flags: proto::PlatformFlags::from(platform_flags),
             created_at: Default::default(),
             modified_at: Default::default(),
             name_script: Default::default(),
             name_len: file_name.len() as i16,
             file_name,
-            comment_len: 0,
-            comment: vec![],
+            comment_len: comment.len() as i16,
+            comment,
         };
         Ok(fork)
     }
