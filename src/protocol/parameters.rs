@@ -24,7 +24,7 @@ fn invert_credential(data: &[u8]) -> Vec<u8> {
 pub struct Nickname(#[deku(count = "len")] Vec<u8>);
 
 impl Nickname {
-    pub fn new(nickname: Vec<u8>) -> Self {
+    fn new(nickname: Vec<u8>) -> Self {
         Self(nickname)
     }
     pub fn take(self) -> Vec<u8> {
@@ -58,9 +58,15 @@ impl Default for Nickname {
     }
 }
 
-impl From<String> for Nickname {
-    fn from(s: String) -> Self {
-        s.into_bytes().into()
+impl TryFrom<&str> for Nickname {
+    type Error = ProtocolError;
+    fn try_from(s: &str) -> Result<Self, Self::Error> {
+        let (bytes, _, failed) = MACINTOSH.encode(s);
+        if failed {
+            Err(ProtocolError::MalformedData(TransactionField::UserName))
+        } else {
+            Ok(Self(bytes.into_owned()))
+        }
     }
 }
 
@@ -121,9 +127,15 @@ impl From<UserLogin> for Parameter {
     }
 }
 
-impl From<String> for UserLogin {
-    fn from(s: String) -> Self {
-        s.into_bytes().into()
+impl TryFrom<&str> for UserLogin {
+    type Error = ProtocolError;
+    fn try_from(s: &str) -> Result<Self, Self::Error> {
+        let (bytes, _, failed) = MACINTOSH.encode(s);
+        if failed {
+            Err(ProtocolError::MalformedData(TransactionField::UserLogin))
+        } else {
+            Ok(Self(bytes.into_owned()))
+        }
     }
 }
 
