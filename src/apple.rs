@@ -217,6 +217,20 @@ pub struct FinderFlags {
     pub is_on_desktop: bool,
 }
 
+impl From<u16> for FinderFlags {
+    fn from(value: u16) -> Self {
+        let bytes = value.to_be_bytes();
+        Self::try_from(bytes.as_slice()).expect("failed to parse 4 bytes into finder flags")
+    }
+}
+
+impl From<FinderFlags> for u16 {
+    fn from(value: FinderFlags) -> Self {
+        let bytes = value.to_bytes().unwrap();
+        Self::from_be_bytes(bytes.try_into().expect("must be 2 bytes"))
+    }
+}
+
 #[derive(Debug, DekuRead, DekuWrite, Default, Clone, Copy, PartialEq, Eq)]
 #[deku(endian = "big")]
 pub struct Point {
