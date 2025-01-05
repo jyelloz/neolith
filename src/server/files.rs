@@ -270,10 +270,13 @@ impl OsFiles {
         let subpath = root.components().chain(path.components()).collect();
         Ok(subpath)
     }
-    fn appledouble_magic(&self, path: &Path, metadata: &Metadata) -> io::Result<ExtendedMetadata> {
+    fn appledouble_path(path: &Path) -> PathBuf {
         let basename = path.file_name().and_then(|p| p.to_str()).unwrap();
         let appledouble_basename = format!("._{basename}");
-        let path = Path::join(path.parent().unwrap(), appledouble_basename);
+        Path::join(path.parent().unwrap(), appledouble_basename)
+    }
+    fn appledouble_magic(&self, path: &Path, metadata: &Metadata) -> io::Result<ExtendedMetadata> {
+        let path = Self::appledouble_path(path);
         let mut ad_file = std::fs::OpenOptions::new()
             .read(true)
             .write(false)
@@ -315,6 +318,18 @@ impl OsFiles {
     }
     pub fn root(&self) -> PathBuf {
         self.root.clone()
+    }
+    pub async fn read(&self, path: &Path) -> io::Result<FlattenedFileObject> {
+        let path = self.subpath(path)?;
+        let appledouble_path = Self::appledouble_path(&path);
+        let file = if appledouble_path.is_file() {
+            let file = AppleDoubleFile::new(path, appledouble_path);
+            file.read().await
+        } else {
+            let file = PlainFile::new(path);
+            file.read().await
+        }?;
+        Ok(file)
     }
 }
 
