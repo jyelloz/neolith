@@ -1,4 +1,7 @@
-use crate::protocol as proto;
+use crate::{
+    apple,
+    protocol::{self as proto, AsyncDataSource, FlattenedFileObject},
+};
 use deku::prelude::*;
 use derive_more::Into;
 use encoding_rs::MACINTOSH;
@@ -8,10 +11,12 @@ use std::{
     cell::RefCell,
     ffi::OsStr,
     fs::{self, DirEntry as OsDirEntry, Metadata},
-    io::{self, ErrorKind},
+    io::{self, ErrorKind, SeekFrom},
     path::{Component, Path, PathBuf},
     time::SystemTime,
 };
+use tokio::io::{AsyncRead, AsyncReadExt, AsyncSeek, AsyncSeekExt};
+use tracing::trace;
 
 #[derive(Debug)]
 pub struct FileType(FourCC);
@@ -325,4 +330,175 @@ impl Files for OsFiles {
 struct FilesContext<'a> {
     files: &'a OsFiles,
     dirent: OsDirEntry,
+}
+
+struct PlainFile {
+    path: PathBuf,
+}
+
+impl PlainFile {
+    pub fn new(path: PathBuf) -> Self {
+        Self { path }
+    }
+    async fn read_info_fork(&self) -> io::Result<proto::InfoFork> {
+        let finf = apple::FinderInfo::windows_file();
+        let type_code = proto::FileType::from(finf.file_type);
+        let creator_code = proto::Creator::from(finf.creator);
+        let filename = self
+            .path
+            .file_name()
+            .expect("no filename")
+            .to_str()
+            .expect("no string filename");
+        let (file_name, _, failed) = MACINTOSH.encode(filename);
+        if failed {
+            panic!("bad filename");
+        }
+        let file_name = file_name.into_owned();
+        let fork = proto::InfoFork {
+            platform: proto::PlatformType::MicrosoftWin,
+            type_code,
+            creator_code,
+            flags: Default::default(),
+            platform_flags: Default::default(),
+            created_at: Default::default(),
+            modified_at: Default::default(),
+            name_script: Default::default(),
+            name_len: file_name.len() as i16,
+            file_name,
+            comment_len: 0,
+            comment: vec![],
+        };
+        Ok(fork)
+    }
+    async fn read_data_fork(&self) -> io::Result<AsyncDataSource> {
+        let file = tokio::fs::File::open(&self.path).await?;
+        let meta = file.metadata().await?;
+        let len = meta.len() as u64;
+        Ok(AsyncDataSource::new(len, file))
+    }
+    async fn read(self) -> io::Result<FlattenedFileObject> {
+        let info = self.read_info_fork().await?;
+        let data = self.read_data_fork().await?;
+        let file = FlattenedFileObject::with_data(info, data);
+        Ok(file)
+    }
+}
+
+#[derive(Into)]
+struct AppleDoubleFile {
+    path: PathBuf,
+    appledouble_path: PathBuf,
+}
+
+impl AppleDoubleFile {
+    pub fn new(path: PathBuf, appledouble_path: PathBuf) -> Self {
+        Self {
+            path,
+            appledouble_path,
+        }
+    }
+    async fn read_appledouble_header_stub(
+        mut reader: impl AsyncRead + Unpin,
+    ) -> io::Result<apple::AppleSingleHeaderStub> {
+        let mut buf = [0u8; apple::AppleSingleHeaderStub::calculate_size()];
+        reader.read_exact(&mut buf).await?;
+        let stub = apple::AppleSingleHeaderStub::try_from(&buf[..])?;
+        Ok(stub)
+    }
+    async fn seek_to(
+        mut reader: impl AsyncSeekExt + Unpin,
+        entry: apple::EntryDescriptor,
+    ) -> io::Result<()> {
+        reader.seek(SeekFrom::Start(entry.offset as u64)).await?;
+        Ok(())
+    }
+    async fn read_finf(
+        mut reader: impl AsyncRead + AsyncSeek + Unpin,
+        header: &apple::AppleSingleHeader,
+    ) -> io::Result<Option<apple::FinderInfo>> {
+        let Some(finf_entry) = header.finder_info() else {
+            return Ok(None);
+        };
+        Self::seek_to(&mut reader, finf_entry).await?;
+        let mut buf = [0u8; apple::FinderInfo::calculate_size()];
+        reader.read_exact(&mut buf).await?;
+        let finf = apple::FinderInfo::try_from(&buf[..])?;
+        Ok(Some(finf))
+    }
+    async fn read_appledouble_header(
+        mut reader: impl AsyncRead + Unpin,
+    ) -> io::Result<apple::AppleSingleHeader> {
+        let stub = Self::read_appledouble_header_stub(&mut reader).await?;
+        let mut entries = vec![];
+        for _ in 0..stub.n_descriptors {
+            let mut buf = [0u8; apple::EntryDescriptor::calculate_size()];
+            reader.read_exact(&mut buf).await?;
+            entries.push(apple::EntryDescriptor::try_from(&buf[..])?);
+        }
+        Ok(apple::AppleSingleHeader::new_double(entries))
+    }
+    async fn read_info_fork(&self) -> io::Result<proto::InfoFork> {
+        let mut file = tokio::fs::File::open(&self.appledouble_path).await?;
+        let header = Self::read_appledouble_header(&mut file).await?;
+        let finf = Self::read_finf(&mut file, &header)
+            .await?
+            .unwrap_or_else(apple::FinderInfo::windows_file);
+        let type_code = proto::FileType::from(finf.file_type);
+        let creator_code = proto::Creator::from(finf.creator);
+        let filename = self
+            .path
+            .file_name()
+            .expect("no filename")
+            .to_str()
+            .expect("no string filename");
+        let (file_name, _, failed) = MACINTOSH.encode(filename);
+        if failed {
+            panic!("bad filename");
+        }
+        let file_name = file_name.into_owned();
+        let fork = proto::InfoFork {
+            platform: proto::PlatformType::AppleMac,
+            type_code,
+            creator_code,
+            flags: Default::default(),
+            platform_flags: Default::default(),
+            created_at: Default::default(),
+            modified_at: Default::default(),
+            name_script: Default::default(),
+            name_len: file_name.len() as i16,
+            file_name,
+            comment_len: 0,
+            comment: vec![],
+        };
+        Ok(fork)
+    }
+    async fn read_data_fork(&self) -> io::Result<AsyncDataSource> {
+        let file = tokio::fs::File::open(&self.path).await?;
+        let meta = file.metadata().await?;
+        let len = meta.len() as u64;
+        Ok(AsyncDataSource::new(len, file))
+    }
+    async fn read_rsrc_fork(&self) -> io::Result<Option<AsyncDataSource>> {
+        let mut file = tokio::fs::File::open(&self.appledouble_path).await?;
+        let header = Self::read_appledouble_header(&mut file).await?;
+        let Some(rsrc_entry) = header.resource_fork() else {
+            return Ok(None);
+        };
+        trace!("have rsrc entry {rsrc_entry:?}");
+        file.seek(SeekFrom::Start(rsrc_entry.offset as u64)).await?;
+        let len = rsrc_entry.length as u64;
+        Ok(Some(AsyncDataSource::new(len, file)))
+    }
+    async fn read(self) -> io::Result<FlattenedFileObject> {
+        let info = self.read_info_fork().await?;
+        let data = self.read_data_fork().await?;
+        let rsrc = self.read_rsrc_fork().await?;
+        let file = if let Some(rsrc) = rsrc {
+            FlattenedFileObject::with_forks(info, data, rsrc)
+        } else {
+            FlattenedFileObject::with_data(info, data)
+        };
+        Ok(file)
+    }
 }
