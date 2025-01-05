@@ -23,6 +23,8 @@ pub enum TransferError {
     IO(#[from] std::io::Error),
     #[error("protocol error")]
     Protocol(#[from] proto::ProtocolError),
+    #[error("file size")]
+    FileSize(#[from] TryFromIntError),
     #[error("invalid upload or download request id")]
     InvalidRequest,
 }
