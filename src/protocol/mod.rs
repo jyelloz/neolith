@@ -1831,6 +1831,10 @@ impl FlattenedFileObject {
             None
         }
     }
+    pub fn fork_len(&self, fork_type: ForkType) -> Option<usize> {
+        let fork = self.contents.get(&fork_type)?;
+        Some(fork.0 as usize)
+    }
 }
 
 #[derive(Debug, Clone, DekuRead, DekuWrite)]
