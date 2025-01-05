@@ -1769,6 +1769,12 @@ pub struct FlattenedFileHeader {
 #[derive(From, Into)]
 pub struct AsyncDataSource(u64, Box<dyn AsyncRead + Unpin + Send>);
 
+impl AsyncDataSource {
+    pub fn new(len: u64, source: impl AsyncRead + Unpin + Send + 'static) -> Self {
+        Self(len, Box::new(source))
+    }
+}
+
 pub struct FlattenedFileObject {
     pub version: crate::protocol::handshake::Version,
     pub info: InfoFork,
