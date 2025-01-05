@@ -5,6 +5,7 @@ use encoding_rs::MACINTOSH;
 use four_cc::FourCC;
 use magic::Cookie;
 use std::{
+    cell::RefCell,
     ffi::OsStr,
     fs::{self, DirEntry as OsDirEntry, Metadata},
     io::{self, ErrorKind},
@@ -198,10 +199,19 @@ impl ExtendedMetadata {
     }
 }
 
-#[derive(Debug)]
+thread_local! {
+    static MAGIC: RefCell<Cookie<magic::cookie::Load>> = Cookie::open(magic::cookie::Flags::APPLE)
+        .or::<io::Error>(Err(ErrorKind::Other.into()))
+        .unwrap()
+        .load(&Default::default())
+        .or::<io::Error>(Err(ErrorKind::Other.into()))
+        .map(RefCell::new)
+        .unwrap();
+}
+
+#[derive(Debug, Clone)]
 pub struct OsFiles {
     root: PathBuf,
-    magic: Cookie<magic::cookie::Load>,
 }
 
 impl OsFiles {
@@ -209,13 +219,8 @@ impl OsFiles {
     pub fn with_root<P: Into<PathBuf>>(root: P) -> io::Result<Self> {
         let root = root.into().canonicalize()?;
         let metadata = fs::metadata(&root)?;
-        let magic = Cookie::open(magic::cookie::Flags::APPLE)
-            .or::<io::Error>(Err(ErrorKind::Other.into()))?;
-        let magic = magic
-            .load(&Default::default())
-            .or::<io::Error>(Err(ErrorKind::Other.into()))?;
         if metadata.is_dir() {
-            Ok(Self { root, magic })
+            Ok(Self { root })
         } else {
             Err(ErrorKind::InvalidInput.into())
         }
@@ -284,9 +289,8 @@ impl OsFiles {
         Ok(info)
     }
     fn apple_magic(&self, path: &Path, metadata: &Metadata) -> io::Result<ExtendedMetadata> {
-        let magic = self
-            .magic
-            .file(path)
+        let magic = MAGIC
+            .with_borrow(|magic| magic.file(path))
             .or::<io::Error>(Err(ErrorKind::Other.into()))?;
         let magic = magic.as_bytes();
         let (creator, file_type) = (&magic[..4], &magic[4..]);
@@ -303,6 +307,9 @@ impl OsFiles {
             files: self,
             dirent,
         }
+    }
+    pub fn root(&self) -> PathBuf {
+        self.root.clone()
     }
 }
 
