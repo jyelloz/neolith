@@ -1882,7 +1882,7 @@ pub struct FileFlags(i32);
     Debug, Default, Clone, Copy, PartialEq, Eq, PartialOrd, Ord, From, Into, DekuRead, DekuWrite,
 )]
 #[deku(endian = "big")]
-pub struct PlatformFlags(i32);
+pub struct PlatformFlags(u32);
 
 #[derive(Debug, Clone, DekuRead, DekuWrite)]
 pub struct ForkHeader {
