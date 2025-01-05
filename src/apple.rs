@@ -41,14 +41,16 @@ impl EntryDescriptor {
         EntryId::try_from(self.id).ok()
     }
     pub fn finf(self) -> Option<Self> {
-        if matches!(self.entry_id(), Some(EntryId::FinderInfo)) {
-            Some(self)
-        } else {
-            None
-        }
+        self.filter(EntryId::FinderInfo)
     }
     pub fn rsrc(self) -> Option<Self> {
-        if matches!(self.entry_id(), Some(EntryId::ResourceFork)) {
+        self.filter(EntryId::ResourceFork)
+    }
+    pub fn comment(self) -> Option<Self> {
+        self.filter(EntryId::Comment)
+    }
+    pub fn filter(self, entry_id: EntryId) -> Option<Self> {
+        if self.entry_id() == Some(entry_id) {
             Some(self)
         } else {
             None
@@ -138,25 +140,24 @@ impl AppleSingleHeader {
         26 + (n_entries * 12)
     }
     pub fn data_fork(&self) -> Option<EntryDescriptor> {
-        self.descriptors
-            .iter()
-            .filter(|d| EntryId::try_from(d.id) == Ok(EntryId::DataFork))
-            .cloned()
-            .next()
+        self.entry(EntryId::DataFork)
     }
     pub fn resource_fork(&self) -> Option<EntryDescriptor> {
-        self.descriptors
-            .iter()
-            .filter(|d| EntryId::try_from(d.id) == Ok(EntryId::ResourceFork))
-            .cloned()
-            .next()
+        self.entry(EntryId::ResourceFork)
     }
     pub fn finder_info(&self) -> Option<EntryDescriptor> {
+        self.entry(EntryId::FinderInfo)
+    }
+    pub fn entry(&self, id: EntryId) -> Option<EntryDescriptor> {
         self.descriptors
             .iter()
-            .filter(|d| EntryId::try_from(d.id) == Ok(EntryId::FinderInfo))
             .cloned()
+            .filter_map(|d| d.filter(id))
             .next()
+    }
+    pub fn entry_len(&self, id: EntryId) -> Option<u64> {
+        let entry = self.entry(id)?;
+        Some(entry.length as u64)
     }
 }
 
