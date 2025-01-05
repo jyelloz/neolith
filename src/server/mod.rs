@@ -370,7 +370,7 @@ impl TryFrom<TransactionFrame> for ClientRequest {
 #[derive(Debug)]
 pub struct NeolithServer {
     user_id: proto::UserId,
-    files_root: PathBuf,
+    files: OsFiles,
     users: watch::Receiver<Users>,
     users_tx: UsersService,
     news: watch::Receiver<News>,
@@ -385,9 +385,9 @@ type ServerResult<T> = anyhow::Result<T>;
 
 impl NeolithServer {
     #[allow(clippy::too_many_arguments)]
-    pub fn new<P: Into<PathBuf>>(
+    pub fn new(
         user_id: proto::UserId,
-        files_root: P,
+        files: OsFiles,
         accounts: UserAccounts,
         users: watch::Receiver<Users>,
         users_tx: UsersService,
@@ -399,7 +399,7 @@ impl NeolithServer {
     ) -> Self {
         Self {
             user_id,
-            files_root: files_root.into(),
+            files,
             accounts,
             users,
             users_tx,
@@ -507,8 +507,8 @@ impl NeolithServer {
     async fn list_files(&self, path: proto::FilePath) -> ServerResult<proto::GetFileNameListReply> {
         debug!("list {path:?}");
         let path: PathBuf = path.into();
-        let files = self.files()?;
-        let files = files
+        let files = self
+            .files
             .list(&path)?
             .into_iter()
             .filter_map(|path| proto::FileNameWithInfo::try_from(path).ok())
@@ -522,8 +522,7 @@ impl NeolithServer {
     ) -> ServerResult<proto::GetFileInfoReply> {
         debug!("info {name:?} @ {path:?}");
         let path = PathBuf::from(path).join(PathBuf::from(&name));
-        let files = self.files()?;
-        let info = files.get_info(&path)?;
+        let info = self.files.get_info(&path)?;
         let reply = proto::GetFileInfoReply {
             filename: name,
             size: (info.total_size() as i32).into(),
@@ -553,7 +552,7 @@ impl NeolithServer {
         let path = Self::join_path(&path, &name);
         let reply = self
             .transfers_tx
-            .file_download(self.files_root.clone(), path)
+            .file_download(self.files.root(), path)
             .await
             .ok_or_else(|| anyhow::anyhow!("failed to start download"))?;
         Ok(reply.into())
@@ -566,7 +565,7 @@ impl NeolithServer {
         let path = Self::join_path(&path, &name);
         let reply = self
             .transfers_tx
-            .file_upload(self.files_root.clone(), path)
+            .file_upload(self.files.root(), path)
             .await
             .ok_or_else(|| anyhow::anyhow!("failed to start upload"))?;
         Ok(reply.into())
@@ -607,9 +606,6 @@ impl NeolithServer {
         let chat = Chat(Some(chat_id), user.into(), message);
         self.chats_tx.chat(chat.into()).await?;
         Ok(())
-    }
-    fn files(&self) -> ServerResult<OsFiles> {
-        Ok(OsFiles::with_root(&self.files_root)?)
     }
     fn current_user(&self) -> Option<UserNameWithInfo> {
         self.users.borrow().find(self.user_id).cloned()
