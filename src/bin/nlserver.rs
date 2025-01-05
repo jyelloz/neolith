@@ -548,7 +548,7 @@ impl<R: AsyncRead + Unpin, W: AsyncWrite + Unpin> Established<R, W> {
             let login = login.invert();
             let access: i64 = UserAccountPermissions::default().into();
             let reply = GetUserReply {
-                username: "test user".to_string().into(),
+                username: "test user".try_into()?,
                 user_login: login,
                 user_access: access.into(),
                 user_password: Password::from_cleartext("password".as_bytes()),
