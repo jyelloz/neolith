@@ -2234,8 +2234,8 @@ mod tests {
         assert_eq!(
             login,
             LoginRequest {
-                login: Some(UserLogin::from_cleartext(b"jyelloz")),
-                nickname: Some(Nickname::new((*b"jyelloz").into())),
+                login: UserLogin::try_from("jyelloz").ok(),
+                nickname: Nickname::try_from("jyelloz").ok(),
                 password: Some(Password::from_cleartext(b"123456")),
                 icon_id: Some(145.into()),
             },
