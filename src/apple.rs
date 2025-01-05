@@ -115,6 +115,7 @@ impl AppleSingleHeader {
             n_descriptors: descriptors.len() as u16,
             descriptors,
         }
+        .compute_internal_offsets()
     }
     pub fn new_double(descriptors: Vec<EntryDescriptor>) -> Self {
         Self {
@@ -123,6 +124,15 @@ impl AppleSingleHeader {
             n_descriptors: descriptors.len() as u16,
             descriptors,
         }
+        .compute_internal_offsets()
+    }
+    fn compute_internal_offsets(mut self) -> Self {
+        let mut offset = Self::calculate_size(self.n_descriptors as u32);
+        for descriptor in &mut self.descriptors {
+            descriptor.offset = offset;
+            offset += descriptor.length;
+        }
+        self
     }
     pub fn calculate_size(n_entries: u32) -> u32 {
         26 + (n_entries * 12)
