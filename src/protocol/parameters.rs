@@ -636,8 +636,20 @@ impl From<FileType> for Parameter {
     }
 }
 
+impl From<crate::apple::FileType> for FileType {
+    fn from(value: crate::apple::FileType) -> Self {
+        Self(value.0 .0)
+    }
+}
+
 #[derive(Debug, Clone, Copy, From, Into, DekuRead, DekuWrite)]
 pub struct Creator(pub [u8; 4]);
+
+impl From<crate::apple::Creator> for Creator {
+    fn from(value: crate::apple::Creator) -> Self {
+        Self(value.0 .0)
+    }
+}
 
 #[derive(Debug, Clone, From, Into)]
 pub struct FileTypeString(Vec<u8>);
