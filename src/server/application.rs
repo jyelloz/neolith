@@ -521,18 +521,19 @@ impl UserAccount {
     }
 }
 
-impl From<UserAccount> for proto::GetUserReply {
-    fn from(value: UserAccount) -> Self {
-        let username = proto::Nickname::from(value.identity.name);
-        let user_login = proto::UserLogin::from(value.identity.login).invert();
+impl TryFrom<UserAccount> for proto::GetUserReply {
+    type Error = proto::ProtocolError;
+    fn try_from(value: UserAccount) -> Result<Self, Self::Error> {
+        let username = proto::Nickname::try_from(value.identity.name.as_str())?;
+        let user_login = proto::UserLogin::try_from(value.identity.login.as_str())?.invert();
         let user_password = proto::Password::from_cleartext(&[]);
         let user_access = proto::UserAccess::from(value.permissions);
-        Self {
+        Ok(Self {
             username,
             user_login,
             user_password,
             user_access,
-        }
+        })
     }
 }
 
