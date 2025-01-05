@@ -413,33 +413,35 @@ impl<S: AsyncRead + AsyncWrite + Unpin + Send> TransferConnection<S> {
                     debug!("copied data fork");
                 }
                 proto::ForkType::Resource => {
-                    let start = apple::AppleSingleHeader::calculate_size(2);
                     let finf_descriptor = apple::EntryDescriptor {
                         id: apple::EntryId::FinderInfo.into(),
-                        offset: start,
                         length: apple::FinderInfo::calculate_size() as u32,
+                        offset: 0,
+                    };
+                    let comment_descriptor = apple::EntryDescriptor {
+                        id: apple::EntryId::Comment.into(),
+                        length: finf.comment_len as u32,
+                        offset: 0,
                     };
                     let rsrc_descriptor = apple::EntryDescriptor {
                         id: apple::EntryId::ResourceFork.into(),
-                        offset: finf_descriptor.next_offset(),
                         length: size as u32,
+                        offset: 0,
                     };
-                    let entries = vec![finf_descriptor, rsrc_descriptor];
+                    let entries = vec![finf_descriptor, comment_descriptor, rsrc_descriptor];
                     let hdr = apple::AppleSingleHeader::new_double(entries);
+
+                    let flags_bytes: u32 = finf.platform_flags.into();
+                    let flags = apple::FinderFlags::from(flags_bytes as u16);
+                    let comment = finf.comment.as_slice();
 
                     let finf = apple::FinderInfo {
                         file_type: apple::FileType(finf.type_code.0.into()),
                         creator: apple::Creator(finf.creator_code.0.into()),
-                        flags: Default::default(),
+                        flags,
                         location: Default::default(),
                         folder: Default::default(),
                     };
-
-                    //hdr.to_writer(&mut file, ())?;
-                    //file.seek(SeekFrom::Start(finf_descriptor.offset as u64))?;
-                    //finf.to_writer(&mut file, ())?;
-                    //file.seek(SeekFrom::Start(rsrc_descriptor.offset as u64))?;
-                    //file.write_bytes(rsrc)?;
 
                     let rsrc_path = Self::get_appledouble(&path);
                     debug!("rsrc fork {size} => {rsrc_path:?}");
@@ -447,6 +449,7 @@ impl<S: AsyncRead + AsyncWrite + Unpin + Send> TransferConnection<S> {
                     let mut file = self.files.write(&rsrc_path, 0).await?;
                     file.write_all(hdr.to_bytes().unwrap().as_slice()).await?;
                     file.write_all(finf.to_bytes().unwrap().as_slice()).await?;
+                    file.write_all(comment).await?;
                     tokio::io::copy(&mut socket, &mut file).await?;
                     self.socket = socket.into_inner();
                     debug!("copied rsrc fork");
