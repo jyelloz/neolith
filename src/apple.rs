@@ -172,6 +172,15 @@ pub struct FinderInfo {
 }
 
 impl FinderInfo {
+    pub fn windows_file() -> Self {
+        Self {
+            file_type: FileType(FourCC(*b"BINA")),
+            creator: Creator(FourCC(*b"dosa")),
+            flags: FinderFlags::default(),
+            location: Point::default(),
+            folder: Folder::default(),
+        }
+    }
     pub const fn calculate_size() -> usize {
         4 + 4 + 2 + 4 + 2 + 16
     }
