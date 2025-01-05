@@ -484,9 +484,13 @@ impl NeolithServer {
             .find(user_id)
             .ok_or(anyhow::anyhow!("could not find user with id {user_id:?}"))?;
         let text = format!("{:#?}", &user).replace('\n', "\r");
+        let (text, _, failed) = MACINTOSH.encode(&text);
+        if failed {
+            anyhow::bail!("failed to encode user info string");
+        }
         let reply = proto::GetClientInfoTextReply {
             user_name: user.username.clone(),
-            text: text.into_bytes(),
+            text: text.into_owned(),
         };
         Ok(reply.into())
     }
