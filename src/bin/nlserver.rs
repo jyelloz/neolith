@@ -188,7 +188,7 @@ async fn main() -> Result<()> {
     let (news_tx, news_rx) = NewsService::new(MACINTOSH, bus.clone());
     let (transfers_tx, transfers_rx) = TransfersService::new(bus.clone());
 
-    let files = OsFiles::with_root("files")?;
+    let files = OsFiles::with_root("files").await?;
     let accounts = UserAccounts::with_root("users")?;
 
     let globals = Globals {
@@ -200,7 +200,7 @@ async fn main() -> Result<()> {
         chats_tx,
         news_tx,
         transfers_tx: transfers_tx.clone(),
-        files,
+        files: files.clone(),
         accounts,
         bus,
         transaction_id: 0,
@@ -210,6 +210,7 @@ async fn main() -> Result<()> {
         transfer_listener,
         transfers_tx.clone(),
         transfers_rx.subscribe(),
+        files.clone(),
     ));
     tokio::spawn(users_rx.run());
     tokio::spawn(chats_rx.run());
@@ -232,12 +233,13 @@ async fn transfers(
     listener: TcpListener,
     transfers_tx: TransfersService,
     transfers: watch::Receiver<Requests>,
+    files: OsFiles,
 ) -> Result<()> {
     loop {
         let (socket, _addr) = listener.accept().await?;
         let conn = TransferConnection::new(
             socket,
-            "files".into(),
+            files.clone(),
             transfers_tx.clone(),
             transfers.clone(),
         );
