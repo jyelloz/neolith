@@ -526,9 +526,9 @@ impl NeolithServer {
         let reply = proto::GetFileInfoReply {
             filename: name,
             size: info.total_size().try_into()?,
-            type_code: proto::FileType::try_from(&info.file_type.bytes()[..]).unwrap(),
+            type_code: proto::FileType::from(*info.file_type.bytes()),
             creator: info.creator.bytes().to_vec().into(),
-            comment: info.comment.as_bytes().to_vec().into(),
+            comment: info.comment.into(),
             created_at: info.created_at.into(),
             modified_at: info.modified_at.into(),
         };
