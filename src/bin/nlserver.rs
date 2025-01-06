@@ -189,7 +189,7 @@ async fn main() -> Result<()> {
     let (transfers_tx, transfers_rx) = TransfersService::new(bus.clone());
 
     let files = OsFiles::with_root("files").await?;
-    let accounts = UserAccounts::with_root("users")?;
+    let accounts = UserAccounts::with_root("users").await?;
 
     let globals = Globals {
         user_id: None,
