@@ -328,7 +328,6 @@ impl<S: AsyncRead + AsyncWrite + Unpin + Send> TransferConnection<S> {
     async fn read_handshake(&mut self) -> TransferResult<proto::TransferHandshake> {
         let mut buf = Box::pin(vec![0u8; 16]);
         self.socket.read_exact(&mut buf).await?;
-        debug!("handshake bytes={buf:?}");
         let handshake = <proto::TransferHandshake as HotlineProtocol>::from_bytes(&buf[..])?;
         Ok(handshake)
     }
