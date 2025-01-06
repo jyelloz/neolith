@@ -186,11 +186,6 @@ impl TryFrom<(PathBuf, Metadata, ExtendedMetadata)> for FileInfo {
     }
 }
 
-pub trait Files {
-    fn list(&self, path: &Path) -> io::Result<Vec<DirEntry>>;
-    fn get_info(&self, path: &Path) -> io::Result<FileInfo>;
-}
-
 #[derive(Debug)]
 struct ExtendedMetadata {
     data_len: u64,
@@ -354,15 +349,6 @@ impl OsFiles {
             file.read().await
         }?;
         Ok(file)
-    }
-}
-
-impl Files for OsFiles {
-    fn list(&self, path: &Path) -> io::Result<Vec<DirEntry>> {
-        OsFiles::list(self, path)
-    }
-    fn get_info(&self, path: &Path) -> io::Result<FileInfo> {
-        OsFiles::get_info(self, path)
     }
 }
 
