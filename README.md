@@ -23,10 +23,16 @@ implementation along with a reference client and server.
     - Send/receive chat
     - Read/post non-threaded news
     - many more...
-- A very simple, insecure, and incoherent [demo server](src/bin/nlserver.rs).
-    - Unrestricted logins
-    - Read-only file browsing backed by a UNIX filesystem subtree
-    - Single-file downloads without resume support
+- A flat-file user account database
+    - 1 TOML file per user in a single directory
+    - Interactive terminal-interface [user data editor](src/bin/nlserver-edit-user.rs)
+- A very simple, insecure, and incoherent [demo server](src/bin/nlserver.rs)
+    - Logins are enforced
+    - Filesystem interface with AppleDouble support for resource forks and
+    most useful Finder metadata
+        - Read-only file browsing backed by a UNIX filesystem subtree
+        - Single-file downloads/uploads with Mac file support, without resume
+        support
     - Chat messaging
     - Broadcast messaging
     - Private chat rooms
@@ -35,18 +41,19 @@ implementation along with a reference client and server.
 ### What is in progress?
 
 - Server-side
-    - File/folder transfer
+    - File transfer
 
 ### What is not implemented?
 
 - Server-side
-    - Permissions
-    - User administration
+    - Folder Transfer
+    - Download/Upload resumption
+    - User Permission enforcement
+    - Online User administration
     - File manipulation (move/delete/set info)
     - Well-designed state machines for connections
-    - A good dispatch mechanism for transaction receipt.
-    - A good model for request-reply sequences.
-    - More ergonomic declaration and (de-)serialization of each protocol struct.
+    - A good dispatch mechanism for transaction receipt
+    - A good model for request-reply sequences
     - Communication with Trackers
 - Client
     - Anything
