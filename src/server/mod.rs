@@ -509,7 +509,8 @@ impl NeolithServer {
         let path: PathBuf = path.into();
         let files = self
             .files
-            .list(&path)?
+            .list(&path)
+            .await?
             .into_iter()
             .filter_map(|path| proto::FileNameWithInfo::try_from(path).ok())
             .collect::<Vec<_>>();
@@ -522,7 +523,7 @@ impl NeolithServer {
     ) -> ServerResult<proto::GetFileInfoReply> {
         debug!("info {name:?} @ {path:?}");
         let path = PathBuf::from(path).join(PathBuf::from(&name));
-        let info = self.files.get_info(&path)?;
+        let info = self.files.get_info(&path).await?;
         let reply = proto::GetFileInfoReply {
             filename: name,
             size: info.total_size().try_into()?,
