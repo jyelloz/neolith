@@ -2,14 +2,12 @@ use deku::prelude::*;
 use derive_more::{From, Into};
 use std::{
     collections::HashMap,
-    io::{self, SeekFrom},
     num::TryFromIntError,
     path::{Path, PathBuf},
 };
 use thiserror::Error;
 use tokio::{
-    fs,
-    io::{AsyncRead, AsyncReadExt, AsyncSeekExt, AsyncWrite, AsyncWriteExt},
+    io::{self, AsyncRead, AsyncReadExt, AsyncWrite, AsyncWriteExt},
     sync::{mpsc, oneshot, watch},
 };
 use tracing::{debug, error, warn};
@@ -95,39 +93,8 @@ impl Requests {
     }
 }
 
-#[derive(Debug, Clone)]
-struct Files(PathBuf);
-
-impl Files {
-    fn child(&self, path: &Path) -> PathBuf {
-        let Self(root) = self;
-        root.clone().join(path)
-    }
-    async fn write(
-        &self,
-        path: &Path,
-        offset: u64,
-    ) -> io::Result<Box<dyn AsyncWrite + Unpin + Send>> {
-        let path = self.child(path);
-        let file = if offset > 0 {
-            let mut file = fs::OpenOptions::new().write(true).open(path).await?;
-            file.seek(SeekFrom::Start(offset)).await?;
-            file
-        } else {
-            fs::OpenOptions::new()
-                .write(true)
-                .create(true)
-                .truncate(true)
-                .open(path)
-                .await?
-        };
-        Ok(Box::new(file))
-    }
-}
-
 pub struct TransferConnection<S> {
-    files: Files,
-    os_files: OsFiles,
+    files: OsFiles,
     transfers: TransfersService,
     requests: watch::Receiver<Requests>,
     socket: S,
@@ -158,16 +125,13 @@ impl<S> TransferConnection<S> {
 impl<S: AsyncRead + AsyncWrite + Unpin + Send> TransferConnection<S> {
     pub fn new(
         socket: S,
-        root: PathBuf,
+        files: OsFiles,
         transfers: TransfersService,
         requests: watch::Receiver<Requests>,
     ) -> Self {
-        let files = Files(root.clone());
-        let os_files = OsFiles::with_root(root.clone()).unwrap();
         Self {
             socket,
             files,
-            os_files,
             transfers,
             requests,
         }
@@ -222,13 +186,12 @@ impl<S: AsyncRead + AsyncWrite + Unpin + Send> TransferConnection<S> {
     }
     async fn handle_file_download(self, id: ReferenceNumber) -> TransferResult<()> {
         let path = self.get_file_download(id)?;
-        let appledouble_path = Self::get_appledouble(&path);
         let Self {
             mut socket,
-            os_files,
+            files,
             ..
         } = self;
-        let mut file = os_files.read(&path).await?;
+        let mut file = files.read(&path).await?;
         let (info_header, info) = file.info();
         let header = file.header();
         let header = header.to_bytes().unwrap();
@@ -469,7 +432,7 @@ impl TransfersUpdateProcessor {
         offset: u64,
         requests: &mut Requests,
     ) -> TransferResult<proto::DownloadFileReply> {
-        let files = OsFiles::with_root(root)?;
+        let files = OsFiles::with_root(root).await?;
         let file = files.read(path).await?;
         let file_size = file.fork_len(proto::ForkType::Data).unwrap_or(0)
             + file.fork_len(proto::ForkType::Resource).unwrap_or(0);
