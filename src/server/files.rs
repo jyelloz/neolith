@@ -105,7 +105,11 @@ impl<'a> TryFrom<FilesContext<'a>> for DirEntry {
 impl TryFrom<DirEntry> for proto::FileNameWithInfo {
     type Error = io::Error;
     fn try_from(value: DirEntry) -> io::Result<Self> {
-        let size = value.total_size() as i32;
+        let file_size = value
+            .total_size()
+            .try_into()
+            .ok()
+            .ok_or::<Self::Error>(io::ErrorKind::FileTooLarge.into())?;
         let DirEntry {
             creator_code,
             type_code,
@@ -128,7 +132,7 @@ impl TryFrom<DirEntry> for proto::FileNameWithInfo {
         Ok(proto::FileNameWithInfo {
             file_name_size,
             file_name,
-            file_size: size.into(),
+            file_size,
             creator: (*creator_code.bytes()).into(),
             file_type: (*type_code.bytes()).into(),
             name_script: 0.into(),
