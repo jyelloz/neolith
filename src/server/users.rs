@@ -6,13 +6,13 @@ use thiserror::Error;
 
 use std::{
     collections::{HashMap, HashSet},
-    fs,
     path::{Path, PathBuf},
 };
 
+use tokio::fs;
 use tokio::sync::{mpsc, oneshot, watch};
 
-use tracing::debug;
+use tracing::{debug, error};
 
 use super::{
     application::UserAccount,
@@ -206,25 +206,22 @@ pub struct UserAccounts {
 }
 
 impl UserAccounts {
-    pub fn with_root<P: Into<PathBuf>>(root: P) -> anyhow::Result<Self> {
+    pub async fn with_root<P: Into<PathBuf>>(root: P) -> anyhow::Result<Self> {
         let root = root.into();
-        let users = Self::load(&root)?;
+        let users = Self::load(&root).await?;
         Ok(Self { users })
     }
-    fn load(path: &Path) -> anyhow::Result<HashMap<String, UserAccount>> {
+    async fn load(path: &Path) -> anyhow::Result<HashMap<String, UserAccount>> {
         let mut users: HashMap<String, UserAccount> = HashMap::default();
-        for file in fs::read_dir(path)? {
-            let Ok(file) = file else {
-                tracing::error!("failed to load user directory entry from within {:?}", path);
-                continue;
-            };
+        let mut dir = fs::read_dir(path).await?;
+        while let Some(file) = dir.next_entry().await? {
             let path = file.path();
-            let Ok(data) = fs::read_to_string(&path) else {
-                tracing::error!("failed to read user account file {path:?}");
+            let Ok(data) = fs::read_to_string(&path).await else {
+                error!("failed to read user account file {path:?}");
                 continue;
             };
             let Ok(account) = toml::from_str::<UserAccount>(&data) else {
-                tracing::error!("failed to decode data from user account file {path:?}");
+                error!("failed to decode data from user account file {path:?}");
                 continue;
             };
             let username = account.identity.login.clone();
@@ -245,7 +242,7 @@ impl UserAccounts {
         let password = password.deobfuscate();
         let (password, _, decode_failed) = MACINTOSH.decode(&password);
         if decode_failed {
-            tracing::error!("invalid password data");
+            error!("invalid password data");
             return None;
         }
         if !account.identity.password.verify(&password) {
