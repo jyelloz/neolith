@@ -11,7 +11,7 @@ use std::{
     cell::RefCell,
     ffi::OsStr,
     fs::{self, DirEntry as OsDirEntry, Metadata},
-    io::{self, ErrorKind, SeekFrom},
+    io::{self, prelude::*, ErrorKind, SeekFrom},
     path::{Component, Path, PathBuf},
     time::SystemTime,
 };
@@ -85,6 +85,7 @@ impl<'a> TryFrom<FilesContext<'a>> for DirEntry {
             rsrc_len,
             file_type: type_code,
             creator: creator_code,
+            ..
         } = if metadata.is_dir() {
             ExtendedMetadata::directory()
         } else {
@@ -147,7 +148,7 @@ pub struct FileInfo {
     pub rsrc_len: u64,
     pub file_type: FileType,
     pub creator: Creator,
-    pub comment: String,
+    pub comment: Vec<u8>,
     pub created_at: SystemTime,
     pub modified_at: SystemTime,
 }
@@ -170,6 +171,7 @@ impl TryFrom<(PathBuf, Metadata, ExtendedMetadata)> for FileInfo {
             rsrc_len,
             file_type,
             creator,
+            comment,
         } = magic;
         Ok(Self {
             data_len,
@@ -179,7 +181,7 @@ impl TryFrom<(PathBuf, Metadata, ExtendedMetadata)> for FileInfo {
             created_at,
             file_type,
             creator,
-            comment: String::from(""),
+            comment,
         })
     }
 }
@@ -195,6 +197,7 @@ struct ExtendedMetadata {
     rsrc_len: u64,
     file_type: FileType,
     creator: Creator,
+    comment: Vec<u8>,
 }
 
 impl ExtendedMetadata {
@@ -204,6 +207,7 @@ impl ExtendedMetadata {
             rsrc_len: 0,
             file_type: FileType::directory(),
             creator: Creator::of_directory(),
+            comment: vec![],
         }
     }
 }
@@ -287,16 +291,31 @@ impl OsFiles {
             .create(false)
             .append(false)
             .open(path)?;
-        let (_, header) = crate::apple::AppleSingleHeader::from_reader((&mut ad_file, 0))?;
-        let rsrc_len = header.resource_fork().map(|rsrc| rsrc.length).unwrap_or(0) as u64;
-        // FIXME: this assumes FINF is right after header
-        let (_, finf) = crate::apple::FinderInfo::from_reader((&mut ad_file, 0))?;
+        let (_, header) = apple::AppleSingleHeader::from_reader((&mut ad_file, 0))?;
+        let finf = if let Some(finf_entry) = header.finder_info() {
+            ad_file.seek(SeekFrom::Start(finf_entry.offset as u64))?;
+            let (_, finf) = apple::FinderInfo::from_reader((&mut ad_file, 0))?;
+            finf
+        } else {
+            apple::FinderInfo::windows_file()
+        };
+        let comment = if let Some(comment_entry) = header.entry(apple::EntryId::Comment) {
+            ad_file.seek(SeekFrom::Start(comment_entry.offset as u64))?;
+            let len = comment_entry.length as usize;
+            let mut comment = vec![0u8; len];
+            ad_file.read_exact(&mut comment[..len])?;
+            comment
+        } else {
+            vec![]
+        };
+        let rsrc_len = header.entry_len(apple::EntryId::ResourceFork).unwrap_or(0);
 
         let info = ExtendedMetadata {
             data_len: metadata.len(),
             rsrc_len,
             file_type: FileType((&finf.file_type.0 .0).into()),
             creator: Creator((&finf.creator.0 .0).into()),
+            comment,
         };
         Ok(info)
     }
@@ -311,6 +330,7 @@ impl OsFiles {
             rsrc_len: 0,
             file_type: FileType(file_type.into()),
             creator: Creator(creator.into()),
+            comment: vec![],
         };
         Ok(info)
     }
