@@ -16,7 +16,7 @@ use std::{
     time::SystemTime,
 };
 use tokio::fs::{self, DirEntry as OsDirEntry};
-use tokio::io::{AsyncRead, AsyncReadExt, AsyncSeek, AsyncSeekExt};
+use tokio::io::{AsyncRead, AsyncReadExt, AsyncSeek, AsyncSeekExt, AsyncWrite};
 use tracing::trace;
 
 #[derive(Debug)]
@@ -341,6 +341,27 @@ impl OsFiles {
             file.read().await
         }?;
         Ok(file)
+    }
+    // TODO: Add more structured writer, similar to reader
+    pub async fn write(
+        &self,
+        path: &Path,
+        offset: u64,
+    ) -> io::Result<Box<dyn AsyncWrite + Unpin + Send>> {
+        let path = self.subpath(path)?;
+        let file = if offset > 0 {
+            let mut file = fs::OpenOptions::new().write(true).open(path).await?;
+            file.seek(SeekFrom::Start(offset)).await?;
+            file
+        } else {
+            fs::OpenOptions::new()
+                .write(true)
+                .create(true)
+                .truncate(true)
+                .open(path)
+                .await?
+        };
+        Ok(Box::new(file))
     }
 }
 
