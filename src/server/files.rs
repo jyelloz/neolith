@@ -10,11 +10,12 @@ use magic::Cookie;
 use std::{
     cell::RefCell,
     ffi::OsStr,
-    fs::{self, DirEntry as OsDirEntry, Metadata},
+    fs::Metadata,
     io::{self, prelude::*, ErrorKind, SeekFrom},
     path::{Component, Path, PathBuf},
     time::SystemTime,
 };
+use tokio::fs::{self, DirEntry as OsDirEntry};
 use tokio::io::{AsyncRead, AsyncReadExt, AsyncSeek, AsyncSeekExt};
 use tracing::trace;
 
@@ -71,35 +72,6 @@ pub struct DirEntry {
 impl DirEntry {
     pub fn total_size(&self) -> u64 {
         self.data_len + self.rsrc_len
-    }
-}
-
-impl<'a> TryFrom<FilesContext<'a>> for DirEntry {
-    type Error = std::io::Error;
-    fn try_from(dirent: FilesContext<'a>) -> io::Result<Self> {
-        let FilesContext { files, dirent } = dirent;
-        let metadata = dirent.metadata()?;
-        let path = dirent.path();
-        let ExtendedMetadata {
-            data_len,
-            rsrc_len,
-            file_type: type_code,
-            creator: creator_code,
-            ..
-        } = if metadata.is_dir() {
-            ExtendedMetadata::directory()
-        } else {
-            files
-                .appledouble_magic(&path, &metadata)
-                .or_else(|_| files.apple_magic(&path, &metadata))?
-        };
-        Ok(Self {
-            path,
-            data_len,
-            rsrc_len,
-            type_code,
-            creator_code,
-        })
     }
 }
 
@@ -224,34 +196,60 @@ pub struct OsFiles {
 
 impl OsFiles {
     const APPLEDOUBLE_PREFIX: &'static str = "._";
-    pub fn with_root<P: Into<PathBuf>>(root: P) -> io::Result<Self> {
+    pub async fn with_root<P: Into<PathBuf>>(root: P) -> io::Result<Self> {
         let root = root.into().canonicalize()?;
-        let metadata = fs::metadata(&root)?;
+        let metadata = fs::metadata(&root).await?;
         if metadata.is_dir() {
             Ok(Self { root })
         } else {
             Err(ErrorKind::InvalidInput.into())
         }
     }
-    fn is_appledouble(dirent: &std::fs::DirEntry) -> bool {
+    fn is_appledouble(dirent: &OsDirEntry) -> bool {
         let name = dirent.file_name();
         let Some(name) = name.to_str() else {
             return false;
         };
         name.starts_with(Self::APPLEDOUBLE_PREFIX)
     }
-    pub fn list(&self, path: &Path) -> io::Result<Vec<DirEntry>> {
+    pub async fn list(&self, path: &Path) -> io::Result<Vec<DirEntry>> {
         let path = self.subpath(path)?;
-        fs::read_dir(path)?
-            .filter_map(|e| e.ok())
-            .filter(|e| !Self::is_appledouble(e))
-            .map(|e| self.listing_context(e))
-            .map(DirEntry::try_from)
-            .collect()
+        let mut listing = fs::read_dir(path).await?;
+        let mut entries = vec![];
+        while let Some(entry) = listing.next_entry().await? {
+            if Self::is_appledouble(&entry) {
+                continue;
+            }
+            entries.push(self.decorate_direntry(entry).await?);
+        }
+        Ok(entries)
     }
-    pub fn get_info(&self, path: &Path) -> io::Result<FileInfo> {
+    async fn decorate_direntry(&self, dirent: OsDirEntry) -> io::Result<DirEntry> {
+        let metadata = dirent.metadata().await?;
+        let path = dirent.path();
+        let ExtendedMetadata {
+            data_len,
+            rsrc_len,
+            file_type: type_code,
+            creator: creator_code,
+            ..
+        } = if metadata.is_dir() {
+            ExtendedMetadata::directory()
+        } else {
+            self.appledouble_magic(&path, &metadata)
+                .or_else(|_| self.apple_magic(&path, &metadata))?
+        };
+        Ok(DirEntry {
+            path,
+            data_len,
+            rsrc_len,
+            type_code,
+            creator_code,
+        })
+    }
+    pub async fn get_info(&self, path: &Path) -> io::Result<FileInfo> {
         let path = self.subpath(path)?;
-        let metadata = fs::metadata(&path)?;
+        let metadata = fs::metadata(&path).await?;
         let info = if metadata.is_dir() {
             ExtendedMetadata::directory()
         } else {
@@ -329,12 +327,6 @@ impl OsFiles {
         };
         Ok(info)
     }
-    fn listing_context(&self, dirent: OsDirEntry) -> FilesContext {
-        FilesContext {
-            files: self,
-            dirent,
-        }
-    }
     pub fn root(&self) -> PathBuf {
         self.root.clone()
     }
@@ -350,11 +342,6 @@ impl OsFiles {
         }?;
         Ok(file)
     }
-}
-
-struct FilesContext<'a> {
-    files: &'a OsFiles,
-    dirent: OsDirEntry,
 }
 
 struct PlainFile {
