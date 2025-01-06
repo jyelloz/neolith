@@ -7,6 +7,7 @@ use derive_more::{Display, From, Into};
 use encoding_rs::MACINTOSH;
 use std::{
     fmt::{self, Debug, Formatter},
+    num::TryFromIntError,
     path::PathBuf,
     time::SystemTime,
 };
@@ -444,7 +445,25 @@ impl From<&FileName> for PathBuf {
     Debug, Default, Clone, Copy, From, Into, PartialEq, Eq, PartialOrd, Ord, DekuRead, DekuWrite,
 )]
 #[deku(endian = "big")]
-pub struct FileSize(i32);
+pub struct FileSize(u32);
+
+impl TryFrom<usize> for FileSize {
+    type Error = TryFromIntError;
+
+    fn try_from(value: usize) -> Result<Self, Self::Error> {
+        let value = u32::try_from(value)?;
+        Ok(Self(value))
+    }
+}
+
+impl TryFrom<u64> for FileSize {
+    type Error = TryFromIntError;
+
+    fn try_from(value: u64) -> Result<Self, Self::Error> {
+        let value = u32::try_from(value)?;
+        Ok(Self(value))
+    }
+}
 
 impl TryFrom<&Parameter> for FileSize {
     type Error = ProtocolError;
@@ -743,7 +762,25 @@ impl From<FileModifiedAt> for Parameter {
     Debug, Default, Clone, Copy, From, Into, PartialEq, Eq, PartialOrd, Ord, DekuRead, DekuWrite,
 )]
 #[deku(endian = "big")]
-pub struct TransferSize(i32);
+pub struct TransferSize(u32);
+
+impl TryFrom<usize> for TransferSize {
+    type Error = TryFromIntError;
+
+    fn try_from(value: usize) -> Result<Self, Self::Error> {
+        let value = u32::try_from(value)?;
+        Ok(Self(value))
+    }
+}
+
+impl TryFrom<u64> for TransferSize {
+    type Error = TryFromIntError;
+
+    fn try_from(value: u64) -> Result<Self, Self::Error> {
+        let value = u32::try_from(value)?;
+        Ok(Self(value))
+    }
+}
 
 impl TryFrom<&Parameter> for TransferSize {
     type Error = ProtocolError;
