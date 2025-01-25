@@ -1,7 +1,8 @@
 use crate::{
     protocol::{self as proto, ChatId, UserId},
     server::{
-        bus::Bus, ChatRoomCreationRequest, ChatRoomPresence, ChatRoomSubject, InstantMessage,
+        bus::Bus, Broadcast, ChatRoomCreationRequest, ChatRoomPresence, ChatRoomSubject,
+        InstantMessage,
     },
 };
 
@@ -200,6 +201,11 @@ impl ChatsService {
     pub async fn chat(&mut self, chat: proto::ChatMessage) -> Result<()> {
         let Self(_, bus) = self;
         bus.publish(chat.into());
+        Ok(())
+    }
+    pub async fn broadcast(&mut self, message: Broadcast) -> Result<()> {
+        let Self(_, bus) = self;
+        bus.publish(message.into());
         Ok(())
     }
     pub async fn instant_message(&mut self, message: InstantMessage) -> Result<()> {
