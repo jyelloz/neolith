@@ -7,33 +7,30 @@ use super::{
     ChatRoomSubject, DownloadInfo, InstantMessage, User,
 };
 
-#[derive(Debug, Clone)]
+#[derive(Debug, Clone, From)]
 pub enum Notification {
     Empty,
+    #[from]
     Chat(ChatMessage),
+    #[from]
     ChatRoomSubjectUpdate(ChatRoomSubject),
+    #[from]
     ChatRoomInvite(ChatRoomInvite),
+    #[from]
     ChatRoomJoin(ChatRoomPresence),
+    #[from]
     ChatRoomLeave(ChatRoomLeave),
+    #[from]
     Broadcast(Broadcast),
+    #[from]
     DownloadInfo(DownloadInfo),
+    #[from]
     News(Article),
+    #[from]
     InstantMessage(InstantMessage),
     UserConnect(User),
     UserUpdate(User),
     UserDisconnect(User),
-}
-
-impl From<ChatMessage> for Notification {
-    fn from(message: ChatMessage) -> Self {
-        Self::Chat(message)
-    }
-}
-
-impl From<InstantMessage> for Notification {
-    fn from(message: InstantMessage) -> Self {
-        Self::InstantMessage(message)
-    }
 }
 
 /// A publish-subscribe node between connected peers and the backing state
