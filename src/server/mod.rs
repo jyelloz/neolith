@@ -227,6 +227,7 @@ pub enum ServerResponse {
     DeleteFileReply(proto::DeleteFileReply),
     MoveFileReply(proto::MoveFileReply),
     GetUserReply(proto::GetUserReply),
+    SendBroadcastReply,
     SetUserReply,
     NewUserReply,
     DeleteUserReply,
@@ -266,6 +267,7 @@ impl From<ServerResponse> for TransactionFrame {
             ServerResponse::SetUserReply => GenericReply.into(),
             ServerResponse::NewUserReply => GenericReply.into(),
             ServerResponse::DeleteUserReply => GenericReply.into(),
+            ServerResponse::SendBroadcastReply => GenericReply.into(),
         }
     }
 }
@@ -471,6 +473,10 @@ impl NeolithServer {
             ClientRequest::SetUser(..) => Ok(Some(ServerResponse::SetUserReply)),
             ClientRequest::NewUser(..) => Ok(Some(ServerResponse::NewUserReply)),
             ClientRequest::DeleteUser(..) => Ok(Some(ServerResponse::DeleteUserReply)),
+            ClientRequest::SendBroadcast(b) => {
+                self.send_broadcast(b.message).await?;
+                Ok(Some(ServerResponse::SendBroadcastReply))
+            }
             _ => Ok(Some(ServerResponse::Rejected(Some("todo".to_string())))),
         }
     }
@@ -606,6 +612,10 @@ impl NeolithServer {
         let user = self.require_current_user()?;
         let chat = Chat(Some(chat_id), user.into(), message);
         self.chats_tx.chat(chat.into()).await?;
+        Ok(())
+    }
+    async fn send_broadcast(&mut self, message: Vec<u8>) -> ServerResult<()> {
+        self.chats_tx.broadcast(Broadcast(message)).await?;
         Ok(())
     }
     fn current_user(&self) -> Option<UserNameWithInfo> {
