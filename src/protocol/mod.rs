@@ -23,9 +23,11 @@ impl<D> HotlineProtocol for D
 where
     D: DekuHotlineProtocol,
     D: DekuContainerWrite,
+    D: DekuUpdate,
     D: for<'a> DekuContainerRead<'a>,
 {
-    fn into_bytes(self) -> Vec<u8> {
+    fn into_bytes(mut self) -> Vec<u8> {
+        self.update().unwrap();
         self.to_bytes().unwrap()
     }
     fn from_bytes(bytes: &[u8]) -> Result<Self, ProtocolError> {
