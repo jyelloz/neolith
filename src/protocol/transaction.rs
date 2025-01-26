@@ -323,6 +323,7 @@ pub struct TransactionFrame {
         self.header
     }")]
     pub header: TransactionHeader,
+    #[deku(update = "{ let b = &mut self.body; b.update()?; b.clone() }")]
     pub body: TransactionBody,
 }
 
