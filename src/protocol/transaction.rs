@@ -154,7 +154,7 @@ struct ParameterCount(i16);
 pub struct Parameter {
     pub field_id: FieldId,
     #[deku(endian = "big", update = "self.field_data.len()")]
-    pub field_size: i16,
+    pub field_size: u16,
     #[deku(count = "field_size")]
     pub field_data: Vec<u8>,
 }
@@ -163,7 +163,7 @@ impl Parameter {
     pub fn new<F: Into<FieldId>>(field_id: F, field_data: Vec<u8>) -> Self {
         Self {
             field_id: field_id.into(),
-            field_size: field_data.len() as i16,
+            field_size: field_data.len() as u16,
             field_data,
         }
     }
@@ -179,7 +179,7 @@ impl Parameter {
         let field_id = field_id.into();
         let param = int.into();
         let field_data: Vec<u8> = param.into();
-        let field_size = field_data.len() as i16;
+        let field_size = field_data.len() as u16;
         Self {
             field_id,
             field_size,
