@@ -1,4 +1,4 @@
-use bytes::Buf as _;
+use bytes::Buf;
 use deku::prelude::*;
 use neolith::protocol as proto;
 use std::io::{self, prelude::*, Cursor};
@@ -7,6 +7,14 @@ type ParseResponse<O> = (usize, Option<O>);
 trait Parser {
     type Output;
     fn parse(&mut self, buf: &[u8]) -> ParseResponse<Self::Output>;
+}
+
+fn add_to_cursor<C: Buf + Write>(buf: &[u8], cursor: &mut C) -> usize {
+    let need = cursor.remaining();
+    let len = need.min(buf.len());
+    let buf = &buf[..len];
+    cursor.write_all(buf).expect("failed to copy to cursor");
+    len
 }
 
 #[derive(Default)]
@@ -18,10 +26,7 @@ impl Parser for HeaderParser {
     type Output = proto::TransactionHeader;
     fn parse(&mut self, buf: &[u8]) -> ParseResponse<Self::Output> {
         let Self(cursor) = self;
-        let need = cursor.remaining();
-        let len = need.min(buf.len());
-        let buf = &buf[..len];
-        cursor.write_all(buf).expect("failed to copy to cursor");
+        let len = add_to_cursor(buf, cursor);
         if cursor.remaining() == 0 {
             let (_, header) = proto::TransactionHeader::from_bytes((cursor.get_ref(), 0))
                 .expect("failed to read header");
@@ -41,10 +46,7 @@ impl Parser for ParameterCountParser {
     type Output = usize;
     fn parse(&mut self, buf: &[u8]) -> ParseResponse<Self::Output> {
         let Self(cursor) = self;
-        let need = cursor.remaining();
-        let len = need.min(buf.len());
-        let buf = &buf[..len];
-        cursor.write_all(buf).expect("failed to copy to cursor");
+        let len = add_to_cursor(buf, cursor);
         if cursor.remaining() == 0 {
             let val = u16::from_be_bytes(*cursor.get_ref());
             (len, Some(val as usize))
@@ -63,10 +65,7 @@ impl Parser for FieldIdParser {
     type Output = proto::FieldId;
     fn parse(&mut self, buf: &[u8]) -> ParseResponse<Self::Output> {
         let Self(cursor) = self;
-        let need = cursor.remaining();
-        let len = need.min(buf.len());
-        let buf = &buf[..len];
-        cursor.write_all(buf).expect("failed to copy to cursor");
+        let len = add_to_cursor(buf, cursor);
         if cursor.remaining() == 0 {
             let (_, id) =
                 proto::FieldId::from_bytes((cursor.get_ref(), 0)).expect("failed to read field id");
@@ -86,10 +85,7 @@ impl Parser for FieldSizeParser {
     type Output = usize;
     fn parse(&mut self, buf: &[u8]) -> ParseResponse<Self::Output> {
         let Self(cursor) = self;
-        let need = cursor.remaining();
-        let len = need.min(buf.len());
-        let buf = &buf[..len];
-        cursor.write_all(buf).expect("failed to copy to cursor");
+        let len = add_to_cursor(buf, cursor);
         if cursor.remaining() == 0 {
             let val = i16::from_be_bytes(*cursor.get_ref());
             (len, Some(val as usize))
@@ -108,15 +104,13 @@ impl FieldDataParser {
 impl Parser for FieldDataParser {
     type Output = Vec<u8>;
     fn parse(&mut self, buf: &[u8]) -> ParseResponse<Self::Output> {
-        let Self(pending_data) = self;
-        let read_len = buf.len().min(pending_data.remaining());
-        let buf = &buf[..read_len];
-        pending_data.write_all(buf).unwrap();
-        if pending_data.remaining() == 0 {
-            let param = pending_data.get_ref().to_vec();
-            (read_len, Some(param))
+        let Self(cursor) = self;
+        let len = add_to_cursor(buf, cursor);
+        if cursor.remaining() == 0 {
+            let param = cursor.get_ref().to_vec();
+            (len, Some(param))
         } else {
-            (read_len, None)
+            (len, None)
         }
     }
 }
