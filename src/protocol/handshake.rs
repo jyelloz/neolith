@@ -73,7 +73,7 @@ pub struct TransferHandshake {
 
 impl TransferHandshake {
     pub fn is_upload(&self) -> bool {
-        i32::from(self.size) != 0
+        u32::from(self.size) != 0
     }
 }
 
