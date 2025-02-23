@@ -34,7 +34,7 @@ impl InteractiveUserEditor {
     fn input_identity(&mut self) -> Result<()> {
         let username_pattern = regex::Regex::new(r"^[a-z0-9_-]{1,32}$")?;
         fn byte_length(s: &str, min: usize, max: usize) -> bool {
-            let len = s.as_bytes().len();
+            let len = s.len();
             min <= len && len <= max
         }
 
