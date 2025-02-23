@@ -222,7 +222,7 @@ impl<S: AsyncRead + AsyncWrite + Unpin + Send> TransferConnection<S> {
         debug!("got finf {finf:?}");
         for _ in 1..header.fork_count.into() {
             let fork_header = self.read_fork_header().await?;
-            let size = i32::from(fork_header.data_size) as u64;
+            let size = u32::from(fork_header.data_size) as u64;
             match fork_header.fork_type {
                 proto::ForkType::Data => {
                     debug!("data fork {size} => {path:?}");
