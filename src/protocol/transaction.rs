@@ -49,21 +49,18 @@ pub struct Type(i16);
 
 #[derive(Debug, Clone, Copy, Default, From, Into, DekuRead, DekuWrite, DekuSize)]
 #[deku(endian = "big")]
-pub struct Id(i32);
+#[into(u32, u64)]
+pub struct Id(u32);
 
 #[derive(Debug, Clone, Copy, Default, From, Into, DekuRead, DekuWrite, DekuSize)]
 #[deku(endian = "big")]
-pub struct TotalSize(i32);
+#[into(u32, u64)]
+pub struct TotalSize(u32);
 
 #[derive(Debug, Clone, Copy, Default, From, Into, DekuRead, DekuWrite, DekuSize)]
 #[deku(endian = "big")]
-pub struct DataSize(i32);
-
-impl From<usize> for DataSize {
-    fn from(size: usize) -> Self {
-        (size as i32).into()
-    }
-}
+#[into(u32, u64)]
+pub struct DataSize(u32);
 
 #[derive(Debug, Clone, Copy, DekuRead, DekuWrite, DekuSize)]
 pub struct TransactionHeader {
@@ -110,8 +107,8 @@ impl TransactionHeader {
         }
     }
     pub fn update_sizes(&mut self, size: usize) {
-        self.data_size = DataSize(size as i32);
-        self.total_size = TotalSize(size as i32);
+        self.data_size = DataSize(size as u32);
+        self.total_size = TotalSize(size as u32);
     }
 }
 
