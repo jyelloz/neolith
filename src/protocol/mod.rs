@@ -1892,7 +1892,7 @@ impl FlattenedFileObject {
         }
     }
     pub fn info(&self) -> (ForkHeader, InfoFork) {
-        let data_size = (self.info.size() as i32).into();
+        let data_size = (self.info.size() as u32).into();
         (
             ForkHeader {
                 fork_type: ForkType::Info,
@@ -1908,7 +1908,7 @@ impl FlattenedFileObject {
                 ForkHeader {
                     fork_type,
                     compression_type: Default::default(),
-                    data_size: (fork.0 as usize).into(),
+                    data_size: (fork.0 as u32).into(),
                 },
                 fork,
             ))
