@@ -53,7 +53,7 @@ struct Globals {
     files: OsFiles,
     accounts: UserAccounts,
     bus: Bus,
-    transaction_id: i32,
+    transaction_id: u32,
 }
 
 impl Globals {
