@@ -95,21 +95,22 @@ impl Parser for FieldSizeParser {
     }
 }
 
-pub struct FieldDataParser(Cursor<Box<[u8]>>);
+pub struct FieldDataParser(Option<Cursor<Box<[u8]>>>);
 impl FieldDataParser {
     pub fn new(data_size: usize) -> Self {
-        Self(Cursor::new(vec![0u8; data_size].into_boxed_slice()))
+        Self(Some(Cursor::new(vec![0u8; data_size].into_boxed_slice())))
     }
 }
 impl Parser for FieldDataParser {
-    type Output = Vec<u8>;
+    type Output = Box<[u8]>;
     fn parse(&mut self, buf: &[u8]) -> ParseResponse<Self::Output> {
-        let Self(cursor) = self;
-        let len = add_to_cursor(buf, cursor);
+        let mut cursor = self.0.take().expect("cursor is gone");
+        let len = add_to_cursor(buf, &mut cursor);
         if cursor.remaining() == 0 {
-            let param = cursor.get_ref().to_vec();
+            let param = cursor.into_inner();
             (len, Some(param))
         } else {
+            self.0.replace(cursor);
             (len, None)
         }
     }
@@ -168,8 +169,8 @@ impl Parser for TransactionParser {
     type Output = proto::TransactionFrame;
     fn parse(&mut self, buf: &[u8]) -> ParseResponse<Self::Output> {
         let len = match &mut self.state {
-            TransactionParseState::Header(rdr) => {
-                let (len, header) = rdr.parse(buf);
+            TransactionParseState::Header(parser) => {
+                let (len, header) = parser.parse(buf);
                 let Some(header) = header else {
                     return (len, None);
                 };
@@ -177,8 +178,8 @@ impl Parser for TransactionParser {
                 self.hdr.replace(header);
                 len
             }
-            TransactionParseState::ParameterCount(rdr) => {
-                let (len, count) = rdr.parse(buf);
+            TransactionParseState::ParameterCount(parser) => {
+                let (len, count) = parser.parse(buf);
                 let Some(count) = count else {
                     return (len, None);
                 };
@@ -192,8 +193,8 @@ impl Parser for TransactionParser {
                 self.state = TransactionParseState::ParameterFieldId(FieldIdParser::default());
                 len
             }
-            TransactionParseState::ParameterFieldId(rdr) => {
-                let (len, id) = rdr.parse(buf);
+            TransactionParseState::ParameterFieldId(parser) => {
+                let (len, id) = parser.parse(buf);
                 let Some(id) = id else {
                     return (len, None);
                 };
@@ -201,8 +202,8 @@ impl Parser for TransactionParser {
                 self.state = TransactionParseState::ParameterFieldSize(FieldSizeParser::default());
                 len
             }
-            TransactionParseState::ParameterFieldSize(rdr) => {
-                let (len, size) = rdr.parse(buf);
+            TransactionParseState::ParameterFieldSize(parser) => {
+                let (len, size) = parser.parse(buf);
                 let Some(size) = size else {
                     return (len, None);
                 };
@@ -211,12 +212,12 @@ impl Parser for TransactionParser {
                     TransactionParseState::ParameterFieldData(FieldDataParser::new(size as usize));
                 len
             }
-            TransactionParseState::ParameterFieldData(rdr) => {
-                let (len, field_data) = rdr.parse(buf);
+            TransactionParseState::ParameterFieldData(parser) => {
+                let (len, field_data) = parser.parse(buf);
                 let Some(field_data) = field_data else {
                     return (len, None);
                 };
-                self.current_param.field_data = field_data;
+                self.current_param.field_data = field_data.to_vec();
                 self.params.push(self.current_param.clone());
                 self.param_count = self.param_count.saturating_sub(1);
                 if self.param_count == 0 {
