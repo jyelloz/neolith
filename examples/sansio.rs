@@ -158,7 +158,7 @@ impl Default for TransactionParser {
             params: vec![],
             current_param: proto::Parameter {
                 field_id: 0.into(),
-                field_size: 0u16.into(),
+                field_size: 0,
                 field_data: vec![],
             },
         }
@@ -169,7 +169,7 @@ impl Parser for TransactionParser {
     fn parse(&mut self, buf: &[u8]) -> ParseResponse<Self::Output> {
         let len = match &mut self.state {
             TransactionParseState::Header(rdr) => {
-                let (len, header) = rdr.parse(&buf);
+                let (len, header) = rdr.parse(buf);
                 let Some(header) = header else {
                     return (len, None);
                 };
@@ -207,7 +207,8 @@ impl Parser for TransactionParser {
                     return (len, None);
                 };
                 self.current_param.field_size = size;
-                self.state = TransactionParseState::ParameterFieldData(FieldDataParser::new(size as usize));
+                self.state =
+                    TransactionParseState::ParameterFieldData(FieldDataParser::new(size as usize));
                 len
             }
             TransactionParseState::ParameterFieldData(rdr) => {
@@ -250,7 +251,7 @@ fn main() -> anyhow::Result<()> {
             break;
         }
         let mut buf = &buf[..len];
-        while buf.len() > 0 {
+        while !buf.is_empty() {
             let (len, frame) = parser.parse(buf);
             buf = &buf[len..];
             if let Some(frame) = frame {
