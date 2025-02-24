@@ -20,7 +20,7 @@ fn add_to_cursor<C: Buf + Write>(buf: &[u8], cursor: &mut C) -> usize {
 #[derive(Default)]
 pub struct HeaderParser(Cursor<[u8; Self::SIZE]>);
 impl HeaderParser {
-    const SIZE: usize = 20;
+    const SIZE: usize = size_of::<<Self as Parser>::Output>();
 }
 impl Parser for HeaderParser {
     type Output = proto::TransactionHeader;
@@ -40,16 +40,16 @@ impl Parser for HeaderParser {
 #[derive(Default)]
 pub struct ParameterCountParser(Cursor<[u8; Self::SIZE]>);
 impl ParameterCountParser {
-    const SIZE: usize = size_of::<u16>();
+    const SIZE: usize = size_of::<<Self as Parser>::Output>();
 }
 impl Parser for ParameterCountParser {
-    type Output = usize;
+    type Output = u16;
     fn parse(&mut self, buf: &[u8]) -> ParseResponse<Self::Output> {
         let Self(cursor) = self;
         let len = add_to_cursor(buf, cursor);
         if cursor.remaining() == 0 {
             let val = u16::from_be_bytes(*cursor.get_ref());
-            (len, Some(val as usize))
+            (len, Some(val))
         } else {
             (len, None)
         }
@@ -59,7 +59,7 @@ impl Parser for ParameterCountParser {
 #[derive(Default)]
 pub struct FieldIdParser(Cursor<[u8; Self::SIZE]>);
 impl FieldIdParser {
-    const SIZE: usize = size_of::<i16>();
+    const SIZE: usize = size_of::<<Self as Parser>::Output>();
 }
 impl Parser for FieldIdParser {
     type Output = proto::FieldId;
@@ -79,16 +79,16 @@ impl Parser for FieldIdParser {
 #[derive(Default)]
 pub struct FieldSizeParser(Cursor<[u8; Self::SIZE]>);
 impl FieldSizeParser {
-    const SIZE: usize = size_of::<u16>();
+    const SIZE: usize = size_of::<<Self as Parser>::Output>();
 }
 impl Parser for FieldSizeParser {
-    type Output = usize;
+    type Output = u16;
     fn parse(&mut self, buf: &[u8]) -> ParseResponse<Self::Output> {
         let Self(cursor) = self;
         let len = add_to_cursor(buf, cursor);
         if cursor.remaining() == 0 {
-            let val = i16::from_be_bytes(*cursor.get_ref());
-            (len, Some(val as usize))
+            let val = u16::from_be_bytes(*cursor.get_ref());
+            (len, Some(val))
         } else {
             (len, None)
         }
@@ -188,7 +188,7 @@ impl Parser for TransactionParser {
                     let transaction = proto::TransactionFrame::empty(header);
                     return (len, Some(transaction));
                 }
-                self.param_count = count;
+                self.param_count = count as usize;
                 self.state = TransactionParseState::ParameterFieldId(FieldIdParser::default());
                 len
             }
@@ -206,8 +206,8 @@ impl Parser for TransactionParser {
                 let Some(size) = size else {
                     return (len, None);
                 };
-                self.current_param.field_size = size as u16;
-                self.state = TransactionParseState::ParameterFieldData(FieldDataParser::new(size));
+                self.current_param.field_size = size;
+                self.state = TransactionParseState::ParameterFieldData(FieldDataParser::new(size as usize));
                 len
             }
             TransactionParseState::ParameterFieldData(rdr) => {
