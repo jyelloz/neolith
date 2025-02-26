@@ -240,11 +240,8 @@ fn main() -> anyhow::Result<()> {
     let mut stdin = io::stdin();
     let mut buf = [0u8; 128];
     {
-        let handshake_len = 12;
-        let mut handshake = [0u8; 1];
-        for _ in 0..handshake_len {
-            stdin.read_exact(&mut handshake)?;
-        }
+        let mut handshake = [0u8; 12];
+        stdin.read_exact(&mut handshake)?;
     }
     loop {
         let len = stdin.read(&mut buf)?;
