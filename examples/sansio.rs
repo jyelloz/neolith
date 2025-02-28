@@ -235,14 +235,17 @@ impl Parser for TransactionParser {
     }
 }
 
+fn read_client_handshake<R: Read> (r: &mut R) -> io::Result<()> {
+    let mut handshake = [0u8; 12];
+    r.read_exact(&mut handshake)?;
+    Ok(())
+}
+
 fn main() -> anyhow::Result<()> {
-    let mut parser = TransactionParser::default();
     let mut stdin = io::stdin();
+    read_client_handshake(&mut stdin)?;
+    let mut parser = TransactionParser::default();
     let mut buf = [0u8; 128];
-    {
-        let mut handshake = [0u8; 12];
-        stdin.read_exact(&mut handshake)?;
-    }
     loop {
         let len = stdin.read(&mut buf)?;
         if len == 0 {
