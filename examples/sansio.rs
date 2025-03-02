@@ -1,7 +1,11 @@
 use bytes::Buf;
 use deku::prelude::*;
+use genawaiter::rc;
 use neolith::protocol as proto;
-use std::io::{self, prelude::*, Cursor};
+use std::{
+    future::Future,
+    io::{self, prelude::*, Cursor},
+};
 
 type ParseResponse<O> = (usize, Option<O>);
 trait Parser {
@@ -235,30 +239,76 @@ impl Parser for TransactionParser {
     }
 }
 
-fn read_client_handshake<R: Read> (r: &mut R) -> io::Result<()> {
+fn read_client_handshake<R: Read>(r: &mut R) -> io::Result<()> {
     let mut handshake = [0u8; 12];
     r.read_exact(&mut handshake)?;
     Ok(())
 }
 
-fn main() -> anyhow::Result<()> {
-    let mut stdin = io::stdin();
-    read_client_handshake(&mut stdin)?;
+#[derive(Clone)]
+struct BoxedSlice(Box<[u8]>, usize);
+
+impl BoxedSlice {
+    fn is_empty(&self) -> bool {
+        self.1 == 0
+    }
+}
+
+impl AsRef<[u8]> for BoxedSlice {
+    fn as_ref(&self) -> &[u8] {
+        let Self(data, len) = self;
+        &data.as_ref()[..*len]
+    }
+}
+
+async fn parse_co(
+    input: rc::Gen<BoxedSlice, (), impl Future<Output = ()>>,
+    co: genawaiter::rc::Co<proto::TransactionFrame>,
+) {
     let mut parser = TransactionParser::default();
-    let mut buf = [0u8; 128];
-    loop {
-        let len = stdin.read(&mut buf)?;
-        if len == 0 {
+    eprintln!("coro new");
+    for buf in input {
+        eprintln!("waiting for new chunk");
+        if buf.is_empty() {
+            eprintln!("no more data");
             break;
         }
-        let mut buf = &buf[..len];
+        eprintln!("have data");
+        let mut buf: &[u8] = buf.as_ref();
         while !buf.is_empty() {
+            eprintln!("parse");
             let (len, frame) = parser.parse(buf);
             buf = &buf[len..];
             if let Some(frame) = frame {
-                eprintln!("{frame:?}");
+                eprintln!("frame");
+                co.yield_(frame).await;
             }
         }
+    }
+    eprintln!("coro done");
+}
+
+async fn read_blocking_co(co: rc::Co<BoxedSlice>) {
+    let mut stdin = io::stdin().lock();
+    read_client_handshake(&mut stdin).expect("handshake");
+    eprintln!("handshake ok");
+    loop {
+        let mut buf = [0u8; 128];
+        let len = stdin.read(&mut buf).expect("read");
+        if len == 0 {
+            break;
+        }
+        let buf = BoxedSlice(Box::new(buf), len);
+        co.yield_(buf).await;
+    }
+    eprintln!("no more stdin");
+}
+
+fn main() -> anyhow::Result<()> {
+    let reader = rc::Gen::new(read_blocking_co);
+    let frames = rc::Gen::new(move |co| parse_co(reader, co));
+    for frame in frames {
+        eprintln!("frame {:?}", frame);
     }
     eprintln!("done");
     Ok(())
