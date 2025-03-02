@@ -239,10 +239,11 @@ impl Parser for TransactionParser {
     }
 }
 
-fn read_client_handshake<R: Read>(r: &mut R) -> io::Result<()> {
+fn read_client_handshake<R: Read>(r: &mut R) -> io::Result<proto::ClientHandshakeRequest> {
     let mut handshake = [0u8; 12];
     r.read_exact(&mut handshake)?;
-    Ok(())
+    let (_, handshake) = proto::ClientHandshakeRequest::from_bytes((&handshake, 0))?;
+    Ok(handshake)
 }
 
 #[derive(Clone)]
@@ -262,52 +263,61 @@ impl AsRef<[u8]> for BoxedSlice {
 }
 
 async fn parse_co(
-    input: rc::Gen<BoxedSlice, (), impl Future<Output = ()>>,
-    co: genawaiter::rc::Co<proto::TransactionFrame>,
+    input: rc::Gen<io::Result<BoxedSlice>, (), impl Future<Output = ()>>,
+    co: genawaiter::rc::Co<io::Result<proto::TransactionFrame>>,
 ) {
     let mut parser = TransactionParser::default();
-    eprintln!("coro new");
     for buf in input {
-        eprintln!("waiting for new chunk");
+        let buf = match buf {
+            Err(e) => {
+                co.yield_(Err(e)).await;
+                break;
+            },
+            Ok(buf) => buf,
+        };
         if buf.is_empty() {
-            eprintln!("no more data");
             break;
         }
-        eprintln!("have data");
         let mut buf: &[u8] = buf.as_ref();
         while !buf.is_empty() {
-            eprintln!("parse");
             let (len, frame) = parser.parse(buf);
             buf = &buf[len..];
             if let Some(frame) = frame {
-                eprintln!("frame");
-                co.yield_(frame).await;
+                co.yield_(Ok(frame)).await;
             }
         }
     }
     eprintln!("coro done");
 }
 
-async fn read_blocking_co(co: rc::Co<BoxedSlice>) {
+async fn read_blocking_co(co: rc::Co<io::Result<BoxedSlice>>) {
     let mut stdin = io::stdin().lock();
-    read_client_handshake(&mut stdin).expect("handshake");
-    eprintln!("handshake ok");
+    let mut buf = [0u8; 128];
     loop {
-        let mut buf = [0u8; 128];
-        let len = stdin.read(&mut buf).expect("read");
+        let len = match stdin.read(&mut buf) {
+            Ok(len) => len,
+            Err(e) => {
+                eprintln!("read error");
+                co.yield_(Err(e)).await;
+                break;
+            }
+        };
         if len == 0 {
+            eprintln!("end of input");
             break;
         }
-        let buf = BoxedSlice(Box::new(buf), len);
-        co.yield_(buf).await;
+        let bufbox = BoxedSlice(Box::new(buf), len);
+        co.yield_(Ok(bufbox)).await;
     }
-    eprintln!("no more stdin");
 }
 
 fn main() -> anyhow::Result<()> {
+    let handshake = read_client_handshake(&mut io::stdin())?;
+    eprintln!("handshake {handshake:?}");
     let reader = rc::Gen::new(read_blocking_co);
     let frames = rc::Gen::new(move |co| parse_co(reader, co));
     for frame in frames {
+        let frame = frame?;
         eprintln!("frame {:?}", frame);
     }
     eprintln!("done");
