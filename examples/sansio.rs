@@ -246,25 +246,29 @@ fn read_client_handshake<R: Read>(r: &mut R) -> io::Result<proto::ClientHandshak
     Ok(handshake)
 }
 
-#[derive(Clone)]
-struct BoxedSlice(Box<[u8]>, usize);
-
-impl BoxedSlice {
-    fn is_empty(&self) -> bool {
-        self.1 == 0
+async fn read_blocking_gen(co: rc::Co<io::Result<&'static [u8]>>) {
+    let mut stdin = io::stdin().lock();
+    let mut buf = [0u8; 128];
+    loop {
+        let len = match stdin.read(&mut buf) {
+            Ok(len) => len,
+            Err(e) => {
+                co.yield_(Err(e)).await;
+                break;
+            }
+        };
+        if len == 0 {
+            break;
+        }
+        // Assume the receiver drops the reference once the await is done
+        let slice: &'static [u8] = unsafe { std::slice::from_raw_parts(buf.as_ptr(), len) };
+        co.yield_(Ok(slice)).await;
     }
 }
 
-impl AsRef<[u8]> for BoxedSlice {
-    fn as_ref(&self) -> &[u8] {
-        let Self(data, len) = self;
-        &data.as_ref()[..*len]
-    }
-}
-
-async fn parse_co(
-    input: rc::Gen<io::Result<BoxedSlice>, (), impl Future<Output = ()>>,
-    co: genawaiter::rc::Co<io::Result<proto::TransactionFrame>>,
+async fn parse_frames_co(
+    input: rc::Gen<io::Result<&[u8]>, (), impl Future<Output = ()>>,
+    co: rc::Co<io::Result<proto::TransactionFrame>>,
 ) {
     let mut parser = TransactionParser::default();
     for buf in input {
@@ -272,7 +276,7 @@ async fn parse_co(
             Err(e) => {
                 co.yield_(Err(e)).await;
                 break;
-            },
+            }
             Ok(buf) => buf,
         };
         if buf.is_empty() {
@@ -287,35 +291,13 @@ async fn parse_co(
             }
         }
     }
-    eprintln!("coro done");
-}
-
-async fn read_blocking_co(co: rc::Co<io::Result<BoxedSlice>>) {
-    let mut stdin = io::stdin().lock();
-    let mut buf = [0u8; 128];
-    loop {
-        let len = match stdin.read(&mut buf) {
-            Ok(len) => len,
-            Err(e) => {
-                eprintln!("read error");
-                co.yield_(Err(e)).await;
-                break;
-            }
-        };
-        if len == 0 {
-            eprintln!("end of input");
-            break;
-        }
-        let bufbox = BoxedSlice(Box::new(buf), len);
-        co.yield_(Ok(bufbox)).await;
-    }
 }
 
 fn main() -> anyhow::Result<()> {
     let handshake = read_client_handshake(&mut io::stdin())?;
     eprintln!("handshake {handshake:?}");
-    let reader = rc::Gen::new(read_blocking_co);
-    let frames = rc::Gen::new(move |co| parse_co(reader, co));
+    let reader = rc::Gen::new(read_blocking_gen);
+    let frames = rc::Gen::new(move |co| parse_frames_co(reader, co));
     for frame in frames {
         let frame = frame?;
         eprintln!("frame {:?}", frame);
