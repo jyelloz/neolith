@@ -246,7 +246,7 @@ fn read_client_handshake<R: Read>(r: &mut R) -> io::Result<proto::ClientHandshak
     Ok(handshake)
 }
 
-async fn read_blocking_gen(co: rc::Co<io::Result<BytesMut>, Option<BytesMut>>) {
+async fn read_blocking_co(co: rc::Co<io::Result<BytesMut>, Option<BytesMut>>) {
     let mut stdin = io::stdin().lock();
     let mut buf = BytesMut::zeroed(128);
     loop {
@@ -298,7 +298,7 @@ async fn parse_frames_co(
 fn main() -> anyhow::Result<()> {
     let handshake = read_client_handshake(&mut io::stdin())?;
     eprintln!("handshake {handshake:?}");
-    let reader = rc::Gen::new(read_blocking_gen);
+    let reader = rc::Gen::new(read_blocking_co);
     let frames = rc::Gen::new(move |co| parse_frames_co(reader, co));
     for frame in frames {
         let frame = frame?;
