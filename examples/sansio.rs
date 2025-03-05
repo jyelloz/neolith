@@ -1,6 +1,6 @@
-use bytes::Buf;
+use bytes::{Buf, BytesMut};
 use deku::prelude::*;
-use genawaiter::rc;
+use genawaiter::{rc, GeneratorState};
 use neolith::protocol as proto;
 use std::{
     future::Future,
@@ -246,46 +246,48 @@ fn read_client_handshake<R: Read>(r: &mut R) -> io::Result<proto::ClientHandshak
     Ok(handshake)
 }
 
-async fn read_blocking_gen(co: rc::Co<io::Result<&'static [u8]>>) {
+async fn read_blocking_gen(co: rc::Co<io::Result<BytesMut>, Option<BytesMut>>) {
     let mut stdin = io::stdin().lock();
-    let mut buf = [0u8; 128];
+    let mut buf = BytesMut::zeroed(128);
     loop {
         let len = match stdin.read(&mut buf) {
+            Ok(0) => break,
             Ok(len) => len,
             Err(e) => {
                 co.yield_(Err(e)).await;
                 break;
             }
         };
-        if len == 0 {
-            break;
-        }
-        // Assume the receiver drops the reference once the await is done
-        let slice: &'static [u8] = unsafe { std::slice::from_raw_parts(buf.as_ptr(), len) };
-        co.yield_(Ok(slice)).await;
+        let chunk = buf.split_to(len);
+        let chunk = co
+            .yield_(Ok(chunk))
+            .await
+            .expect("only the first iteration can be None");
+        buf.unsplit(chunk);
     }
 }
 
 async fn parse_frames_co(
-    input: rc::Gen<io::Result<&[u8]>, (), impl Future<Output = ()>>,
+    mut input: rc::Gen<io::Result<BytesMut>, Option<BytesMut>, impl Future<Output = ()>>,
     co: rc::Co<io::Result<proto::TransactionFrame>>,
 ) {
     let mut parser = TransactionParser::default();
-    for buf in input {
-        let buf = match buf {
+    let mut buf = None;
+    while let GeneratorState::Yielded(result) = input.resume_with(buf) {
+        buf = match result {
             Err(e) => {
                 co.yield_(Err(e)).await;
                 break;
             }
-            Ok(buf) => buf,
+            Ok(buf) => Some(buf).filter(|b| !b.is_empty()),
         };
-        if buf.is_empty() {
+        let Some(b) = &buf else {
             break;
-        }
-        let mut buf: &[u8] = buf.as_ref();
-        while !buf.is_empty() {
-            let (len, frame) = parser.parse(buf);
-            buf = &buf[len..];
+        };
+        let mut b = &b[..];
+        while !b.is_empty() {
+            let (len, frame) = parser.parse(b);
+            b = &b[len..];
             if let Some(frame) = frame {
                 co.yield_(Ok(frame)).await;
             }
