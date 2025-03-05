@@ -299,7 +299,7 @@ fn main() -> anyhow::Result<()> {
     let handshake = read_client_handshake(&mut io::stdin())?;
     eprintln!("handshake {handshake:?}");
     let reader = rc::Gen::new(read_blocking_co);
-    let frames = rc::Gen::new(move |co| parse_frames_co(reader, co));
+    let frames = rc::Gen::new(|co| parse_frames_co(reader, co));
     for frame in frames {
         let frame = frame?;
         eprintln!("frame {:?}", frame);
