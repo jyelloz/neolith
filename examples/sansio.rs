@@ -1,11 +1,13 @@
-use bytes::{Buf, BytesMut};
+use bytes::Buf;
 use deku::prelude::*;
 use genawaiter::{rc, GeneratorState};
 use neolith::protocol as proto;
 use std::{
+    ops::Deref,
     future::Future,
     io::{self, prelude::*, Cursor},
 };
+use derive_more::{AsMut, DerefMut};
 
 type ParseResponse<O> = (usize, Option<O>);
 trait Parser {
@@ -246,11 +248,42 @@ fn read_client_handshake<R: Read>(r: &mut R) -> io::Result<proto::ClientHandshak
     Ok(handshake)
 }
 
-async fn read_blocking_co(co: rc::Co<io::Result<BytesMut>, Option<BytesMut>>) {
+#[derive(DerefMut, AsMut)]
+struct ReadBuffer {
+    #[deref_mut]
+    #[as_mut]
+    data: Box<[u8]>,
+    len: usize,
+}
+
+impl ReadBuffer {
+    pub fn new(capacity: usize) -> Self {
+        Self {
+            data: vec![0u8; capacity].into_boxed_slice(),
+            len: 0,
+        }
+    }
+}
+
+impl AsRef<[u8]> for ReadBuffer {
+    fn as_ref(&self) -> &[u8] {
+        &self.data[..self.len]
+    }
+}
+
+impl Deref for ReadBuffer {
+    type Target = [u8];
+
+    fn deref(&self) -> &Self::Target {
+        self.as_ref()
+    }
+}
+
+async fn read_blocking_co(co: rc::Co<io::Result<ReadBuffer>, Option<ReadBuffer>>) {
     let mut stdin = io::stdin().lock();
-    let mut buf = BytesMut::zeroed(128);
+    let mut buf = ReadBuffer::new(128);
     loop {
-        let len = match stdin.read(&mut buf) {
+        buf.len = match stdin.read(&mut buf) {
             Ok(0) => break,
             Ok(len) => len,
             Err(e) => {
@@ -258,17 +291,15 @@ async fn read_blocking_co(co: rc::Co<io::Result<BytesMut>, Option<BytesMut>>) {
                 break;
             }
         };
-        let chunk = buf.split_to(len);
-        let chunk = co
-            .yield_(Ok(chunk))
+        buf = co
+            .yield_(Ok(buf))
             .await
             .expect("only the first iteration can be None");
-        buf.unsplit(chunk);
     }
 }
 
 async fn parse_frames_co(
-    mut input: rc::Gen<io::Result<BytesMut>, Option<BytesMut>, impl Future<Output = ()>>,
+    mut input: rc::Gen<io::Result<ReadBuffer>, Option<ReadBuffer>, impl Future<Output = ()>>,
     co: rc::Co<io::Result<proto::TransactionFrame>>,
 ) {
     let mut parser = TransactionParser::default();
