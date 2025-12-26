@@ -14,7 +14,7 @@ where
     let items: Vec<_> = F::iter().map(|op| (op, perms.can(op))).collect();
     *perms = MultiSelect::new()
         .with_prompt(prompt)
-        .items_checked(&items)
+        .items_checked(items.clone())
         .interact()?
         .into_iter()
         .map(|i| items[i].0)
