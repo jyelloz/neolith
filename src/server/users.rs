@@ -1,5 +1,6 @@
 use crate::protocol::{self as proto, Credential as _, UserId, UserNameWithInfo};
 
+use anyhow::Context as _;
 use derive_more::{From, Into};
 use encoding_rs::MACINTOSH;
 use thiserror::Error;
@@ -213,7 +214,7 @@ impl UserAccounts {
     }
     async fn load(path: &Path) -> anyhow::Result<HashMap<String, UserAccount>> {
         let mut users: HashMap<String, UserAccount> = HashMap::default();
-        let mut dir = fs::read_dir(path).await?;
+        let mut dir = fs::read_dir(path).await.context(format!("user directory: {path:?}"))?;
         while let Some(file) = dir.next_entry().await? {
             let path = file.path();
             let Ok(data) = fs::read_to_string(&path).await else {
