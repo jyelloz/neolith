@@ -7,7 +7,7 @@ use deku::prelude::*;
 use derive_more::{From, Into};
 use encoding_rs::MACINTOSH;
 
-#[derive(Debug, Clone, Copy, From, Into, DekuRead, DekuWrite)]
+#[derive(Debug, Clone, Copy, From, Into, DekuRead, DekuWrite, DekuSize)]
 pub struct Flags(i8);
 
 impl Flags {
@@ -22,7 +22,7 @@ impl Default for Flags {
     }
 }
 
-#[derive(Debug, Clone, Copy, Default, From, Into, DekuRead, DekuWrite)]
+#[derive(Debug, Clone, Copy, Default, From, Into, DekuRead, DekuWrite, DekuSize)]
 pub struct IsReply(i8);
 
 impl IsReply {
@@ -43,19 +43,19 @@ impl From<IsReply> for bool {
     }
 }
 
-#[derive(Debug, Clone, Copy, Default, From, Into, DekuRead, DekuWrite)]
+#[derive(Debug, Clone, Copy, Default, From, Into, DekuRead, DekuWrite, DekuSize)]
 #[deku(endian = "big")]
 pub struct Type(i16);
 
-#[derive(Debug, Clone, Copy, Default, From, Into, DekuRead, DekuWrite)]
+#[derive(Debug, Clone, Copy, Default, From, Into, DekuRead, DekuWrite, DekuSize)]
 #[deku(endian = "big")]
 pub struct Id(i32);
 
-#[derive(Debug, Clone, Copy, Default, From, Into, DekuRead, DekuWrite)]
+#[derive(Debug, Clone, Copy, Default, From, Into, DekuRead, DekuWrite, DekuSize)]
 #[deku(endian = "big")]
 pub struct TotalSize(i32);
 
-#[derive(Debug, Clone, Copy, Default, From, Into, DekuRead, DekuWrite)]
+#[derive(Debug, Clone, Copy, Default, From, Into, DekuRead, DekuWrite, DekuSize)]
 #[deku(endian = "big")]
 pub struct DataSize(i32);
 
@@ -65,7 +65,7 @@ impl From<usize> for DataSize {
     }
 }
 
-#[derive(Debug, Clone, Copy, DekuRead, DekuWrite)]
+#[derive(Debug, Clone, Copy, DekuRead, DekuWrite, DekuSize)]
 pub struct TransactionHeader {
     pub flags: Flags,
     pub is_reply: IsReply,
