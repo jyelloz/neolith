@@ -182,15 +182,24 @@ impl FinderInfo {
         }
     }
     pub const fn calculate_size() -> usize {
-        4 + 4 + 2 + 4 + 2 + 16
+        Self::SIZE_BYTES.unwrap()
     }
 }
 
-#[derive(Debug, Clone, Copy, PartialEq, Eq, DekuRead, DekuWrite, From)]
+impl DekuSize for FinderInfo {
+    const SIZE_BITS: usize = FileType::SIZE_BITS
+            + Creator::SIZE_BITS
+            + FinderFlags::SIZE_BITS
+            + Point::SIZE_BITS
+            + Folder::SIZE_BITS
+            + (16 * 8);
+}
+
+#[derive(Debug, Clone, Copy, PartialEq, Eq, DekuRead, DekuWrite, DekuSize, From)]
 pub struct FourCC(pub [u8; 4]);
-#[derive(Debug, DekuRead, DekuWrite, Clone, Copy, PartialEq, Eq, From)]
+#[derive(Debug, DekuRead, DekuWrite, DekuSize, Clone, Copy, PartialEq, Eq, From)]
 pub struct FileType(pub FourCC);
-#[derive(Debug, DekuRead, DekuWrite, Clone, Copy, PartialEq, Eq)]
+#[derive(Debug, DekuRead, DekuWrite, DekuSize, Clone, Copy, PartialEq, Eq)]
 pub struct Creator(pub FourCC);
 
 #[derive(Default, Debug, DekuRead, DekuWrite, Clone, Copy, PartialEq, Eq)]
@@ -226,6 +235,10 @@ pub struct FinderFlags {
     pub is_on_desktop: bool,
 }
 
+impl DekuSize for FinderFlags {
+    const SIZE_BITS: usize = 16;
+}
+
 impl From<u16> for FinderFlags {
     fn from(value: u16) -> Self {
         let bytes = value.to_be_bytes();
@@ -240,16 +253,18 @@ impl From<FinderFlags> for u16 {
     }
 }
 
-#[derive(Debug, DekuRead, DekuWrite, Default, Clone, Copy, PartialEq, Eq)]
+#[derive(Debug, DekuRead, DekuWrite, DekuSize, Default, Clone, Copy, PartialEq, Eq)]
 #[deku(endian = "big")]
 pub struct Point {
     pub vertical: i16,
     pub horizontal: i16,
 }
 
-#[derive(Debug, DekuRead, DekuWrite, Default, Clone, Copy, PartialEq, Eq, PartialOrd, Ord)]
+#[derive(
+    Debug, DekuRead, DekuWrite, DekuSize, Default, Clone, Copy, PartialEq, Eq, PartialOrd, Ord,
+)]
 #[deku(endian = "big")]
-pub struct Folder(#[deku(bits = "16")] u16);
+pub struct Folder(u16);
 
 #[cfg(test)]
 mod tests {
