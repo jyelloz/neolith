@@ -1,7 +1,7 @@
 use deku::prelude::*;
 use derive_more::{From, Into};
 use maplit::hashmap;
-use std::{collections::HashMap, num::NonZeroU32};
+use std::collections::HashMap;
 use thiserror::Error;
 use tokio::io::AsyncRead;
 
@@ -57,7 +57,7 @@ pub enum ProtocolError {
     SystemError,
 }
 
-#[derive(Debug, PartialEq, Eq, PartialOrd, Ord, Clone, Copy, From, Into, DekuRead, DekuWrite)]
+#[derive(Debug, PartialEq, Eq, PartialOrd, Ord, Clone, Copy, From, Into, DekuRead, DekuWrite, DekuSize)]
 #[deku(endian = "big")]
 pub struct ErrorCode(i32);
 
@@ -1837,13 +1837,13 @@ impl FlattenedFileObject {
     }
 }
 
-#[derive(Debug, Clone, DekuRead, DekuWrite)]
+#[derive(Debug, Clone, DekuRead, DekuWrite, DekuSize, From)]
 #[deku(id_type = "u32")]
 pub enum CompressionType {
     #[deku(id = "0u32")]
     None,
     #[deku(id_pat = "_")]
-    Other(NonZeroU32),
+    Other(u32),
 }
 
 impl Default for CompressionType {
@@ -1863,7 +1863,7 @@ pub enum PlatformType {
     Other([u8; 4]),
 }
 
-#[derive(Debug, Clone, Copy, Hash, PartialEq, Eq, PartialOrd, Ord, DekuRead, DekuWrite)]
+#[derive(Debug, Clone, Copy, Hash, PartialEq, Eq, PartialOrd, Ord, DekuRead, DekuWrite, DekuSize)]
 #[deku(id_type = "[u8; 4]")]
 pub enum ForkType {
     #[deku(id = b"INFO")]
@@ -1877,7 +1877,7 @@ pub enum ForkType {
 }
 
 #[derive(
-    Debug, Default, Clone, Copy, PartialEq, Eq, PartialOrd, Ord, From, Into, DekuRead, DekuWrite,
+    Debug, Default, Clone, Copy, PartialEq, Eq, PartialOrd, Ord, From, Into, DekuRead, DekuWrite, DekuSize,
 )]
 #[deku(endian = "big")]
 pub struct FileFlags(i32);
