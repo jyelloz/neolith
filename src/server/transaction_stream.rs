@@ -1,6 +1,7 @@
 use crate::protocol::{self as proto, HotlineProtocol as _};
 
 use async_stream::stream;
+use deku::DekuSize as _;
 use futures::stream::Stream;
 use tokio::io::{AsyncRead, AsyncReadExt as _};
 
@@ -30,7 +31,7 @@ impl<R: AsyncRead + Unpin> Frames<R> {
     }
     async fn header(&mut self) -> Result<proto::TransactionHeader> {
         let Self(reader) = self;
-        let mut buf = [0u8; 20];
+        let mut buf = [0u8; proto::TransactionHeader::SIZE_BYTES.unwrap()];
         reader.read_exact(&mut buf).await?;
         proto::TransactionHeader::from_bytes(&buf)
     }
