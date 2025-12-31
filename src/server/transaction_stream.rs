@@ -9,13 +9,16 @@ pub type Result<T> = core::result::Result<T, proto::ProtocolError>;
 
 pub struct Frames<R>(R);
 
-impl<R: AsyncRead + Unpin> Frames<R> {
+impl<R> Frames<R> {
     pub fn new(reader: R) -> Self {
         Self(reader)
     }
     pub fn take(self) -> R {
         self.0
     }
+}
+
+impl<R: AsyncRead + Unpin> Frames<R> {
     pub fn frames(mut self) -> impl Stream<Item = Result<proto::TransactionFrame>> {
         stream! {
             loop {
