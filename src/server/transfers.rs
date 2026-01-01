@@ -187,9 +187,7 @@ impl<S: AsyncRead + AsyncWrite + Unpin + Send> TransferConnection<S> {
     async fn handle_file_download(self, id: ReferenceNumber) -> TransferResult<()> {
         let path = self.get_file_download(id)?;
         let Self {
-            mut socket,
-            files,
-            ..
+            mut socket, files, ..
         } = self;
         let mut file = files.read(&path).await?;
         let (info_header, info) = file.info();
