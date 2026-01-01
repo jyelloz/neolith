@@ -1,3 +1,5 @@
+use std::io::{self, Read};
+
 use crate::protocol::{self as proto, HotlineProtocol as _};
 
 use async_stream::stream;
