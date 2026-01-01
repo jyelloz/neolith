@@ -1,3 +1,4 @@
+use deku::DekuSize as _;
 use tokio::io::{AsyncRead, AsyncReadExt as _, AsyncWrite, AsyncWriteExt as _};
 
 use super::protocol::{
@@ -19,7 +20,7 @@ impl<S: AsyncRead + AsyncWrite + Unpin> Connection<S> {
     }
     async fn header(&mut self) -> Result<TransactionHeader> {
         let Self { socket } = self;
-        let mut buf = [0u8; 20];
+        let mut buf = [0u8; TransactionHeader::SIZE_BYTES.unwrap()];
         socket.read_exact(&mut buf).await?;
         match TransactionHeader::try_from(&buf[..]) {
             Ok(header) => Ok(header),
