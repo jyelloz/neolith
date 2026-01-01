@@ -5,19 +5,19 @@ use derive_more::{From, Into};
 
 #[derive(Debug, PartialEq, Eq, PartialOrd, Ord, From, Into, DekuRead, DekuWrite)]
 #[deku(endian = "big")]
-pub struct ProtocolId(i32);
+pub struct ProtocolId(u32);
 
 #[derive(Debug, PartialEq, Eq, PartialOrd, Ord, From, Into, DekuRead, DekuWrite)]
 #[deku(endian = "big")]
-pub struct SubProtocolId(i32);
+pub struct SubProtocolId(u32);
 
 #[derive(Debug, PartialEq, Eq, PartialOrd, Ord, From, Into, DekuRead, DekuWrite)]
 #[deku(endian = "big")]
-pub struct Version(pub i16);
+pub struct Version(pub u16);
 
 #[derive(Debug, PartialEq, Eq, PartialOrd, Ord, From, Into, DekuRead, DekuWrite)]
 #[deku(endian = "big")]
-pub struct SubVersion(pub i16);
+pub struct SubVersion(pub u16);
 
 #[derive(Debug, DekuRead, DekuWrite)]
 #[deku(magic = b"TRTP")]
@@ -31,6 +31,10 @@ pub struct ClientHandshakeRequest {
 #[deku(magic = b"TRTP")]
 pub struct ServerHandshakeReply {
     error_code: ErrorCode,
+}
+
+impl DekuSize for ServerHandshakeReply {
+    const SIZE_BITS: usize = ErrorCode::SIZE_BITS + 32usize;
 }
 
 impl ServerHandshakeReply {
