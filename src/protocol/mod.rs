@@ -78,9 +78,9 @@ pub use handshake::{
 };
 pub use parameters::{
     ChatId, ChatOptions, ChatSubject, Creator, Credential, FileComment, FileCreatedAt,
-    FileCreatorString, FileModifiedAt, FileName, FilePath, FileSize, FileType, FileTypeString,
-    IconId, Message, Nickname, Password, ReferenceNumber, TransactionOptions, TransferSize,
-    UserAccess, UserFlags, UserId, UserLogin, UserNameWithInfo, WaitingCount,
+    FileCreatorString, FileModifiedAt, FileName, FilePath, FileSize, FileTransferOptions, FileType,
+    FileTypeString, IconId, Message, Nickname, Password, ReferenceNumber, TransactionOptions,
+    TransferSize, UserAccess, UserFlags, UserId, UserLogin, UserNameWithInfo, WaitingCount,
 };
 pub use transaction::{
     DataSize, FieldId, Flags, Id, IntoFrameExt, IsReply, Parameter, TotalSize, TransactionBody,
@@ -2008,6 +2008,7 @@ impl InfoFork {
 pub struct UploadFile {
     pub filename: FileName,
     pub file_path: FilePath,
+    pub options: FileTransferOptions,
 }
 
 impl TryFrom<TransactionFrame> for UploadFile {
@@ -2020,10 +2021,15 @@ impl TryFrom<TransactionFrame> for UploadFile {
             .require_field(TransactionField::FileName)
             .map(FileName::from)?;
         let file_path = body.borrow_field(TransactionField::FilePath).try_into()?;
+        let options = body
+            .borrow_field(TransactionField::FileTransferOptions)
+            .and_then(|p| FileTransferOptions::try_from(p).ok())
+            .unwrap_or_default();
 
         Ok(Self {
             filename,
             file_path,
+            options,
         })
     }
 }
@@ -2033,11 +2039,16 @@ impl From<UploadFile> for TransactionFrame {
         let UploadFile {
             filename,
             file_path,
+            options,
         } = val;
-        let body = [Some(filename.into()), file_path.into()]
-            .into_iter()
-            .flat_map(Option::into_iter)
-            .collect::<TransactionBody>();
+        let body = [
+            Some(filename.into()),
+            file_path.into(),
+            Some(options.into()),
+        ]
+        .into_iter()
+        .flat_map(Option::into_iter)
+        .collect::<TransactionBody>();
         Self::new(TransactionType::UploadFile, body)
     }
 }
