@@ -188,11 +188,11 @@ impl FinderInfo {
 
 impl DekuSize for FinderInfo {
     const SIZE_BITS: usize = FileType::SIZE_BITS
-            + Creator::SIZE_BITS
-            + FinderFlags::SIZE_BITS
-            + Point::SIZE_BITS
-            + Folder::SIZE_BITS
-            + (16 * 8);
+        + Creator::SIZE_BITS
+        + FinderFlags::SIZE_BITS
+        + Point::SIZE_BITS
+        + Folder::SIZE_BITS
+        + (16 * 8);
 }
 
 #[derive(Debug, Clone, Copy, PartialEq, Eq, DekuRead, DekuWrite, DekuSize, From)]
