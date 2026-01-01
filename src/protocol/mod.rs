@@ -97,6 +97,34 @@ pub struct LoginRequest {
     pub icon_id: Option<IconId>,
 }
 
+impl From<LoginRequest> for TransactionFrame {
+    fn from(val: LoginRequest) -> Self {
+        let header = TransactionType::Login.into();
+        let mut body = vec![];
+
+        if let Some(field) = val.login {
+            body.push(field.into());
+        }
+
+        if let Some(field) = val.password {
+            body.push(field.into());
+        }
+
+        if let Some(field) = val.nickname {
+            body.push(field.into());
+        }
+
+        if let Some(field) = val.icon_id {
+            body.push(field.into());
+        }
+
+        Self {
+            header,
+            body: body.into(),
+        }
+    }
+}
+
 impl TryFrom<TransactionFrame> for LoginRequest {
     type Error = ProtocolError;
     fn try_from(frame: TransactionFrame) -> Result<Self, Self::Error> {
@@ -179,6 +207,25 @@ impl From<LoginReply> for TransactionFrame {
     }
 }
 
+impl TryFrom<TransactionFrame> for LoginReply {
+    type Error = ProtocolError;
+
+    fn try_from(frame: TransactionFrame) -> Result<Self, Self::Error> {
+        let TransactionFrame { body, .. } =
+            frame.require_transaction_type(TransactionType::Reply)?;
+
+        let Some(version) = body
+            .borrow_field(TransactionField::Version)
+            .map(ProtocolVersion::try_from)
+            .transpose()?
+        else {
+            return Ok(Self::default());
+        };
+
+        Ok(Self(version))
+    }
+}
+
 #[derive(Debug, Clone, Copy, From, Into, PartialEq, Eq, PartialOrd, Ord, DekuRead, DekuWrite)]
 #[deku(endian = "big")]
 pub struct ProtocolVersion(i16);
@@ -189,10 +236,64 @@ impl From<ProtocolVersion> for Parameter {
     }
 }
 
+impl TryFrom<&Parameter> for ProtocolVersion {
+    type Error = ProtocolError;
+    fn try_from(parameter: &Parameter) -> Result<Self, Self::Error> {
+        parameter
+            .read_deku()
+            .map_err(|_| ProtocolError::MalformedData(TransactionField::Version))
+    }
+}
+
 #[derive(Debug, Default, PartialEq, Eq, PartialOrd, Ord)]
 pub struct ShowAgreement {
     pub agreement: Option<ServerAgreement>,
     pub banner: Option<ServerBanner>,
+}
+
+impl ShowAgreement {
+    fn try_from_new_style(body: TransactionBody) -> Result<Self, ProtocolError> {
+        let agreement = body
+            .borrow_field(TransactionField::ServerAgreement)
+            .map(ServerAgreement::try_from)
+            .transpose()?;
+
+        let no_agreement = body
+            .borrow_field(TransactionField::NoServerAgreement)
+            .is_some();
+
+        let agreement = if no_agreement { None } else { agreement };
+
+        let banner = None;
+
+        Ok(Self { agreement, banner })
+    }
+    fn try_from_old_style(body: TransactionBody) -> Result<Self, ProtocolError> {
+        let data = body
+            .borrow_field(TransactionField::Data)
+            .cloned()
+            .map(Parameter::take)
+            .map(ServerAgreement);
+
+        Ok(Self {
+            agreement: data,
+            banner: None,
+        })
+    }
+}
+
+impl TryFrom<TransactionFrame> for ShowAgreement {
+    type Error = ProtocolError;
+    fn try_from(frame: TransactionFrame) -> Result<Self, Self::Error> {
+        let TransactionFrame { body, .. } =
+            frame.require_transaction_type(TransactionType::ShowAgreement)?;
+
+        if let Ok(old) = Self::try_from_old_style(body.clone()) {
+            return Ok(old);
+        }
+
+        Self::try_from_new_style(body)
+    }
 }
 
 #[derive(Debug, PartialEq, Eq, PartialOrd, Ord)]
@@ -221,26 +322,6 @@ enum ServerBannerType {
 pub enum ServerBanner {
     URL(Vec<u8>),
     Data(Vec<u8>),
-}
-
-impl TryFrom<TransactionBody> for ShowAgreement {
-    type Error = ProtocolError;
-    fn try_from(body: TransactionBody) -> Result<Self, Self::Error> {
-        let agreement = body
-            .borrow_field(TransactionField::ServerAgreement)
-            .map(ServerAgreement::try_from)
-            .transpose()?;
-
-        let no_agreement = body
-            .borrow_field(TransactionField::NoServerAgreement)
-            .is_some();
-
-        let agreement = if no_agreement { None } else { agreement };
-
-        let banner = None;
-
-        Ok(Self { agreement, banner })
-    }
 }
 
 impl TryFrom<&Parameter> for ServerBannerType {
