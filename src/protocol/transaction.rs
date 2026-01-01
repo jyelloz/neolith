@@ -354,6 +354,9 @@ impl TransactionFrame {
         self.header.id = id;
         self
     }
+    pub fn is_reply(&self) -> bool {
+        self.header.is_reply.is_reply()
+    }
 }
 
 impl From<(TransactionHeader, TransactionBody)> for TransactionFrame {
