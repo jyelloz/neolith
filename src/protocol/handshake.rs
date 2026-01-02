@@ -9,17 +9,35 @@ pub struct ProtocolId(u32);
 
 #[derive(Debug, PartialEq, Eq, PartialOrd, Ord, From, Into, DekuRead, DekuWrite)]
 #[deku(endian = "big")]
-pub struct SubProtocolId(u32);
+pub struct SubProtocolId([u8; 4]);
+
+impl Default for SubProtocolId {
+    fn default() -> Self {
+        Self(*b"HOTL")
+    }
+}
 
 #[derive(Debug, PartialEq, Eq, PartialOrd, Ord, From, Into, DekuRead, DekuWrite)]
 #[deku(endian = "big")]
 pub struct Version(pub u16);
 
+impl Default for Version {
+    fn default() -> Self {
+        Self(1)
+    }
+}
+
 #[derive(Debug, PartialEq, Eq, PartialOrd, Ord, From, Into, DekuRead, DekuWrite)]
 #[deku(endian = "big")]
 pub struct SubVersion(pub u16);
 
-#[derive(Debug, DekuRead, DekuWrite)]
+impl Default for SubVersion {
+    fn default() -> Self {
+        Self(2)
+    }
+}
+
+#[derive(Debug, Default, DekuRead, DekuWrite)]
 #[deku(magic = b"TRTP")]
 pub struct ClientHandshakeRequest {
     pub sub_protocol_id: SubProtocolId,
