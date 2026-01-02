@@ -1,7 +1,7 @@
-use std::io::stdin;
 use clap::{Parser, ValueEnum};
+use std::io::stdin;
 
-use deku::{DekuContainerRead as _, noseek::NoSeek};
+use deku::{noseek::NoSeek, DekuContainerRead as _};
 use neolith::{protocol as proto, server::transaction_stream::Frames};
 
 #[derive(ValueEnum, Copy, Clone, Debug, PartialEq, Eq)]
@@ -11,7 +11,7 @@ enum Mode {
 }
 
 #[derive(Parser, Debug)]
-#[command(name="nlprotoparse")]
+#[command(name = "nlprotoparse")]
 struct Command {
     mode: Mode,
 }
@@ -28,7 +28,7 @@ fn main() -> anyhow::Result<()> {
         Mode::Client => {
             let (_, hs) = proto::ClientHandshakeRequest::from_reader((&mut stdin, 0))?;
             eprintln!("client to server mode {hs:?}");
-        },
+        }
     }
     let frames = Frames::new(stdin);
     for f in frames {
