@@ -882,6 +882,25 @@ impl From<TransactionOptions> for Parameter {
     }
 }
 
+#[derive(Debug, Default, Clone, Copy, From, Into, DekuRead, DekuWrite)]
+#[deku(endian = "big")]
+pub struct FileTransferOptions(i16);
+
+impl TryFrom<&Parameter> for FileTransferOptions {
+    type Error = ProtocolError;
+    fn try_from(parameter: &Parameter) -> Result<Self, Self::Error> {
+        parameter
+            .read_deku()
+            .map_err(|_| ProtocolError::MalformedData(TransactionField::FileTransferOptions))
+    }
+}
+
+impl From<FileTransferOptions> for Parameter {
+    fn from(val: FileTransferOptions) -> Self {
+        Parameter::new_deku(TransactionField::FileTransferOptions, val)
+    }
+}
+
 fn take_if_matches(
     parameter: Parameter,
     field: TransactionField,
