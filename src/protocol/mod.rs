@@ -57,7 +57,9 @@ pub enum ProtocolError {
     SystemError,
 }
 
-#[derive(Debug, PartialEq, Eq, PartialOrd, Ord, Clone, Copy, From, Into, DekuRead, DekuWrite, DekuSize)]
+#[derive(
+    Debug, PartialEq, Eq, PartialOrd, Ord, Clone, Copy, From, Into, DekuRead, DekuWrite, DekuSize,
+)]
 #[deku(endian = "big")]
 pub struct ErrorCode(i32);
 
@@ -89,7 +91,7 @@ pub use transaction::{
 use transaction_field::TransactionField;
 pub use transaction_type::TransactionType;
 
-#[derive(Debug, PartialEq, Eq, PartialOrd, Ord)]
+#[derive(Debug, Default, PartialEq, Eq, PartialOrd, Ord)]
 pub struct LoginRequest {
     pub login: Option<UserLogin>,
     pub nickname: Option<Nickname>,
@@ -1944,7 +1946,9 @@ pub enum PlatformType {
     Other([u8; 4]),
 }
 
-#[derive(Debug, Clone, Copy, Hash, PartialEq, Eq, PartialOrd, Ord, DekuRead, DekuWrite, DekuSize)]
+#[derive(
+    Debug, Clone, Copy, Hash, PartialEq, Eq, PartialOrd, Ord, DekuRead, DekuWrite, DekuSize,
+)]
 #[deku(id_type = "[u8; 4]")]
 pub enum ForkType {
     #[deku(id = b"INFO")]
@@ -1958,7 +1962,19 @@ pub enum ForkType {
 }
 
 #[derive(
-    Debug, Default, Clone, Copy, PartialEq, Eq, PartialOrd, Ord, From, Into, DekuRead, DekuWrite, DekuSize,
+    Debug,
+    Default,
+    Clone,
+    Copy,
+    PartialEq,
+    Eq,
+    PartialOrd,
+    Ord,
+    From,
+    Into,
+    DekuRead,
+    DekuWrite,
+    DekuSize,
 )]
 #[deku(endian = "big")]
 pub struct FileFlags(i32);
