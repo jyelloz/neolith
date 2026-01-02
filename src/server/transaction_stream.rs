@@ -25,11 +25,11 @@ impl<R: Read> Frames<R> {
         let Self(reader) = self;
         let mut buf = [0u8; proto::TransactionHeader::SIZE_BYTES.unwrap()];
         match reader.read_exact(&mut buf) {
-            Ok(_) => {},
+            Ok(_) => {}
             Err(e) => match e.kind() {
                 io::ErrorKind::UnexpectedEof => return Ok(None),
                 _ => Err(e)?,
-            }
+            },
         }
         proto::TransactionHeader::from_bytes(&buf).map(Some)
     }
