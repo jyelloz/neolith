@@ -5,6 +5,7 @@ use futures::stream::TryStreamExt;
 use tokio::{
     io::{AsyncRead, AsyncReadExt as _, AsyncWrite, AsyncWriteExt as _},
     net::TcpListener,
+    net::ToSocketAddrs,
     sync::watch,
 };
 use tracing::{debug, instrument, trace, warn};
@@ -170,6 +171,22 @@ impl Globals {
     }
 }
 
+async fn new_listener_from_listenfd<A: ToSocketAddrs>(
+    listenfd: &mut listenfd::ListenFd,
+    fd: usize,
+    fallback_addr: A,
+) -> std::io::Result<TcpListener> {
+    let listener = listenfd.take_tcp_listener(fd)?;
+    if let Some(listener) = listener {
+        listener.set_nonblocking(true)?;
+        let listener = TcpListener::from_std(listener)?;
+        Ok(listener)
+    } else {
+        let listener = TcpListener::bind(fallback_addr).await?;
+        Ok(listener)
+    }
+}
+
 #[tokio::main]
 async fn main() -> Result<()> {
     tracing_subscriber::registry()
@@ -177,9 +194,10 @@ async fn main() -> Result<()> {
         .with(tracing_subscriber::fmt::layer())
         .try_init()?;
 
+    let mut listenfd = listenfd::ListenFd::from_env();
     let host = "0.0.0.0";
-    let listener = TcpListener::bind((host, 5500)).await?;
-    let transfer_listener = TcpListener::bind((host, 5501)).await?;
+    let listener = new_listener_from_listenfd(&mut listenfd, 0, (host, 5500)).await?;
+    let transfer_listener = new_listener_from_listenfd(&mut listenfd, 1, (host, 5501)).await?;
 
     let bus = Bus::new();
 
