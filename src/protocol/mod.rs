@@ -1922,19 +1922,14 @@ impl FlattenedFileObject {
     }
 }
 
-#[derive(Debug, Clone, DekuRead, DekuWrite, DekuSize, From)]
+#[derive(Debug, Default, Clone, DekuRead, DekuWrite, DekuSize, From)]
 #[deku(id_type = "u32")]
 pub enum CompressionType {
+    #[default]
     #[deku(id = "0u32")]
     None,
     #[deku(id_pat = "_")]
     Other(u32),
-}
-
-impl Default for CompressionType {
-    fn default() -> Self {
-        Self::None
-    }
 }
 
 #[derive(Debug, Clone, DekuRead, DekuWrite)]
