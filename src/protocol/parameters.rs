@@ -511,8 +511,9 @@ impl DekuFilePathComponent {
     }
 }
 
-#[derive(Clone)]
+#[derive(Default, Clone)]
 pub enum FilePath {
+    #[default]
     Root,
     Directory(Vec<Vec<u8>>),
 }
@@ -537,12 +538,6 @@ impl FilePath {
         let path = DekuFilePath { depth, components };
         let data = path.try_into().unwrap();
         Parameter::new(TransactionField::FilePath, data)
-    }
-}
-
-impl Default for FilePath {
-    fn default() -> Self {
-        Self::Root
     }
 }
 
