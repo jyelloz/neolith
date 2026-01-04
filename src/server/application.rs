@@ -1,6 +1,6 @@
 use derive_more::{From, Into};
-use enumset::{enum_set, EnumSet, EnumSetIter, EnumSetType};
-use serde::{de::Visitor, ser::SerializeMap, Deserialize, Deserializer, Serialize, Serializer};
+use enumset::{EnumSet, EnumSetIter, EnumSetType, enum_set};
+use serde::{Deserialize, Deserializer, Serialize, Serializer, de::Visitor, ser::SerializeMap};
 use std::{fmt, future::Future, marker::PhantomData, pin::Pin};
 use strum::{Display, EnumIter, EnumString, IntoEnumIterator};
 
@@ -174,7 +174,7 @@ pub struct FilePermissions(FlagSet<FileOperation>);
 
 impl Permissions<FileOperation> for FilePermissions {
     fn can(&self, op: FileOperation) -> bool {
-        self.0 .0.contains(op)
+        self.0.0.contains(op)
     }
 }
 
@@ -183,7 +183,7 @@ impl IntoIterator for FilePermissions {
     type IntoIter = EnumSetIter<Self::Item>;
 
     fn into_iter(self) -> Self::IntoIter {
-        self.0 .0.into_iter()
+        self.0.0.into_iter()
     }
 }
 
@@ -223,7 +223,7 @@ pub struct UserPermissions(FlagSet<UserOperation>);
 
 impl Permissions<UserOperation> for UserPermissions {
     fn can(&self, op: UserOperation) -> bool {
-        self.0 .0.contains(op)
+        self.0.0.contains(op)
     }
 }
 
@@ -232,7 +232,7 @@ impl IntoIterator for UserPermissions {
     type IntoIter = EnumSetIter<Self::Item>;
 
     fn into_iter(self) -> Self::IntoIter {
-        self.0 .0.into_iter()
+        self.0.0.into_iter()
     }
 }
 
@@ -272,7 +272,7 @@ pub struct NewsPermissions(FlagSet<NewsOperation>);
 
 impl Permissions<NewsOperation> for NewsPermissions {
     fn can(&self, op: NewsOperation) -> bool {
-        self.0 .0.contains(op)
+        self.0.0.contains(op)
     }
 }
 
@@ -281,7 +281,7 @@ impl IntoIterator for NewsPermissions {
     type IntoIter = EnumSetIter<Self::Item>;
 
     fn into_iter(self) -> Self::IntoIter {
-        self.0 .0.into_iter()
+        self.0.0.into_iter()
     }
 }
 
@@ -321,7 +321,7 @@ pub struct ChatPermissions(FlagSet<ChatOperation>);
 
 impl Permissions<ChatOperation> for ChatPermissions {
     fn can(&self, op: ChatOperation) -> bool {
-        self.0 .0.contains(op)
+        self.0.0.contains(op)
     }
 }
 
@@ -329,7 +329,7 @@ impl IntoIterator for ChatPermissions {
     type Item = ChatOperation;
     type IntoIter = EnumSetIter<Self::Item>;
     fn into_iter(self) -> Self::IntoIter {
-        self.0 .0.into_iter()
+        self.0.0.into_iter()
     }
 }
 
@@ -368,7 +368,7 @@ impl From<ChatPermissions> for i64 {
 pub struct MiscPermissions(FlagSet<MiscOperation>);
 impl Permissions<MiscOperation> for MiscPermissions {
     fn can(&self, op: MiscOperation) -> bool {
-        self.0 .0.contains(op)
+        self.0.0.contains(op)
     }
 }
 
@@ -376,7 +376,7 @@ impl IntoIterator for MiscPermissions {
     type Item = MiscOperation;
     type IntoIter = EnumSetIter<Self::Item>;
     fn into_iter(self) -> Self::IntoIter {
-        self.0 .0.into_iter()
+        self.0.0.into_iter()
     }
 }
 
