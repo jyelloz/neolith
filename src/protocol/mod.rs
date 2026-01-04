@@ -586,6 +586,15 @@ impl From<GetUserNameList> for TransactionBody {
     }
 }
 
+impl From<GetUserNameList> for TransactionFrame {
+    fn from(_: GetUserNameList) -> Self {
+        Self {
+            header: TransactionType::GetUserNameList.into(),
+            ..Default::default()
+        }
+    }
+}
+
 #[derive(Debug, Default)]
 pub struct GetUserNameListReply(Vec<UserNameWithInfo>);
 
