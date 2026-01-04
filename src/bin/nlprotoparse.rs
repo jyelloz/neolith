@@ -1,7 +1,7 @@
 use clap::{Parser, ValueEnum};
 use std::io::stdin;
 
-use deku::{noseek::NoSeek, DekuContainerRead as _};
+use deku::{DekuContainerRead as _, noseek::NoSeek};
 use neolith::{protocol as proto, server::transaction_stream::Frames};
 
 #[derive(ValueEnum, Copy, Clone, Debug, PartialEq, Eq)]
