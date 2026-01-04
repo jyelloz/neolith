@@ -599,7 +599,6 @@ impl<R: AsyncRead + Unpin, W: AsyncWrite + Unpin> Established<R, W> {
         notification: Notification,
     ) -> Result<()> {
         let current_user = globals.user();
-        let current_id = globals.next_transaction_id();
         match notification {
             Notification::Empty => {}
             Notification::Chat(chat) => {
@@ -607,15 +606,15 @@ impl<R: AsyncRead + Unpin, W: AsyncWrite + Unpin> Established<R, W> {
                 if let Some(id) = chat.chat_id {
                     let chat_members = globals.chat_list(id);
                     debug!("chat {id:?} contains {chat_members:?}");
-                    if let Some(user) = &current_user {
-                        if globals.chat_list(id).contains(user) {
-                            debug!("private chat notification -> {username:?}: {:?}", &chat);
-                            write_frame(w, chat.framed().id(current_id)).await?;
-                        }
+                    if let Some(user) = &current_user
+                        && globals.chat_list(id).contains(user)
+                    {
+                        debug!("private chat notification -> {username:?}: {:?}", &chat);
+                        Self::write_frame(w, globals, chat).await?;
                     }
                 } else {
                     debug!("chat notification -> {username:?}: {:?}", &chat);
-                    write_frame(w, chat.framed()).await?;
+                    Self::write_frame(w, globals, chat).await?;
                 }
             }
             Notification::InstantMessage(message) => {
@@ -626,48 +625,58 @@ impl<R: AsyncRead + Unpin, W: AsyncWrite + Unpin> Established<R, W> {
                         user_name: Some(from.0.username),
                         message,
                     };
-                    write_frame(w, message.framed()).await?;
+                    Self::write_frame(w, globals, message).await?;
                 }
             }
             Notification::Broadcast(message) => {
                 let broadcast: ServerMessage = message.into();
-                write_frame(w, broadcast.framed()).await?;
+                Self::write_frame(w, globals, broadcast).await?;
             }
             Notification::DownloadInfo(info) => {
                 let info: DownloadInfo = info.into();
-                write_frame(w, info.framed()).await?;
+                Self::write_frame(w, globals, info).await?;
             }
             Notification::News(article) => {
                 let article: NotifyNewsMessage = article.into();
-                write_frame(w, article.framed()).await?;
+                Self::write_frame(w, globals, article).await?;
             }
             Notification::UserConnect(User(user)) | Notification::UserUpdate(User(user)) => {
                 let notify: NotifyUserChange = (&user).into();
-                write_frame(w, notify.framed()).await?;
+                Self::write_frame(w, globals, notify).await?;
             }
             Notification::UserDisconnect(User(user)) => {
                 let notify: NotifyUserDelete = (&user).into();
-                write_frame(w, notify.framed()).await?;
+                Self::write_frame(w, globals, notify).await?;
             }
             Notification::ChatRoomInvite(ChatRoomInvite(chat_id, user_id)) => {
                 if Some(user_id) == current_user.map(|u| u.user_id) {
                     let invite = InviteToChat { user_id, chat_id };
-                    write_frame(w, invite.framed()).await?;
+                    Self::write_frame(w, globals, invite).await?;
                 }
             }
             Notification::ChatRoomJoin(ChatRoomPresence(room, user)) => {
                 let notify: NotifyChatUserChange = (room, &user.0).into();
-                write_frame(w, notify.framed()).await?;
+                Self::write_frame(w, globals, notify).await?;
             }
             Notification::ChatRoomLeave(ChatRoomLeave(room, user)) => {
                 let notify: NotifyChatUserDelete = (room, user).into();
-                write_frame(w, notify.framed().id(current_id)).await?;
+                Self::write_frame(w, globals, notify).await?;
             }
             Notification::ChatRoomSubjectUpdate(ChatRoomSubject(room, subject)) => {
                 let notification = NotifyChatSubject::from((room, subject.into()));
-                write_frame(w, notification.framed()).await?;
+                Self::write_frame(w, globals, notification).await?;
             }
         }
+        Ok(())
+    }
+    async fn write_frame<F: proto::IntoFrameExt>(
+        w: &mut W,
+        globals: &mut Globals,
+        f: F,
+    ) -> Result<()> {
+        let current_id = globals.next_transaction_id();
+        let framed = f.framed().id(current_id);
+        write_frame(w, framed).await?;
         Ok(())
     }
     async fn disconnect(&mut self) {
