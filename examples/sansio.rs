@@ -1,13 +1,13 @@
 use bytes::Buf;
 use deku::prelude::*;
-use genawaiter::{rc, GeneratorState};
+use derive_more::{AsMut, DerefMut};
+use genawaiter::{GeneratorState, rc};
 use neolith::protocol as proto;
 use std::{
-    ops::Deref,
     future::Future,
-    io::{self, prelude::*, Cursor},
+    io::{self, Cursor, prelude::*},
+    ops::Deref,
 };
-use derive_more::{AsMut, DerefMut};
 
 type ParseResponse<O> = (usize, Option<O>);
 trait Parser {
@@ -26,7 +26,7 @@ fn add_to_cursor<C: Buf + Write>(buf: &[u8], cursor: &mut C) -> usize {
 #[derive(Default)]
 pub struct HeaderParser(Cursor<[u8; Self::SIZE]>);
 impl HeaderParser {
-    const SIZE: usize = size_of::<<Self as Parser>::Output>();
+    const SIZE: usize = <Self as Parser>::Output::SIZE_BYTES.unwrap();
 }
 impl Parser for HeaderParser {
     type Output = proto::TransactionHeader;
@@ -46,7 +46,7 @@ impl Parser for HeaderParser {
 #[derive(Default)]
 pub struct ParameterCountParser(Cursor<[u8; Self::SIZE]>);
 impl ParameterCountParser {
-    const SIZE: usize = size_of::<<Self as Parser>::Output>();
+    const SIZE: usize = <<Self as Parser>::Output>::SIZE_BYTES.unwrap();
 }
 impl Parser for ParameterCountParser {
     type Output = u16;
@@ -65,7 +65,7 @@ impl Parser for ParameterCountParser {
 #[derive(Default)]
 pub struct FieldIdParser(Cursor<[u8; Self::SIZE]>);
 impl FieldIdParser {
-    const SIZE: usize = size_of::<<Self as Parser>::Output>();
+    const SIZE: usize = <<Self as Parser>::Output>::SIZE_BYTES.unwrap();
 }
 impl Parser for FieldIdParser {
     type Output = proto::FieldId;
@@ -85,7 +85,7 @@ impl Parser for FieldIdParser {
 #[derive(Default)]
 pub struct FieldSizeParser(Cursor<[u8; Self::SIZE]>);
 impl FieldSizeParser {
-    const SIZE: usize = size_of::<<Self as Parser>::Output>();
+    const SIZE: usize = <<Self as Parser>::Output>::SIZE_BYTES.unwrap();
 }
 impl Parser for FieldSizeParser {
     type Output = u16;
@@ -156,6 +156,7 @@ struct TransactionParser {
     current_param: proto::Parameter,
     params: Vec<proto::Parameter>,
 }
+
 impl Default for TransactionParser {
     fn default() -> Self {
         Self {
@@ -171,6 +172,7 @@ impl Default for TransactionParser {
         }
     }
 }
+
 impl Parser for TransactionParser {
     type Output = proto::TransactionFrame;
     fn parse(&mut self, buf: &[u8]) -> ParseResponse<Self::Output> {
