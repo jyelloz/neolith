@@ -1131,6 +1131,7 @@ impl From<SendInstantMessage> for TransactionFrame {
     }
 }
 
+#[derive(Debug)]
 pub struct SendInstantMessageReply;
 
 impl TryFrom<TransactionFrame> for SendInstantMessageReply {
