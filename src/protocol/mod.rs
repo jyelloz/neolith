@@ -1310,7 +1310,7 @@ pub struct JoinChatReply {
 impl TryFrom<TransactionFrame> for JoinChatReply {
     type Error = ProtocolError;
     fn try_from(frame: TransactionFrame) -> Result<Self, Self::Error> {
-        let frame = frame.require_transaction_type(TransactionType::JoinChat)?;
+        let frame = frame.require_transaction_type(TransactionType::Reply)?;
         let TransactionFrame { body, .. } = frame;
 
         let subject = body
