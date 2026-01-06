@@ -352,6 +352,9 @@ impl TransactionFrame {
         self.header.id = id;
         self
     }
+    pub fn transaction_type(&self) -> Result<TransactionType, ProtocolError> {
+        self.header.transaction_type()
+    }
     pub fn is_reply(&self) -> bool {
         self.header.is_reply.is_reply()
     }
