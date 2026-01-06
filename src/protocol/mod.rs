@@ -90,7 +90,7 @@ pub use transaction::{
     DataSize, FieldId, Flags, Id, IntoFrameExt, IsReply, Parameter, TotalSize, TransactionBody,
     TransactionFrame, TransactionHeader, Type,
 };
-use transaction_field::TransactionField;
+pub use transaction_field::TransactionField;
 pub use transaction_type::TransactionType;
 
 #[derive(Debug, Default, PartialEq, Eq, PartialOrd, Ord)]
