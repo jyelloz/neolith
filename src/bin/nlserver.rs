@@ -1,4 +1,4 @@
-use anyhow::{anyhow, bail};
+use anyhow::bail;
 use derive_more::Into;
 use encoding_rs::MACINTOSH;
 use futures::stream::TryStreamExt;
@@ -15,30 +15,27 @@ type Result<T> = anyhow::Result<T>;
 
 use neolith::{
     protocol::{
-        self as proto, ChatId, ChatSubject, ClientHandshakeRequest, ConnectionKeepAlive,
-        DownloadInfo, GenericReply, GetUser, GetUserReply, HotlineProtocol, IntoFrameExt as _,
-        InviteToChat, InviteToNewChat, InviteToNewChatReply, JoinChat, JoinChatReply, LeaveChat,
+        self as proto, ChatId, ClientHandshakeRequest, ConnectionKeepAlive, DownloadInfo,
+        GenericReply, GetUser, GetUserReply, HotlineProtocol, IntoFrameExt as _, InviteToChat,
         LoginReply, LoginRequest, NotifyChatSubject, NotifyChatUserChange, NotifyChatUserDelete,
         NotifyNewsMessage, NotifyUserChange, NotifyUserDelete, Password, ProtocolVersion,
-        SendBroadcast, SendInstantMessage, SendInstantMessageReply, ServerHandshakeReply,
-        ServerMessage, SetChatSubject, SetClientUserInfo, TransactionFrame, UserId,
+        ServerHandshakeReply, ServerMessage, SetClientUserInfo, TransactionFrame, UserId,
         UserNameWithInfo,
     },
     server::{
-        application::UserAccountPermissions, files::OsFiles, users::UserAccounts, ChatRoomLeave,
-        ClientRequest, NeolithServer,
+        ChatRoomLeave, ClientRequest, NeolithServer, application::UserAccountPermissions,
+        files::OsFiles, users::UserAccounts,
     },
 };
 
 use neolith::server::{
+    ChatRoomInvite, ChatRoomPresence, ChatRoomSubject, Event, InstantMessage, ServerEvents, User,
     bus::{Bus, Notification},
     chat::{Chats, ChatsService},
     news::{News, NewsService},
     transaction_stream::Frames,
     transfers::{Requests, TransferConnection, TransfersService},
     users::{Users, UsersService},
-    Broadcast, ChatRoomInvite, ChatRoomPresence, ChatRoomSubject, Event, InstantMessage,
-    ServerEvents, User,
 };
 
 #[derive(Debug, Clone)]
@@ -61,10 +58,6 @@ impl Globals {
     fn user(&self) -> Option<UserNameWithInfo> {
         self.user_id.and_then(|id| self.user_find(id))
     }
-    fn require_user(&self) -> Result<UserNameWithInfo> {
-        let user = self.user().ok_or(anyhow!("user unavailable"))?;
-        Ok(user)
-    }
     fn user_find(&self, id: UserId) -> Option<UserNameWithInfo> {
         self.users.borrow().find(id).cloned()
     }
@@ -82,14 +75,6 @@ impl Globals {
             .await
             .expect("failed to remove user");
     }
-    fn chat_get_subject(&self, chat_id: ChatId) -> Option<ChatSubject> {
-        let chats = self.chats.borrow();
-        chats
-            .room(chat_id)
-            .cloned()
-            .and_then(|room| room.subject)
-            .map(ChatSubject::from)
-    }
     fn chat_list(&self, chat_id: ChatId) -> Vec<UserNameWithInfo> {
         let users = self.users.borrow();
         let chats = self.chats.borrow();
@@ -102,39 +87,6 @@ impl Globals {
             .cloned()
             .collect()
     }
-    async fn chat_create(&mut self, creator: UserId, users: Vec<UserId>) -> ChatId {
-        let chat_id = self
-            .chats_tx
-            .create(vec![creator].into())
-            .await
-            .expect("failed to create chat room");
-        let users = users.into_iter().filter(|user| creator != *user);
-        for user in users {
-            self.bus
-                .publish(Notification::ChatRoomInvite((chat_id, user).into()));
-        }
-        chat_id
-    }
-    async fn chat_invite(&mut self, chat_id: ChatId, user: UserId) {
-        self.bus
-            .publish(Notification::ChatRoomInvite((chat_id, user).into()));
-    }
-    async fn chat_join(&mut self, chat: ChatId, user: &UserNameWithInfo) {
-        let presence = ChatRoomPresence::from((chat, user.clone().into()));
-        self.chats_tx
-            .join(presence.clone())
-            .await
-            .expect("failed to join chat room");
-        self.bus.publish(Notification::ChatRoomJoin(presence));
-    }
-    async fn chat_leave(&mut self, chat: ChatId, user: &UserNameWithInfo) {
-        let leave = ChatRoomLeave::from((chat, user.user_id));
-        self.chats_tx
-            .leave((chat, user.clone().into()).into())
-            .await
-            .expect("failed to leave chat room");
-        self.bus.publish(Notification::ChatRoomLeave(leave));
-    }
     async fn chat_remove(&mut self, user: &UserNameWithInfo) {
         let chats = self
             .chats_tx
@@ -146,23 +98,6 @@ impl Globals {
             debug!("chat remove {leave:?}");
             self.bus.publish(Notification::ChatRoomLeave(leave));
         }
-    }
-    async fn chat_subject_change(&mut self, chat: ChatId, subject: Vec<u8>) {
-        let update = ChatRoomSubject::from((chat, subject));
-        self.chats_tx
-            .change_subject(update.clone())
-            .await
-            .expect("failed to update chat subject");
-        self.bus
-            .publish(Notification::ChatRoomSubjectUpdate(update));
-    }
-    fn instant_message(&mut self, message: InstantMessage) {
-        let message = Notification::InstantMessage(message);
-        self.bus.publish(message);
-    }
-    fn server_broadcast(&mut self, broadcast: Broadcast) {
-        let broadcast = Notification::Broadcast(broadcast);
-        self.bus.publish(broadcast);
     }
     fn next_transaction_id(&mut self) -> proto::Id {
         let id = self.transaction_id;
@@ -497,84 +432,6 @@ impl<R: AsyncRead + Unpin, W: AsyncWrite + Unpin> Established<R, W> {
                 .handle_client(req)
                 .await?
                 .map(|r| r.reply_to(&header))
-        } else if let Ok(req) = SendInstantMessage::try_from(frame.clone()) {
-            let SendInstantMessage { user_id, message } = req;
-            let user = globals.user();
-            let to = globals.user_find(user_id);
-            if let (Some(from), Some(to)) = (user, to) {
-                let from = from.into();
-                let to = to.into();
-                let message = InstantMessage { from, to, message };
-                globals.instant_message(message);
-            }
-            Some(SendInstantMessageReply.reply_to(&header))
-        } else if let Ok(req) = SendBroadcast::try_from(frame.clone()) {
-            globals.server_broadcast(req.message.into());
-            Some(GenericReply.reply_to(&header))
-        } else if let Ok(req) = InviteToNewChat::try_from(frame.clone()) {
-            let user = globals.require_user()?.clone();
-            let users = {
-                let mut users: Vec<UserId> = req.into();
-                users.push(user.user_id);
-                users
-            };
-            debug!("users {:?}, ", &users);
-            let chat_id = globals.chat_create(user.user_id, users).await;
-            debug!("created {:?}, ", &chat_id);
-            let reply = InviteToNewChatReply {
-                chat_id,
-                user_id: user.user_id,
-                icon_id: user.icon_id,
-                user_name: user.username,
-                flags: user.user_flags,
-            }
-            .reply_to(&header);
-            Some(reply)
-        } else if let Ok(req) = InviteToChat::try_from(frame.clone()) {
-            debug!("invite: {:?}", &req);
-            let user = globals.require_user()?.clone();
-            let InviteToChat { chat_id, user_id } = req;
-            let reply = InviteToNewChatReply {
-                chat_id,
-                user_id,
-                icon_id: user.icon_id,
-                user_name: user.username,
-                flags: user.user_flags,
-            }
-            .reply_to(&header);
-            globals.chat_invite(chat_id, user_id).await;
-            Some(reply)
-        } else if let Ok(req) = JoinChat::try_from(frame.clone()) {
-            debug!("join: {:?}", &req);
-            let chat_id: ChatId = req.into();
-            let user = globals.require_user()?;
-            let subject = globals.chat_get_subject(chat_id);
-            globals.chat_join(chat_id, &user).await;
-            let users = globals.chat_list(chat_id);
-            let reply = JoinChatReply::from((subject, users)).reply_to(&header);
-            Some(reply)
-        } else if let Ok(req) = LeaveChat::try_from(frame.clone()) {
-            debug!("leave: {:?}", &req);
-            let user = globals.require_user()?;
-            globals.chat_leave(req.into(), &user).await;
-            None
-        } else if let Ok(req) = SetChatSubject::try_from(frame.clone()) {
-            debug!("set chat subject: {req:?}");
-            let (chat_id, subject) = req.into();
-            globals.chat_subject_change(chat_id, subject.into()).await;
-            None
-        } else if let Ok(req) = GetUser::try_from(frame.clone()) {
-            let GetUser(login) = req;
-            let login = login.invert();
-            let access: i64 = UserAccountPermissions::default().into();
-            let reply = GetUserReply {
-                username: "test user".try_into()?,
-                user_login: login,
-                user_access: access.into(),
-                user_password: Password::from_cleartext("password".as_bytes()),
-            }
-            .reply_to(&header);
-            Some(reply)
         } else if ConnectionKeepAlive::try_from(frame.clone()).is_ok() {
             debug!("keep alive");
             Some(GenericReply.reply_to(&header))
