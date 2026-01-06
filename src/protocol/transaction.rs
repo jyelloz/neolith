@@ -135,15 +135,15 @@ impl From<TransactionType> for TransactionHeader {
     }
 }
 
-#[derive(Debug, Clone, Copy, From, Into, DekuRead, DekuWrite)]
+#[derive(Clone, Copy, From, Into, DekuRead, DekuWrite, DekuSize)]
 #[deku(endian = "big")]
 pub struct FieldId(i16);
 
-#[derive(Debug, Clone, Copy, From, Into, DekuRead, DekuWrite)]
+#[derive(Debug, Clone, Copy, From, Into, DekuRead, DekuWrite, DekuSize)]
 #[deku(endian = "big")]
 struct FieldSize(i16);
 
-#[derive(Debug, Clone, Copy, From, Into, DekuRead, DekuWrite)]
+#[derive(Debug, Clone, Copy, From, Into, DekuRead, DekuWrite, DekuSize)]
 #[deku(endian = "big")]
 struct ParameterCount(i16);
 
@@ -313,7 +313,7 @@ impl From<Vec<Parameter>> for TransactionBody {
     }
 }
 
-#[derive(Debug, Clone, DekuRead, DekuWrite)]
+#[derive(Debug, Default, Clone, DekuRead, DekuWrite)]
 pub struct TransactionFrame {
     #[deku(update = "{
         self.header.update_sizes(self.body.compute_length());
