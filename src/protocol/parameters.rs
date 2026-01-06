@@ -1,6 +1,6 @@
 use super::{
-    date::DateParameter, transaction::Parameter, transaction_field::TransactionField,
-    HotlineProtocol, ProtocolError,
+    HotlineProtocol, ProtocolError, date::DateParameter, transaction::Parameter,
+    transaction_field::TransactionField,
 };
 use deku::prelude::*;
 use derive_more::{Display, From, Into};
@@ -652,7 +652,7 @@ impl From<FileType> for Parameter {
 
 impl From<crate::apple::FileType> for FileType {
     fn from(value: crate::apple::FileType) -> Self {
-        Self(value.0 .0)
+        Self(value.0.0)
     }
 }
 
@@ -661,7 +661,7 @@ pub struct Creator(pub [u8; 4]);
 
 impl From<crate::apple::Creator> for Creator {
     fn from(value: crate::apple::Creator) -> Self {
-        Self(value.0 .0)
+        Self(value.0.0)
     }
 }
 
