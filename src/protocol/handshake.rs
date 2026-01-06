@@ -3,12 +3,11 @@ use deku::prelude::*;
 
 use derive_more::{From, Into};
 
-#[derive(Debug, PartialEq, Eq, PartialOrd, Ord, From, Into, DekuRead, DekuWrite)]
+#[derive(Debug, PartialEq, Eq, PartialOrd, Ord, From, Into, DekuRead, DekuWrite, DekuSize)]
 #[deku(endian = "big")]
 pub struct ProtocolId(u32);
 
-#[derive(Debug, PartialEq, Eq, PartialOrd, Ord, From, Into, DekuRead, DekuWrite)]
-#[deku(endian = "big")]
+#[derive(Debug, PartialEq, Eq, PartialOrd, Ord, From, Into, DekuRead, DekuWrite, DekuSize)]
 pub struct SubProtocolId([u8; 4]);
 
 impl Default for SubProtocolId {
@@ -17,7 +16,7 @@ impl Default for SubProtocolId {
     }
 }
 
-#[derive(Debug, PartialEq, Eq, PartialOrd, Ord, From, Into, DekuRead, DekuWrite)]
+#[derive(Debug, PartialEq, Eq, PartialOrd, Ord, From, Into, DekuRead, DekuWrite, DekuSize)]
 #[deku(endian = "big")]
 pub struct Version(pub u16);
 
@@ -27,7 +26,7 @@ impl Default for Version {
     }
 }
 
-#[derive(Debug, PartialEq, Eq, PartialOrd, Ord, From, Into, DekuRead, DekuWrite)]
+#[derive(Debug, PartialEq, Eq, PartialOrd, Ord, From, Into, DekuRead, DekuWrite, DekuSize)]
 #[deku(endian = "big")]
 pub struct SubVersion(pub u16);
 
@@ -43,6 +42,11 @@ pub struct ClientHandshakeRequest {
     pub sub_protocol_id: SubProtocolId,
     pub version: Version,
     pub sub_version: SubVersion,
+}
+
+impl DekuSize for ClientHandshakeRequest {
+    const SIZE_BITS: usize =
+        SubProtocolId::SIZE_BITS + Version::SIZE_BITS + SubVersion::SIZE_BITS + 32;
 }
 
 #[derive(Debug, DekuRead, DekuWrite)]
