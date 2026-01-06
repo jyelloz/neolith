@@ -13,7 +13,7 @@ use crate::protocol::{
 };
 use derive_more::{From, Into};
 use encoding_rs::MACINTOSH;
-use futures::stream::{select, Stream, StreamExt as _, TryStreamExt as _};
+use futures::stream::{Stream, StreamExt as _, TryStreamExt as _, select};
 use std::path::PathBuf;
 use thiserror::Error;
 use tokio::{
@@ -83,7 +83,7 @@ impl From<User> for UserId {
 pub struct ChatRoomSubject(pub ChatId, pub Vec<u8>);
 
 #[derive(Debug, Clone, From, Into)]
-pub struct ChatRoomCreationRequest(pub Vec<UserId>);
+pub struct ChatRoomCreationRequest(pub UserId, pub Vec<UserId>);
 
 #[derive(Debug, Clone, From, Into)]
 pub struct ChatRoomPresence(pub ChatId, pub User);
@@ -199,6 +199,13 @@ pub enum ClientRequest {
     SetClientUserInfo(proto::SetClientUserInfo),
     DisconnectUser(proto::DisconnectUser),
     SendChat(proto::SendChat),
+    SendInstantMessage(proto::SendInstantMessage),
+    InviteToNewChat(proto::InviteToNewChat),
+    InviteToChat(proto::InviteToChat),
+    JoinChat(proto::JoinChat),
+    LeaveChat(proto::LeaveChat),
+    RejectChatInfo(proto::RejectChatInvite),
+    SetChatSubject(proto::SetChatSubject),
     DownloadFile(proto::DownloadFile),
     UploadFile(proto::UploadFile),
     DeleteFile(proto::DeleteFile),
@@ -227,6 +234,9 @@ pub enum ServerResponse {
     DeleteFileReply(proto::DeleteFileReply),
     MoveFileReply(proto::MoveFileReply),
     GetUserReply(proto::GetUserReply),
+    SendInstantMessageReply,
+    JoinChatReply(proto::JoinChatReply),
+    InviteToNewChatReply(proto::InviteToNewChatReply),
     SendBroadcastReply,
     SetUserReply,
     NewUserReply,
@@ -268,6 +278,9 @@ impl From<ServerResponse> for TransactionFrame {
             ServerResponse::NewUserReply => GenericReply.into(),
             ServerResponse::DeleteUserReply => GenericReply.into(),
             ServerResponse::SendBroadcastReply => GenericReply.into(),
+            ServerResponse::SendInstantMessageReply => GenericReply.into(),
+            ServerResponse::JoinChatReply(reply) => reply.into(),
+            ServerResponse::InviteToNewChatReply(reply) => reply.into(),
         }
     }
 }
@@ -299,73 +312,98 @@ pub enum ClientResponse {
 }
 
 impl TryFrom<TransactionFrame> for ClientRequest {
-    type Error = anyhow::Error;
+    type Error = proto::ProtocolError;
 
     fn try_from(frame: TransactionFrame) -> Result<Self, Self::Error> {
-        if let Ok(req) = proto::GetMessages::try_from(frame.clone()) {
-            return Ok(req.into());
+        match frame.transaction_type()? {
+            proto::TransactionType::GetMessages => {
+                proto::GetMessages::try_from(frame).map(Into::into)
+            }
+            proto::TransactionType::PostNewsArticle => {
+                proto::PostNews::try_from(frame).map(Into::into)
+            }
+            proto::TransactionType::GetFileNameList => {
+                proto::GetFileNameList::try_from(frame).map(Into::into)
+            }
+            proto::TransactionType::Reply => todo!(),
+            proto::TransactionType::Error => todo!(),
+            proto::TransactionType::OldPostNews => proto::PostNews::try_from(frame).map(Into::into),
+            proto::TransactionType::SendChat => proto::SendChat::try_from(frame).map(Into::into),
+            proto::TransactionType::Login => todo!(),
+            proto::TransactionType::SendInstantMessage => {
+                proto::SendInstantMessage::try_from(frame).map(Into::into)
+            }
+            proto::TransactionType::DisconnectUser => {
+                proto::DisconnectUser::try_from(frame).map(Into::into)
+            }
+            proto::TransactionType::InviteToNewChat => {
+                proto::InviteToNewChat::try_from(frame).map(Into::into)
+            }
+            proto::TransactionType::InviteToChat => {
+                proto::InviteToChat::try_from(frame).map(Into::into)
+            }
+            proto::TransactionType::RejectChatInvite => {
+                proto::RejectChatInvite::try_from(frame).map(Into::into)
+            }
+            proto::TransactionType::JoinChat => proto::JoinChat::try_from(frame).map(Into::into),
+            proto::TransactionType::LeaveChat => proto::LeaveChat::try_from(frame).map(Into::into),
+            proto::TransactionType::SetChatSubject => {
+                proto::SetChatSubject::try_from(frame).map(Into::into)
+            }
+            proto::TransactionType::Agreed => todo!(),
+            proto::TransactionType::DownloadFile => {
+                proto::DownloadFile::try_from(frame).map(Into::into)
+            }
+            proto::TransactionType::UploadFile => {
+                proto::UploadFile::try_from(frame).map(Into::into)
+            }
+            proto::TransactionType::DeleteFile => {
+                proto::DeleteFile::try_from(frame).map(Into::into)
+            }
+            proto::TransactionType::NewFolder => proto::NewFolder::try_from(frame).map(Into::into),
+            proto::TransactionType::GetFileInfo => {
+                proto::GetFileInfo::try_from(frame).map(Into::into)
+            }
+            proto::TransactionType::SetFileInfo => {
+                proto::SetFileInfo::try_from(frame).map(Into::into)
+            }
+            proto::TransactionType::MoveFile => proto::MoveFile::try_from(frame).map(Into::into),
+            proto::TransactionType::MakeFileAlias => {
+                proto::MakeFileAlias::try_from(frame).map(Into::into)
+            }
+            proto::TransactionType::DownloadFolder => todo!(),
+            proto::TransactionType::DownloadBanner => todo!(),
+            proto::TransactionType::UploadFolder => todo!(),
+            proto::TransactionType::GetUserNameList => {
+                proto::GetUserNameList::try_from(frame).map(Into::into)
+            }
+            proto::TransactionType::GetClientInfoText => {
+                proto::GetClientInfoText::try_from(frame).map(Into::into)
+            }
+            proto::TransactionType::SetClientUserInfo => {
+                proto::SetClientUserInfo::try_from(frame).map(Into::into)
+            }
+            proto::TransactionType::NewUser => proto::NewUser::try_from(frame).map(Into::into),
+            proto::TransactionType::DeleteUser => {
+                proto::DeleteUser::try_from(frame).map(Into::into)
+            }
+            proto::TransactionType::GetUser => proto::GetUser::try_from(frame).map(Into::into),
+            proto::TransactionType::SetUser => proto::SetUser::try_from(frame).map(Into::into),
+            proto::TransactionType::UserBroadcast => {
+                proto::SendBroadcast::try_from(frame).map(Into::into)
+            }
+            proto::TransactionType::GetNewsCategoryNameList => todo!(),
+            proto::TransactionType::GetNewsArticleNameList => todo!(),
+            proto::TransactionType::DeleteNewsItem => todo!(),
+            proto::TransactionType::NewNewsFolder => todo!(),
+            proto::TransactionType::NewNewsCategory => todo!(),
+            proto::TransactionType::GetNewsArticleData => todo!(),
+            proto::TransactionType::DeleteNewsArticle => todo!(),
+            proto::TransactionType::ConnectionKeepAlive => todo!(),
+            _ => Err(proto::ProtocolError::UnsupportedTransaction(
+                frame.header.type_.into(),
+            )),
         }
-        if let Ok(req) = proto::PostNews::try_from(frame.clone()) {
-            return Ok(req.into());
-        }
-        if let Ok(req) = proto::GetFileNameList::try_from(frame.clone()) {
-            return Ok(req.into());
-        }
-        if let Ok(req) = proto::GetFileInfo::try_from(frame.clone()) {
-            return Ok(req.into());
-        }
-        if let Ok(req) = proto::SetFileInfo::try_from(frame.clone()) {
-            return Ok(req.into());
-        }
-        if let Ok(req) = proto::GetUserNameList::try_from(frame.clone()) {
-            return Ok(req.into());
-        }
-        if let Ok(req) = proto::GetClientInfoText::try_from(frame.clone()) {
-            return Ok(req.into());
-        }
-        if let Ok(req) = proto::SetClientUserInfo::try_from(frame.clone()) {
-            return Ok(req.into());
-        }
-        if let Ok(req) = proto::DisconnectUser::try_from(frame.clone()) {
-            return Ok(req.into());
-        }
-        if let Ok(req) = proto::SendChat::try_from(frame.clone()) {
-            return Ok(req.into());
-        }
-        if let Ok(req) = proto::DownloadFile::try_from(frame.clone()) {
-            return Ok(req.into());
-        }
-        if let Ok(req) = proto::UploadFile::try_from(frame.clone()) {
-            return Ok(req.into());
-        }
-        if let Ok(req) = proto::MoveFile::try_from(frame.clone()) {
-            return Ok(req.into());
-        }
-        if let Ok(req) = proto::DeleteFile::try_from(frame.clone()) {
-            return Ok(req.into());
-        }
-        if let Ok(req) = proto::NewFolder::try_from(frame.clone()) {
-            return Ok(req.into());
-        }
-        if let Ok(req) = proto::MakeFileAlias::try_from(frame.clone()) {
-            return Ok(req.into());
-        }
-        if let Ok(req) = proto::NewUser::try_from(frame.clone()) {
-            return Ok(req.into());
-        }
-        if let Ok(req) = proto::DeleteUser::try_from(frame.clone()) {
-            return Ok(req.into());
-        }
-        if let Ok(req) = proto::GetUser::try_from(frame.clone()) {
-            return Ok(req.into());
-        }
-        if let Ok(req) = proto::SetUser::try_from(frame.clone()) {
-            return Ok(req.into());
-        }
-        if let Ok(req) = proto::SendBroadcast::try_from(frame.clone()) {
-            return Ok(req.into());
-        }
-        anyhow::bail!("invalid request")
     }
 }
 
@@ -422,7 +460,7 @@ impl NeolithServer {
         span.record("user_id", format!("{}", i16::from(user.user_id)));
         span.record("nick", format!("{}", user.username));
         match request.into() {
-            ClientRequest::GetUserNameList(_) => Ok(Some(self.get_users().await.into())),
+            ClientRequest::GetUserNameList(_) => Ok(Some(self.get_users().into())),
             ClientRequest::GetMessages(_) => Ok(Some(self.get_news().await.into())),
             ClientRequest::PostNews(req) => self.post_news(req.0).await.into(),
             ClientRequest::GetFileNameList(req) => {
@@ -437,9 +475,7 @@ impl NeolithServer {
                 self.set_user_info(req.username, req.icon_id).await?;
                 Ok(None)
             }
-            ClientRequest::GetClientInfoText(req) => {
-                self.get_user_info_text(req.user_id).await.map(Some)
-            }
+            ClientRequest::GetClientInfoText(req) => self.get_user_info_text(req.user_id).map(Some),
             ClientRequest::SendChat(req) => {
                 let proto::SendChat {
                     options,
@@ -452,6 +488,15 @@ impl NeolithServer {
                     self.send_chat(options, message).await?;
                 }
                 Ok(None)
+            }
+            ClientRequest::SendInstantMessage(proto::SendInstantMessage { user_id, message }) => {
+                let from = user.clone().into();
+                let to = self.get_user(user_id).map(Into::into);
+                if let Some(to) = to {
+                    let message = InstantMessage { from, to, message };
+                    self.instant_message(message).await?;
+                }
+                Ok(Some(ServerResponse::SendInstantMessageReply))
             }
             ClientRequest::DownloadFile(req) => self
                 .file_download(req.file_path, req.filename)
@@ -477,14 +522,81 @@ impl NeolithServer {
                 self.send_broadcast(b.message).await?;
                 Ok(Some(ServerResponse::SendBroadcastReply))
             }
+            ClientRequest::InviteToNewChat(req) => {
+                let users: Vec<proto::UserId> = req.into();
+                let user_id = user.user_id;
+                let chat_id = self
+                    .chats_tx
+                    .create((user_id, users).into())
+                    .await
+                    .expect("failed to create chat room");
+                let reply = proto::InviteToNewChatReply {
+                    chat_id,
+                    user_id,
+                    icon_id: user.icon_id,
+                    user_name: user.username,
+                    flags: user.user_flags,
+                };
+                Ok(Some(ServerResponse::InviteToNewChatReply(reply)))
+            }
+            ClientRequest::InviteToChat(proto::InviteToChat { user_id, chat_id }) => {
+                self.chats_tx
+                    .invite((chat_id, user_id).into())
+                    .await
+                    .expect("failed to invite user");
+                Ok(None)
+            }
+            ClientRequest::JoinChat(req) => {
+                let chat_id = ChatId::from(req);
+                let Some(chat_room) = self.get_chat_room(chat_id) else {
+                    return Ok(Some(ServerResponse::Rejected(Some(
+                        "invalid chat".to_string(),
+                    ))));
+                };
+                let subject = chat_room.subject.clone().map(proto::ChatSubject::from);
+                let users = chat_room.users();
+                let users = users
+                    .into_iter()
+                    .map(|id| self.get_user(id))
+                    .flat_map(Option::into_iter)
+                    .collect::<Vec<_>>();
+                self.join_chat(chat_id, user).await;
+                let reply = proto::JoinChatReply::from((subject, users));
+
+                Ok(Some(ServerResponse::JoinChatReply(reply)))
+            }
+            ClientRequest::LeaveChat(req) => {
+                let chat_id = ChatId::from(req);
+                if self.get_chat_room(chat_id).is_none() {
+                    return Ok(Some(ServerResponse::Rejected(Some(
+                        "invalid chat".to_string(),
+                    ))));
+                }
+                self.leave_chat(chat_id, user.user_id).await;
+
+                Ok(None)
+            }
+            ClientRequest::SetChatSubject(req) => {
+                let (chat, subject) = req.into();
+                let update = ChatRoomSubject(chat, subject.into());
+                self.chats_tx
+                    .change_subject(update)
+                    .await
+                    .expect("failed to update chat subject");
+                Ok(None)
+            }
             _ => Ok(Some(ServerResponse::Rejected(Some("todo".to_string())))),
         }
     }
-    async fn get_users(&self) -> proto::GetUserNameListReply {
+    fn get_users(&self) -> proto::GetUserNameListReply {
         let users = self.users.borrow().to_vec();
         proto::GetUserNameListReply::with_users(users)
     }
-    async fn get_user_info_text(&self, user_id: proto::UserId) -> ServerResult<ServerResponse> {
+    fn get_user(&self, id: proto::UserId) -> Option<UserNameWithInfo> {
+        let users = self.users.borrow();
+        users.find(id).cloned()
+    }
+    fn get_user_info_text(&self, user_id: proto::UserId) -> ServerResult<ServerResponse> {
         let users = self.users.borrow();
         let user = users
             .find(user_id)
@@ -593,6 +705,10 @@ impl NeolithServer {
         }
         Ok(())
     }
+    fn get_chat_room(&mut self, id: ChatId) -> Option<chat::ChatRoom> {
+        let chats = self.chats.borrow();
+        chats.room(id).cloned()
+    }
     async fn send_chat(
         &mut self,
         _options: proto::ChatOptions,
@@ -618,8 +734,26 @@ impl NeolithServer {
         self.chats_tx.broadcast(Broadcast(message)).await?;
         Ok(())
     }
+    async fn instant_message(&mut self, message: InstantMessage) -> ServerResult<()> {
+        self.chats_tx.instant_message(message).await?;
+        Ok(())
+    }
     fn current_user(&self) -> Option<UserNameWithInfo> {
         self.users.borrow().find(self.user_id).cloned()
+    }
+    async fn join_chat(&mut self, chat: ChatId, user: UserNameWithInfo) {
+        let presence = ChatRoomPresence::from((chat, user.into()));
+        self.chats_tx
+            .join(presence)
+            .await
+            .expect("failed to join chat room");
+    }
+    async fn leave_chat(&mut self, chat: ChatId, user: UserId) {
+        let presence = ChatRoomLeave::from((chat, user));
+        self.chats_tx
+            .leave(presence)
+            .await
+            .expect("failed to leave chat room");
     }
     fn require_current_user(&self) -> ServerResult<UserNameWithInfo> {
         self.current_user()
