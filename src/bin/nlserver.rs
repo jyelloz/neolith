@@ -16,26 +16,22 @@ type Result<T> = anyhow::Result<T>;
 use neolith::{
     protocol::{
         self as proto, ChatId, ClientHandshakeRequest, ConnectionKeepAlive, DownloadInfo,
-        GenericReply, GetUser, GetUserReply, HotlineProtocol, IntoFrameExt as _, InviteToChat,
-        LoginReply, LoginRequest, NotifyChatSubject, NotifyChatUserChange, NotifyChatUserDelete,
-        NotifyNewsMessage, NotifyUserChange, NotifyUserDelete, Password, ProtocolVersion,
-        ServerHandshakeReply, ServerMessage, SetClientUserInfo, TransactionFrame, UserId,
-        UserNameWithInfo,
+        GenericReply, HotlineProtocol, IntoFrameExt as _, InviteToChat, LoginReply, LoginRequest,
+        NotifyChatSubject, NotifyChatUserChange, NotifyChatUserDelete, NotifyNewsMessage,
+        NotifyUserChange, NotifyUserDelete, ProtocolVersion, ServerHandshakeReply, ServerMessage,
+        SetClientUserInfo, TransactionFrame, UserId, UserNameWithInfo,
     },
     server::{
-        ChatRoomLeave, ClientRequest, NeolithServer, application::UserAccountPermissions,
-        files::OsFiles, users::UserAccounts,
+        ChatRoomInvite, ChatRoomLeave, ChatRoomPresence, ChatRoomSubject, ClientRequest, Event,
+        InstantMessage, NeolithServer, ServerEvents, User,
+        bus::{Bus, Notification},
+        chat::{Chats, ChatsService},
+        files::OsFiles,
+        news::{News, NewsService},
+        transaction_stream::Frames,
+        transfers::{Requests, TransferConnection, TransfersService},
+        users::{UserAccounts, Users, UsersService},
     },
-};
-
-use neolith::server::{
-    ChatRoomInvite, ChatRoomPresence, ChatRoomSubject, Event, InstantMessage, ServerEvents, User,
-    bus::{Bus, Notification},
-    chat::{Chats, ChatsService},
-    news::{News, NewsService},
-    transaction_stream::Frames,
-    transfers::{Requests, TransferConnection, TransfersService},
-    users::{Users, UsersService},
 };
 
 #[derive(Debug, Clone)]
