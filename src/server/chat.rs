@@ -1,8 +1,9 @@
 use crate::{
     protocol::{self as proto, ChatId, UserId},
     server::{
-        bus::Bus, Broadcast, ChatRoomCreationRequest, ChatRoomPresence, ChatRoomSubject,
-        InstantMessage,
+        Broadcast, ChatRoomCreationRequest, ChatRoomInvite, ChatRoomLeave, ChatRoomPresence,
+        ChatRoomSubject, InstantMessage,
+        bus::{Bus, Notification},
     },
 };
 
@@ -154,7 +155,7 @@ enum Command {
     Create(ChatRoomCreationRequest, oneshot::Sender<ChatId>),
     SubjectUpdate(ChatRoomSubject, oneshot::Sender<()>),
     UserJoin(ChatRoomPresence, oneshot::Sender<()>),
-    UserLeave(ChatRoomPresence, oneshot::Sender<()>),
+    UserLeave(ChatRoomLeave, oneshot::Sender<()>),
     UserLeaveAll(UserId, oneshot::Sender<Vec<ChatId>>),
 }
 
@@ -176,36 +177,46 @@ impl ChatsService {
     }
     pub async fn create(&mut self, request: ChatRoomCreationRequest) -> Result<ChatId> {
         let (tx, rx) = oneshot::channel();
-        self.0.send(Command::Create(request, tx)).await?;
+        let ChatRoomCreationRequest(_, users) = request.clone();
+        self.send(Command::Create(request, tx)).await?;
         let id = rx.await?;
+        for user in users {
+            self.publish(Notification::ChatRoomInvite((id, user).into()));
+        }
         Ok(id)
+    }
+    pub async fn invite(&mut self, request: ChatRoomInvite) -> Result<()> {
+        self.publish(Notification::ChatRoomInvite(request));
+        Ok(())
     }
     pub async fn join(&mut self, request: ChatRoomPresence) -> Result<()> {
         let (tx, rx) = oneshot::channel();
-        self.0.send(Command::UserJoin(request, tx)).await?;
+        self.send(Command::UserJoin(request.clone(), tx)).await?;
         rx.await?;
+        self.publish(Notification::ChatRoomJoin(request));
         Ok(())
     }
-    pub async fn leave(&mut self, request: ChatRoomPresence) -> Result<()> {
+    pub async fn leave(&mut self, request: ChatRoomLeave) -> Result<()> {
         let (tx, rx) = oneshot::channel();
-        self.0.send(Command::UserLeave(request, tx)).await?;
+        self.send(Command::UserLeave(request.clone(), tx)).await?;
         rx.await?;
+        self.publish(Notification::ChatRoomLeave(request));
         Ok(())
     }
     pub async fn change_subject(&mut self, request: ChatRoomSubject) -> Result<()> {
         let (tx, rx) = oneshot::channel();
-        self.0.send(Command::SubjectUpdate(request, tx)).await?;
+        self.send(Command::SubjectUpdate(request.clone(), tx))
+            .await?;
         rx.await?;
+        self.publish(Notification::ChatRoomSubjectUpdate(request));
         Ok(())
     }
     pub async fn chat(&mut self, chat: proto::ChatMessage) -> Result<()> {
-        let Self(_, bus) = self;
-        bus.publish(chat.into());
+        self.publish(chat.into());
         Ok(())
     }
     pub async fn broadcast(&mut self, message: Broadcast) -> Result<()> {
-        let Self(_, bus) = self;
-        bus.publish(message.into());
+        self.publish(message.into());
         Ok(())
     }
     pub async fn instant_message(&mut self, message: InstantMessage) -> Result<()> {
@@ -215,9 +226,18 @@ impl ChatsService {
     }
     pub async fn leave_all(&mut self, request: UserId) -> Result<Vec<ChatId>> {
         let (tx, rx) = oneshot::channel();
-        self.0.send(Command::UserLeaveAll(request, tx)).await?;
+        self.send(Command::UserLeaveAll(request, tx)).await?;
         let chats = rx.await?;
         Ok(chats)
+    }
+    async fn send(&mut self, command: Command) -> Result<()> {
+        let Self(tx, _) = self;
+        tx.send(command).await?;
+        Ok(())
+    }
+    fn publish(&mut self, notification: Notification) {
+        let Self(_, bus) = self;
+        bus.publish(notification);
     }
 }
 
@@ -241,8 +261,9 @@ impl ChatUpdateProcessor {
         while let Some(command) = queue.recv().await {
             debug!("handling update: {:?}", &command);
             match command {
-                Command::Create(users, tx) => {
-                    let id = chats.create(users.clone().into());
+                Command::Create(request, tx) => {
+                    let ChatRoomCreationRequest(creator, ..) = request;
+                    let id = chats.create(vec![creator].into());
                     if tx.send(id).is_err() {
                         Err(ChatError::ServiceUnavailable)?;
                     }
@@ -254,9 +275,9 @@ impl ChatUpdateProcessor {
                         Err(ChatError::ServiceUnavailable)?;
                     }
                 }
-                Command::UserLeave(presence, tx) => {
-                    let ChatRoomPresence(chat, user) = presence;
-                    chats.leave(chat, user.into());
+                Command::UserLeave(leave, tx) => {
+                    let ChatRoomLeave(chat, user) = leave;
+                    chats.leave(chat, user);
                     if tx.send(()).is_err() {
                         Err(ChatError::ServiceUnavailable)?;
                     }
