@@ -3,7 +3,7 @@ use deku::prelude::*;
 
 use std::time::SystemTime;
 
-use time::{ext::NumericalStdDuration as _, Date, Duration, OffsetDateTime, UtcOffset};
+use time::{Date, Duration, OffsetDateTime, UtcOffset, ext::NumericalStdDuration as _};
 
 #[derive(Debug, Default, Clone, Copy, PartialEq, Eq, DekuRead, DekuWrite)]
 #[deku(endian = "big")]
