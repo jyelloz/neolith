@@ -135,7 +135,7 @@ impl From<TransactionType> for TransactionHeader {
     }
 }
 
-#[derive(Clone, Copy, From, Into, DekuRead, DekuWrite, DekuSize)]
+#[derive(Debug, Clone, Copy, From, Into, DekuRead, DekuWrite, DekuSize)]
 #[deku(endian = "big")]
 pub struct FieldId(i16);
 
