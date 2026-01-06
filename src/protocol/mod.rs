@@ -1341,6 +1341,30 @@ impl From<JoinChatReply> for TransactionFrame {
 }
 
 #[derive(Debug, From, Into)]
+pub struct RejectChatInvite(ChatId);
+
+impl TryFrom<TransactionFrame> for RejectChatInvite {
+    type Error = ProtocolError;
+    fn try_from(frame: TransactionFrame) -> Result<Self, Self::Error> {
+        let frame = frame.require_transaction_type(TransactionType::RejectChatInvite)?;
+        let TransactionFrame { body, .. } = frame;
+        let chat_id = body
+            .require_field(TransactionField::ChatId)
+            .and_then(ChatId::try_from)?;
+        Ok(Self(chat_id))
+    }
+}
+
+impl From<RejectChatInvite> for TransactionFrame {
+    fn from(val: RejectChatInvite) -> Self {
+        let header = TransactionType::RejectChatInvite.into();
+        let RejectChatInvite(chat_id) = val;
+        let body = vec![chat_id.into()].into();
+        Self { header, body }
+    }
+}
+
+#[derive(Debug, From, Into)]
 pub struct LeaveChat(ChatId);
 
 impl TryFrom<TransactionFrame> for LeaveChat {
