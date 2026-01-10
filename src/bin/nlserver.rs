@@ -4,8 +4,7 @@ use encoding_rs::MACINTOSH;
 use futures::stream::TryStreamExt;
 use tokio::{
     io::{AsyncRead, AsyncReadExt as _, AsyncWrite, AsyncWriteExt as _},
-    net::TcpListener,
-    net::ToSocketAddrs,
+    net::{TcpListener, TcpStream, ToSocketAddrs},
     sync::watch,
 };
 use tracing::{debug, instrument, trace, warn};
@@ -29,7 +28,7 @@ use neolith::{
         files::OsFiles,
         news::{News, NewsService},
         transaction_stream::Frames,
-        transfers::{Requests, TransferConnection, TransfersService},
+        transfers::{TransferConnection, TransfersService},
         users::{UserAccounts, Users, UsersService},
     },
 };
@@ -43,7 +42,7 @@ struct Globals {
     users_tx: UsersService,
     chats_tx: ChatsService,
     news_tx: NewsService,
-    transfers_tx: TransfersService,
+    transfers_tx: TransfersService<TcpStream>,
     files: OsFiles,
     accounts: UserAccounts,
     bus: Bus,
@@ -155,12 +154,7 @@ async fn main() -> Result<()> {
         transaction_id: 0,
     };
 
-    tokio::spawn(transfers(
-        transfer_listener,
-        transfers_tx.clone(),
-        transfers_rx.subscribe(),
-        files.clone(),
-    ));
+    tokio::spawn(transfers(transfer_listener, transfers_tx.clone()));
     tokio::spawn(users_rx.run());
     tokio::spawn(chats_rx.run());
     tokio::spawn(news_rx.run());
@@ -177,21 +171,11 @@ async fn main() -> Result<()> {
     }
 }
 
-#[instrument]
-async fn transfers(
-    listener: TcpListener,
-    transfers_tx: TransfersService,
-    transfers: watch::Receiver<Requests>,
-    files: OsFiles,
-) -> Result<()> {
+#[instrument(skip(transfers_tx))]
+async fn transfers(listener: TcpListener, transfers_tx: TransfersService<TcpStream>) -> Result<()> {
     loop {
         let (socket, _addr) = listener.accept().await?;
-        let conn = TransferConnection::new(
-            socket,
-            files.clone(),
-            transfers_tx.clone(),
-            transfers.clone(),
-        );
+        let conn = TransferConnection::new(socket, transfers_tx.clone());
         tokio::spawn(conn.run());
     }
 }
