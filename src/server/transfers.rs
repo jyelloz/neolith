@@ -134,12 +134,12 @@ impl<TS> Requests<TS> {
 
 pub struct TransferConnection<S> {
     transfers: TransfersService<S>,
-    socket: S,
+    stream: S,
 }
 
 impl<TS: TransferStream + 'static> TransferConnection<TS> {
-    pub fn new(socket: TS, transfers: TransfersService<TS>) -> Self {
-        Self { socket, transfers }
+    pub fn new(stream: TS, transfers: TransfersService<TS>) -> Self {
+        Self { stream, transfers }
     }
     #[tracing::instrument(skip(self), fields(reference))]
     pub async fn run(mut self) -> TransferResult<()> {
@@ -151,15 +151,15 @@ impl<TS: TransferStream + 'static> TransferConnection<TS> {
         );
         let id = handshake.reference;
         if handshake.is_upload() {
-            self.transfers.start_upload(id, self.socket).await;
+            self.transfers.start_upload(id, self.stream).await;
         } else {
-            self.transfers.start_download(id, self.socket).await;
+            self.transfers.start_download(id, self.stream).await;
         }
         Ok(())
     }
     async fn read_handshake(&mut self) -> TransferResult<proto::TransferHandshake> {
         let mut buf = Box::pin(vec![0u8; 16]);
-        self.socket.read_exact(&mut buf).await?;
+        self.stream.read_exact(&mut buf).await?;
         let handshake = <proto::TransferHandshake as HotlineProtocol>::from_bytes(&buf[..])?;
         Ok(handshake)
     }
@@ -293,7 +293,7 @@ impl<TS: TransferStream + 'static> DownloadTransfer<TS> {
 }
 
 struct UploadTransfer<S> {
-    socket: S,
+    stream: S,
     path: PathBuf,
     files: OsFiles,
 }
@@ -312,10 +312,10 @@ impl<TS: TransferStream + 'static> UploadTransfer<TS> {
             match fork_header.fork_type {
                 proto::ForkType::Data => {
                     debug!("data fork {size} => {path:?}");
-                    let mut socket = self.socket.take(size);
+                    let mut stream = self.stream.take(size);
                     let mut file = self.files.write(&path, 0).await?;
-                    tokio::io::copy(&mut socket, &mut file).await?;
-                    self.socket = socket.into_inner();
+                    tokio::io::copy(&mut stream, &mut file).await?;
+                    self.stream = stream.into_inner();
                     debug!("copied data fork");
                 }
                 proto::ForkType::Resource => {
@@ -351,18 +351,18 @@ impl<TS: TransferStream + 'static> UploadTransfer<TS> {
 
                     let rsrc_path = Self::get_appledouble(&path);
                     debug!("rsrc fork {size} => {rsrc_path:?}");
-                    let mut socket = self.socket.take(size);
+                    let mut stream = self.stream.take(size);
                     let mut file = self.files.write(&rsrc_path, 0).await?;
                     file.write_all(hdr.to_bytes().unwrap().as_slice()).await?;
                     file.write_all(finf.to_bytes().unwrap().as_slice()).await?;
                     file.write_all(comment).await?;
-                    tokio::io::copy(&mut socket, &mut file).await?;
-                    self.socket = socket.into_inner();
+                    tokio::io::copy(&mut stream, &mut file).await?;
+                    self.stream = stream.into_inner();
                     debug!("copied rsrc fork");
                 }
                 fork => {
                     error!("ignoring {fork:?} fork");
-                    tokio::io::copy(&mut self.socket, &mut tokio::io::sink()).await?;
+                    tokio::io::copy(&mut self.stream, &mut tokio::io::sink()).await?;
                 }
             }
         }
@@ -370,7 +370,7 @@ impl<TS: TransferStream + 'static> UploadTransfer<TS> {
     }
     async fn read_file_header(&mut self) -> TransferResult<proto::FlattenedFileHeader> {
         let mut buf = [0u8; 24];
-        self.socket.read_exact(&mut buf).await?;
+        self.stream.read_exact(&mut buf).await?;
         match proto::FlattenedFileHeader::try_from(&buf[..]) {
             Ok(header) => Ok(header),
             _ => Err(proto::ProtocolError::ParseHeader.into()),
@@ -378,7 +378,7 @@ impl<TS: TransferStream + 'static> UploadTransfer<TS> {
     }
     async fn read_fork_header(&mut self) -> TransferResult<proto::ForkHeader> {
         let mut buf = [0u8; 16];
-        self.socket.read_exact(&mut buf).await?;
+        self.stream.read_exact(&mut buf).await?;
         match proto::ForkHeader::try_from(&buf[..]) {
             Ok(header) => Ok(header),
             _ => Err(proto::ProtocolError::ParseHeader.into()),
@@ -386,10 +386,10 @@ impl<TS: TransferStream + 'static> UploadTransfer<TS> {
     }
     async fn read_file_info(&mut self) -> TransferResult<proto::InfoFork> {
         let mut buf = vec![0u8; 72];
-        self.socket.read_exact(&mut buf[..72]).await?;
+        self.stream.read_exact(&mut buf[..72]).await?;
         let filename_len = i16::from_be_bytes([buf[70], buf[71]]) as usize;
         let mut filename = vec![0u8; filename_len + 2];
-        self.socket
+        self.stream
             .read_exact(&mut filename[..filename_len + 2])
             .await?;
         buf.extend(&filename);
@@ -397,7 +397,7 @@ impl<TS: TransferStream + 'static> UploadTransfer<TS> {
             i16::from_be_bytes([filename[filename_len], filename[filename_len + 1]]) as usize;
         if comment_len > 0 {
             let mut comment = vec![0u8; comment_len];
-            self.socket.read_exact(&mut comment[..comment_len]).await?;
+            self.stream.read_exact(&mut comment[..comment_len]).await?;
             buf.extend(&comment);
         }
         match proto::InfoFork::try_from(&buf[..]) {
@@ -482,14 +482,15 @@ impl<TS: TransferStream + 'static> TransfersUpdateProcessor<TS> {
         tokio::spawn(
             async move {
                 debug!("waiting for incoming connection");
-                let socket = rx.await.expect("failed to await socket");
-                let transfer = DownloadTransfer { stream: socket, file };
+                let stream = rx.await.expect("failed to await stream");
+                let transfer = DownloadTransfer { stream, file };
                 transfer.run().await
             }
             .instrument(info_span!("download", reference = i64::from(reference))),
         );
         Ok(reply)
     }
+    #[instrument(skip(self))]
     async fn handle_upload(
         &mut self,
         root: &Path,
@@ -503,9 +504,9 @@ impl<TS: TransferStream + 'static> TransfersUpdateProcessor<TS> {
         let path = path.to_path_buf();
         tokio::spawn(
             async move {
-                let socket = rx.await.expect("failed to await socket");
+                let stream = rx.await.expect("failed to await stream");
                 let transfer = UploadTransfer {
-                    socket,
+                    stream,
                     path,
                     files,
                 };
