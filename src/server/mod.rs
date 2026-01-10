@@ -18,7 +18,6 @@ use std::path::PathBuf;
 use thiserror::Error;
 use tokio::{
     io::AsyncRead,
-    net::TcpStream,
     sync::{
         broadcast::error::{RecvError, SendError},
         watch,
@@ -409,7 +408,7 @@ impl TryFrom<TransactionFrame> for ClientRequest {
 }
 
 #[derive(Debug)]
-pub struct NeolithServer {
+pub struct NeolithServer<TS: transfers::TransferStream> {
     user_id: proto::UserId,
     files: OsFiles,
     users: watch::Receiver<Users>,
@@ -418,13 +417,13 @@ pub struct NeolithServer {
     news_tx: NewsService,
     chats: watch::Receiver<Chats>,
     chats_tx: ChatsService,
-    transfers_tx: TransfersService<TcpStream>,
+    transfers_tx: TransfersService<TS>,
     accounts: UserAccounts,
 }
 
 type ServerResult<T> = anyhow::Result<T>;
 
-impl NeolithServer {
+impl <TS: transfers::TransferStream + 'static> NeolithServer<TS> {
     #[allow(clippy::too_many_arguments)]
     pub fn new(
         user_id: proto::UserId,
@@ -436,7 +435,7 @@ impl NeolithServer {
         news_tx: NewsService,
         chats: watch::Receiver<Chats>,
         chats_tx: ChatsService,
-        transfers_tx: TransfersService<TcpStream>,
+        transfers_tx: TransfersService<TS>,
     ) -> Self {
         Self {
             user_id,
