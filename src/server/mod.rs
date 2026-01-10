@@ -18,6 +18,7 @@ use std::path::PathBuf;
 use thiserror::Error;
 use tokio::{
     io::AsyncRead,
+    net::TcpStream,
     sync::{
         broadcast::error::{RecvError, SendError},
         watch,
@@ -417,7 +418,7 @@ pub struct NeolithServer {
     news_tx: NewsService,
     chats: watch::Receiver<Chats>,
     chats_tx: ChatsService,
-    transfers_tx: TransfersService,
+    transfers_tx: TransfersService<TcpStream>,
     accounts: UserAccounts,
 }
 
@@ -435,7 +436,7 @@ impl NeolithServer {
         news_tx: NewsService,
         chats: watch::Receiver<Chats>,
         chats_tx: ChatsService,
-        transfers_tx: TransfersService,
+        transfers_tx: TransfersService<TcpStream>,
     ) -> Self {
         Self {
             user_id,
