@@ -11,7 +11,7 @@ use std::{
     cell::RefCell,
     ffi::OsStr,
     fs::Metadata,
-    io::{self, prelude::*, ErrorKind, SeekFrom},
+    io::{self, ErrorKind, SeekFrom, prelude::*},
     path::{Component, Path, PathBuf},
     time::SystemTime,
 };
@@ -30,7 +30,7 @@ impl FileType {
         Self(b"fldr".into())
     }
     pub fn bytes(&self) -> &[u8; 4] {
-        &self.0 .0
+        &self.0.0
     }
 }
 
@@ -51,7 +51,7 @@ impl Creator {
         Self::default()
     }
     pub fn bytes(&self) -> &[u8; 4] {
-        &self.0 .0
+        &self.0.0
     }
 }
 
@@ -94,11 +94,7 @@ impl TryFrom<DirEntry> for proto::FileNameWithInfo {
             .and_then(OsStr::to_str)
             .and_then(|s| {
                 let (mac, _, errors) = MACINTOSH.encode(s);
-                if errors {
-                    None
-                } else {
-                    Some(mac.to_vec())
-                }
+                if errors { None } else { Some(mac.to_vec()) }
             })
             .ok_or::<Self::Error>(ErrorKind::InvalidData.into())?;
         let file_name_size = file_name.len() as i16;
@@ -306,8 +302,8 @@ impl OsFiles {
         let info = ExtendedMetadata {
             data_len: metadata.len(),
             rsrc_len,
-            file_type: FileType((&finf.file_type.0 .0).into()),
-            creator: Creator((&finf.creator.0 .0).into()),
+            file_type: FileType((&finf.file_type.0.0).into()),
+            creator: Creator((&finf.creator.0.0).into()),
             comment,
         };
         Ok(info)
