@@ -4,13 +4,14 @@ use std::{
     collections::HashMap,
     num::TryFromIntError,
     path::{Path, PathBuf},
+    sync::Arc,
 };
 use thiserror::Error;
 use tokio::{
     io::{self, AsyncRead, AsyncReadExt, AsyncWrite, AsyncWriteExt},
-    sync::{mpsc, oneshot, watch},
+    sync::{Mutex, mpsc, oneshot},
 };
-use tracing::{debug, error, warn};
+use tracing::{Instrument as _, debug, error, info_span, instrument};
 
 use crate::apple;
 use crate::protocol::{self as proto, HotlineProtocol, ReferenceNumber};
@@ -54,107 +55,105 @@ impl From<proto::UploadFileReply> for TransferReply {
     }
 }
 
-#[derive(Debug, Default, Clone)]
-pub struct Requests {
-    requests: HashMap<ReferenceNumber, Request>,
+pub trait TransferStream: AsyncRead + AsyncWrite + Send + Unpin + std::fmt::Debug {}
+
+impl<TS: AsyncRead + AsyncWrite + Send + Unpin + std::fmt::Debug> TransferStream for TS {}
+
+pub struct RequestsInner<TS> {
+    downloads: HashMap<ReferenceNumber, oneshot::Sender<TS>>,
+    uploads: HashMap<ReferenceNumber, oneshot::Sender<TS>>,
     next_id: u32,
 }
 
-impl Requests {
-    fn new() -> Self {
-        Self {
-            requests: Default::default(),
-            next_id: u32::MIN,
-        }
-    }
-    fn add_download(&mut self, root: PathBuf, path: PathBuf) -> ReferenceNumber {
-        let id = self.next_id();
-        self.requests
-            .insert(id, Request::FileDownload { root, path });
-        debug!("added transfer {id:?}, size={}", self.requests.len());
-        id
-    }
-    fn add_upload(&mut self, root: PathBuf, path: PathBuf) -> ReferenceNumber {
-        let id = self.next_id();
-        self.requests.insert(id, Request::FileUpload { root, path });
-        id
-    }
-    fn get(&self, id: ReferenceNumber) -> Option<&Request> {
-        self.requests.get(&id)
-    }
-    fn remove(&mut self, id: ReferenceNumber) {
-        self.requests.remove(&id);
-        warn!("removed transfer {id:?}, size={}", self.requests.len());
-    }
+impl<TS> RequestsInner<TS> {
     fn next_id(&mut self) -> ReferenceNumber {
         let id = self.next_id.into();
         self.next_id += 1;
         id
     }
+    fn get_download(&mut self, id: ReferenceNumber) -> Option<oneshot::Sender<TS>> {
+        self.downloads.remove(&id)
+    }
+    fn get_upload(&mut self, id: ReferenceNumber) -> Option<oneshot::Sender<TS>> {
+        self.uploads.remove(&id)
+    }
+    fn add_download(&mut self, conn: oneshot::Sender<TS>) -> ReferenceNumber {
+        let id = self.next_id();
+        self.downloads.insert(id, conn);
+        debug!("added download {id:?}, size={}", self.uploads.len());
+        id.into()
+    }
+    fn add_upload(&mut self, conn: oneshot::Sender<TS>) -> ReferenceNumber {
+        let id = self.next_id();
+        self.uploads.insert(id, conn);
+        debug!("added upload {id:?}, size={}", self.uploads.len());
+        id.into()
+    }
+}
+
+impl<TS> Default for RequestsInner<TS> {
+    fn default() -> Self {
+        Self {
+            downloads: Default::default(),
+            uploads: Default::default(),
+            next_id: 0,
+        }
+    }
+}
+
+pub struct Requests<TS> {
+    inner: Arc<Mutex<RequestsInner<TS>>>,
+}
+
+impl<TS> Default for Requests<TS> {
+    fn default() -> Self {
+        Self {
+            inner: Arc::new(Mutex::new(Default::default())),
+        }
+    }
+}
+
+impl<TS> Requests<TS> {
+    pub async fn get_download(&self, id: ReferenceNumber) -> Option<oneshot::Sender<TS>> {
+        let mut inner = self.inner.lock().await;
+        inner.get_download(id)
+    }
+    pub async fn get_upload(&self, id: ReferenceNumber) -> Option<oneshot::Sender<TS>> {
+        let mut inner = self.inner.lock().await;
+        inner.get_upload(id)
+    }
+    pub async fn add_download(&mut self, conn: oneshot::Sender<TS>) -> ReferenceNumber {
+        let mut inner = self.inner.lock().await;
+        inner.add_download(conn)
+    }
+    async fn add_upload(&mut self, conn: oneshot::Sender<TS>) -> ReferenceNumber {
+        let mut inner = self.inner.lock().await;
+        inner.add_upload(conn)
+    }
 }
 
 pub struct TransferConnection<S> {
-    files: OsFiles,
-    transfers: TransfersService,
-    requests: watch::Receiver<Requests>,
+    transfers: TransfersService<S>,
     socket: S,
 }
 
-impl<S> TransferConnection<S> {
-    fn get_request(&self, id: ReferenceNumber) -> TransferResult<Request> {
-        self.requests
-            .borrow()
-            .get(id)
-            .cloned()
-            .ok_or(TransferError::InvalidRequest)
-    }
-    fn get_file_download(&self, id: ReferenceNumber) -> TransferResult<PathBuf> {
-        match self.get_request(id)? {
-            Request::FileDownload { path, .. } => Ok(path),
-            _ => Err(TransferError::InvalidRequest),
-        }
-    }
-    fn get_file_upload(&self, id: ReferenceNumber) -> TransferResult<PathBuf> {
-        match self.get_request(id)? {
-            Request::FileUpload { path, .. } => Ok(path),
-            _ => Err(TransferError::InvalidRequest),
-        }
-    }
-}
-
-impl<S: AsyncRead + AsyncWrite + Unpin + Send> TransferConnection<S> {
-    pub fn new(
-        socket: S,
-        files: OsFiles,
-        transfers: TransfersService,
-        requests: watch::Receiver<Requests>,
-    ) -> Self {
-        Self {
-            socket,
-            files,
-            transfers,
-            requests,
-        }
+impl<TS: TransferStream + 'static> TransferConnection<TS> {
+    pub fn new(socket: TS, transfers: TransfersService<TS>) -> Self {
+        Self { socket, transfers }
     }
     #[tracing::instrument(skip(self), fields(reference))]
     pub async fn run(mut self) -> TransferResult<()> {
         let handshake = self.read_handshake().await?;
-        let mut transfers = self.transfers.clone();
         debug!("handshake={:?}", &handshake);
         tracing::Span::current().record(
             "reference",
             format!("{:#x}", u32::from(handshake.reference)),
         );
         let id = handshake.reference;
-        let result = if handshake.is_upload() {
-            self.handle_file_upload(id, handshake.size).await
+        if handshake.is_upload() {
+            self.transfers.start_upload(id, self.socket).await;
         } else {
-            self.handle_file_download(id).await
-        };
-        transfers.complete(handshake.reference).await?;
-        match result {
-            Ok(_) => debug!("successful transfer"),
-            Err(e) => error!("unsuccessful transfer: {e:?}"),
+            self.transfers.start_download(id, self.socket).await;
         }
         Ok(())
     }
@@ -164,57 +163,144 @@ impl<S: AsyncRead + AsyncWrite + Unpin + Send> TransferConnection<S> {
         let handshake = <proto::TransferHandshake as HotlineProtocol>::from_bytes(&buf[..])?;
         Ok(handshake)
     }
-    async fn write_fork(
-        socket: &mut S,
-        header: proto::ForkHeader,
-        body: proto::AsyncDataSource,
-    ) -> io::Result<u64> {
-        let bytes = header.to_bytes().unwrap();
-        socket.write_all(&bytes).await?;
-        let (len, fork) = body.into();
-        let mut fork = fork.take(len);
-        let bytes = tokio::io::copy(&mut fork, socket).await?;
-        Ok(bytes)
+}
+
+enum StartTransferReply {
+    Success,
+    Failure,
+}
+
+enum Command<S> {
+    Transfer(Request, oneshot::Sender<TransferReply>),
+    StartDownload(ReferenceNumber, S, oneshot::Sender<StartTransferReply>),
+    StartUpload(ReferenceNumber, S, oneshot::Sender<StartTransferReply>),
+}
+
+#[derive(Debug)]
+pub struct TransfersService<S> {
+    _bus: Bus,
+    tx: mpsc::Sender<Command<S>>,
+}
+
+impl<S> Clone for TransfersService<S> {
+    fn clone(&self) -> Self {
+        Self {
+            _bus: self._bus.clone(),
+            tx: self.tx.clone(),
+        }
     }
-    fn get_appledouble(path: &Path) -> PathBuf {
-        let basename = path
-            .file_name()
-            .and_then(|name| name.to_str())
-            .map(|name| format!("._{}", name))
-            .expect("no filename");
-        path.to_path_buf().with_file_name(basename)
+}
+
+impl<TS: TransferStream + 'static> TransfersService<TS> {
+    pub fn new(bus: Bus) -> (Self, TransfersUpdateProcessor<TS>) {
+        let (tx, rx) = mpsc::channel(10);
+        let service = Self { _bus: bus, tx };
+        let process = TransfersUpdateProcessor::new(rx);
+        (service, process)
     }
-    async fn handle_file_download(self, id: ReferenceNumber) -> TransferResult<()> {
-        let path = self.get_file_download(id)?;
-        let Self {
-            mut socket, files, ..
-        } = self;
-        let mut file = files.read(&path).await?;
-        let (info_header, info) = file.info();
-        let header = file.header();
+    pub async fn file_download(
+        &mut self,
+        root: PathBuf,
+        path: PathBuf,
+    ) -> Option<proto::DownloadFileReply> {
+        let Self { tx: queue, .. } = self;
+        let (tx, rx) = oneshot::channel();
+        let cmd = Command::Transfer(Request::FileDownload { root, path }, tx);
+        queue.send(cmd).await.ok();
+        if let Ok(TransferReply::FileDownload(reply)) = rx.await {
+            Some(reply)
+        } else {
+            None
+        }
+    }
+    pub async fn file_upload(
+        &mut self,
+        root: PathBuf,
+        path: PathBuf,
+    ) -> Option<proto::UploadFileReply> {
+        let Self { tx: queue, .. } = self;
+        let (tx, rx) = oneshot::channel();
+        let cmd = Command::Transfer(Request::FileUpload { root, path }, tx);
+        queue.send(cmd).await.ok();
+        if let Ok(TransferReply::FileUpload(reply)) = rx.await {
+            Some(reply)
+        } else {
+            None
+        }
+    }
+    pub async fn start_download(&mut self, reference: proto::ReferenceNumber, conn: TS) {
+        let Self { tx: sender, .. } = self;
+        let (tx, rx) = oneshot::channel();
+        let cmd = Command::StartDownload(reference, conn, tx);
+        sender.send(cmd).await.ok();
+        let _ = rx.await;
+    }
+    pub async fn start_upload(&mut self, reference: proto::ReferenceNumber, conn: TS) {
+        let Self { tx: sender, .. } = self;
+        let (tx, rx) = oneshot::channel();
+        let cmd = Command::StartUpload(reference, conn, tx);
+        sender.send(cmd).await.ok();
+        let _ = rx.await;
+    }
+}
+
+pub struct TransfersUpdateProcessor<S> {
+    queue: mpsc::Receiver<Command<S>>,
+    requests: Requests<S>,
+}
+
+struct DownloadTransfer<TS> {
+    stream: TS,
+    file: proto::FlattenedFileObject,
+}
+
+impl<TS: TransferStream + 'static> DownloadTransfer<TS> {
+    async fn run(mut self) -> TransferResult<()> {
+        debug!("beginning transfer");
+        let (info_header, info) = self.file.info();
+        let header = self.file.header();
         let header = header.to_bytes().unwrap();
-        socket.write_all(&header).await?;
+        self.stream.write_all(&header).await?;
         let info_header = info_header.to_bytes().unwrap();
-        socket.write_all(&info_header).await?;
+        self.stream.write_all(&info_header).await?;
         let info = info.to_bytes().unwrap();
-        socket.write_all(&info).await?;
-        if let Some((header, body)) = file.take_fork(proto::ForkType::Resource) {
-            let size = Self::write_fork(&mut socket, header, body).await?;
+        self.stream.write_all(&info).await?;
+        if let Some((header, body)) = self.file.take_fork(proto::ForkType::Resource) {
+            debug!("sending resource fork");
+            let size = self.copy_fork(header, body).await?;
             tracing::Span::current().record("rsrc_size", size);
         }
-        if let Some((header, body)) = file.take_fork(proto::ForkType::Data) {
-            let size = Self::write_fork(&mut socket, header, body).await?;
+        if let Some((header, body)) = self.file.take_fork(proto::ForkType::Data) {
+            debug!("sending data fork");
+            let size = self.copy_fork(header, body).await?;
             tracing::Span::current().record("data_size", size);
         }
         debug!("done");
         Ok(())
     }
-    async fn handle_file_upload(
-        mut self,
-        id: ReferenceNumber,
-        _: proto::DataSize,
-    ) -> TransferResult<()> {
-        let path = self.get_file_upload(id)?;
+    async fn copy_fork(
+        &mut self,
+        header: proto::ForkHeader,
+        body: proto::AsyncDataSource,
+    ) -> io::Result<u64> {
+        let bytes = header.to_bytes().unwrap();
+        self.stream.write_all(&bytes).await?;
+        let (len, fork) = body.into();
+        let mut fork = fork.take(len);
+        let bytes = tokio::io::copy(&mut fork, &mut self.stream).await?;
+        Ok(bytes)
+    }
+}
+
+struct UploadTransfer<S> {
+    socket: S,
+    path: PathBuf,
+    files: OsFiles,
+}
+
+impl<TS: TransferStream + 'static> UploadTransfer<TS> {
+    async fn run(mut self) -> TransferResult<()> {
+        let path = self.path.clone();
         let header = self.read_file_header().await?;
         debug!("got header {header:?}");
         let _finf_header = self.read_fork_header().await?;
@@ -280,9 +366,6 @@ impl<S: AsyncRead + AsyncWrite + Unpin + Send> TransferConnection<S> {
                 }
             }
         }
-
-        debug!("done");
-
         Ok(())
     }
     async fn read_file_header(&mut self) -> TransferResult<proto::FlattenedFileHeader> {
@@ -322,113 +405,65 @@ impl<S: AsyncRead + AsyncWrite + Unpin + Send> TransferConnection<S> {
             _ => Err(proto::ProtocolError::ParseHeader.into()),
         }
     }
-}
-
-enum Command {
-    Transfer(Request, oneshot::Sender<TransferReply>),
-    Complete(ReferenceNumber, oneshot::Sender<()>),
-}
-
-#[derive(Debug, Clone)]
-pub struct TransfersService {
-    _bus: Bus,
-    tx: mpsc::Sender<Command>,
-}
-
-impl TransfersService {
-    pub fn new(bus: Bus) -> (Self, TransfersUpdateProcessor) {
-        let (tx, rx) = mpsc::channel(10);
-        let service = Self { _bus: bus, tx };
-        let process = TransfersUpdateProcessor::new(rx);
-        (service, process)
-    }
-    pub async fn file_download(
-        &mut self,
-        root: PathBuf,
-        path: PathBuf,
-    ) -> Option<proto::DownloadFileReply> {
-        let Self { tx: queue, .. } = self;
-        let (tx, rx) = oneshot::channel();
-        let cmd = Command::Transfer(Request::FileDownload { root, path }, tx);
-        queue.send(cmd).await.ok();
-        if let Ok(TransferReply::FileDownload(reply)) = rx.await {
-            Some(reply)
-        } else {
-            None
-        }
-    }
-    pub async fn file_upload(
-        &mut self,
-        root: PathBuf,
-        path: PathBuf,
-    ) -> Option<proto::UploadFileReply> {
-        let Self { tx: queue, .. } = self;
-        let (tx, rx) = oneshot::channel();
-        let cmd = Command::Transfer(Request::FileUpload { root, path }, tx);
-        queue.send(cmd).await.ok();
-        if let Ok(TransferReply::FileUpload(reply)) = rx.await {
-            Some(reply)
-        } else {
-            None
-        }
-    }
-    pub async fn complete(&mut self, reference: proto::ReferenceNumber) -> TransferResult<()> {
-        let Self { tx: queue, .. } = self;
-        let (tx, rx) = oneshot::channel();
-        let cmd = Command::Complete(reference, tx);
-        queue.send(cmd).await.ok();
-        rx.await.ok();
-        Ok(())
+    fn get_appledouble(path: &Path) -> PathBuf {
+        let basename = path
+            .file_name()
+            .and_then(|name| name.to_str())
+            .map(|name| format!("._{}", name))
+            .expect("no filename");
+        path.to_path_buf().with_file_name(basename)
     }
 }
 
-pub struct TransfersUpdateProcessor {
-    queue: mpsc::Receiver<Command>,
-    requests: Requests,
-    updates: watch::Sender<Requests>,
-}
-
-impl TransfersUpdateProcessor {
-    fn new(queue: mpsc::Receiver<Command>) -> Self {
-        let requests = Requests::new();
-        let (updates, _) = watch::channel(requests.clone());
-        Self {
-            queue,
-            requests,
-            updates,
-        }
+impl<TS: TransferStream + 'static> TransfersUpdateProcessor<TS> {
+    fn new(queue: mpsc::Receiver<Command<TS>>) -> Self {
+        let requests = Requests::default();
+        Self { queue, requests }
     }
     #[tracing::instrument(name = "TransfersUpdateProcessor", skip(self))]
-    pub async fn run(self) -> TransferResult<()> {
-        let Self {
-            mut queue,
-            mut requests,
-            updates,
-        } = self;
-        while let Some(command) = queue.recv().await {
+    pub async fn run(mut self) -> TransferResult<()> {
+        while let Some(command) = self.queue.recv().await {
             match command {
                 Command::Transfer(Request::FileDownload { root, path }, tx) => {
-                    let reply = Self::handle_download(&root, &path, 0, &mut requests).await?;
+                    let reply = self.handle_download(&root, &path, 0).await?;
                     tx.send(reply.into()).ok();
                 }
                 Command::Transfer(Request::FileUpload { root, path }, tx) => {
-                    let reply = Self::handle_upload(&root, &path, 0, &mut requests).await?;
+                    let reply = self.handle_upload(&root, &path, 0).await?;
                     tx.send(reply.into()).ok();
                 }
-                Command::Complete(id, tx) => {
-                    requests.remove(id);
-                    tx.send(()).ok();
+                Command::StartDownload(id, conn, tx) => {
+                    let Some(transfer) = self.requests.get_download(id).await else {
+                        let _ = tx.send(StartTransferReply::Failure);
+                        continue;
+                    };
+                    if let Err(_conn) = transfer.send(conn) {
+                        let _ = tx.send(StartTransferReply::Failure);
+                        continue;
+                    }
+                    let _ = tx.send(StartTransferReply::Success);
+                }
+                Command::StartUpload(id, conn, tx) => {
+                    let Some(transfer) = self.requests.get_upload(id).await else {
+                        let _ = tx.send(StartTransferReply::Failure);
+                        continue;
+                    };
+                    if let Err(_conn) = transfer.send(conn) {
+                        let _ = tx.send(StartTransferReply::Failure);
+                        continue;
+                    }
+                    let _ = tx.send(StartTransferReply::Success);
                 }
             };
-            updates.send(requests.clone()).ok();
         }
         Ok(())
     }
+    #[instrument(skip(self))]
     async fn handle_download(
+        &mut self,
         root: &Path,
         path: &Path,
         offset: u64,
-        requests: &mut Requests,
     ) -> TransferResult<proto::DownloadFileReply> {
         let files = OsFiles::with_root(root).await?;
         let file = files.read(path).await?;
@@ -436,25 +471,48 @@ impl TransfersUpdateProcessor {
             + file.fork_len(proto::ForkType::Resource).unwrap_or(0);
         let (_, info) = file.info();
         let transfer_size = info.size() as u64 + file_size as u64 - offset;
-        let reference = requests.add_download(root.to_path_buf(), path.to_path_buf());
+        let (tx, rx) = oneshot::channel();
+        let reference = self.requests.add_download(tx).await;
         let reply = proto::DownloadFileReply {
             transfer_size: transfer_size.try_into()?,
             file_size: file_size.try_into()?,
             reference,
             waiting_count: None,
         };
+        tokio::spawn(
+            async move {
+                debug!("waiting for incoming connection");
+                let socket = rx.await.expect("failed to await socket");
+                let transfer = DownloadTransfer { stream: socket, file };
+                transfer.run().await
+            }
+            .instrument(info_span!("download", reference = i64::from(reference))),
+        );
         Ok(reply)
     }
     async fn handle_upload(
+        &mut self,
         root: &Path,
         path: &Path,
         _offset: u64,
-        requests: &mut Requests,
     ) -> TransferResult<proto::UploadFileReply> {
-        let reference = requests.add_upload(root.to_path_buf(), path.to_path_buf());
-        Ok(proto::UploadFileReply { reference })
-    }
-    pub fn subscribe(&self) -> watch::Receiver<Requests> {
-        self.updates.subscribe()
+        let files = OsFiles::with_root(root).await?;
+        let (tx, rx) = oneshot::channel();
+        let reference = self.requests.add_upload(tx).await;
+        let reply = proto::UploadFileReply { reference };
+        let path = path.to_path_buf();
+        tokio::spawn(
+            async move {
+                let socket = rx.await.expect("failed to await socket");
+                let transfer = UploadTransfer {
+                    socket,
+                    path,
+                    files,
+                };
+                transfer.run().await
+            }
+            .instrument(info_span!("upload", reference = i64::from(reference))),
+        );
+        Ok(reply)
     }
 }
