@@ -8,6 +8,7 @@ use neolith::{protocol as proto, server::transaction_stream::Frames};
 enum Mode {
     Server,
     Client,
+    Raw,
 }
 
 #[derive(Parser, Debug)]
@@ -28,6 +29,9 @@ fn main() -> anyhow::Result<()> {
         Mode::Client => {
             let (_, hs) = proto::ClientHandshakeRequest::from_reader((&mut stdin, 0))?;
             eprintln!("client to server mode {hs:?}");
+        }
+        Mode::Raw => {
+            eprintln!("raw mode (no handshake)");
         }
     }
     let frames = Frames::new(stdin);
