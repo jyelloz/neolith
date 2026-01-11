@@ -359,6 +359,11 @@ impl OsFiles {
         };
         Ok(Box::new(file))
     }
+    pub async fn mkdir(&self, path: &Path) -> io::Result<()> {
+        let path = self.subpath(path)?;
+        fs::create_dir(path).await?;
+        Ok(())
+    }
 }
 
 struct PlainFile {
