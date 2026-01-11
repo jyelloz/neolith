@@ -237,6 +237,7 @@ pub enum ServerResponse {
     SendInstantMessageReply,
     JoinChatReply(proto::JoinChatReply),
     InviteToNewChatReply(proto::InviteToNewChatReply),
+    NewFolderReply,
     SendBroadcastReply,
     SetUserReply,
     NewUserReply,
@@ -272,6 +273,7 @@ impl From<ServerResponse> for TransactionFrame {
             ServerResponse::UploadFileReply(reply) => reply.into(),
             ServerResponse::DeleteFileReply(reply) => reply.into(),
             ServerResponse::MoveFileReply(reply) => reply.into(),
+            ServerResponse::NewFolderReply => GenericReply.into(),
             ServerResponse::GetUserReply(reply) => reply.into(),
             ServerResponse::Rejected(message) => ServerResponse::reject(message),
             ServerResponse::SetUserReply => GenericReply.into(),
@@ -585,6 +587,10 @@ impl <TS: transfers::TransferStream + 'static> NeolithServer<TS> {
                     .expect("failed to update chat subject");
                 Ok(None)
             }
+            ClientRequest::NewFolder(req) => {
+                let proto::NewFolder { path, filename } = req;
+                Ok(Some(self.new_folder(&path, &filename).await))
+            }
             _ => Ok(Some(ServerResponse::Rejected(Some("todo".to_string())))),
         }
     }
@@ -652,6 +658,14 @@ impl <TS: transfers::TransferStream + 'static> NeolithServer<TS> {
             modified_at: info.modified_at.into(),
         };
         Ok(reply)
+    }
+    async fn new_folder(&mut self, path: &proto::FilePath, name: &proto::FileName) -> ServerResponse {
+        let path = PathBuf::from(path.clone()).join(PathBuf::from(name));
+        if let Err(e) = self.files.mkdir(&path).await {
+            let msg =  e.to_string();
+            return ServerResponse::Rejected(Some(msg))
+        }
+        ServerResponse::NewFolderReply
     }
     fn join_path(path: &proto::FilePath, name: &proto::FileName) -> PathBuf {
         let name_slice = [name.clone().into()];
