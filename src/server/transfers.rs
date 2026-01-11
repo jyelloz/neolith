@@ -132,9 +132,9 @@ impl<TS> Requests<TS> {
     }
 }
 
-pub struct TransferConnection<S> {
-    transfers: TransfersService<S>,
-    stream: S,
+pub struct TransferConnection<TS> {
+    transfers: TransfersService<TS>,
+    stream: TS,
 }
 
 impl<TS: TransferStream + 'static> TransferConnection<TS> {
