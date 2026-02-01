@@ -189,6 +189,7 @@ impl<S: AsyncRead + Unpin> ServerEvents<S> {
 
 #[derive(Debug, From)]
 pub enum ClientRequest {
+    Login(proto::LoginRequest),
     GetMessages(proto::GetMessages),
     PostNews(proto::PostNews),
     GetFileNameList(proto::GetFileNameList),
@@ -331,7 +332,7 @@ impl TryFrom<TransactionFrame> for ClientRequest {
             proto::TransactionType::Error => todo!(),
             proto::TransactionType::OldPostNews => proto::PostNews::try_from(frame).map(Into::into),
             proto::TransactionType::SendChat => proto::SendChat::try_from(frame).map(Into::into),
-            proto::TransactionType::Login => todo!(),
+            proto::TransactionType::Login => proto::LoginRequest::try_from(frame).map(Into::into),
             proto::TransactionType::SendInstantMessage => {
                 proto::SendInstantMessage::try_from(frame).map(Into::into)
             }
