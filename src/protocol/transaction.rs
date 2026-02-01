@@ -164,7 +164,11 @@ impl Parameter {
             field_data,
         }
     }
-    pub fn new_deku<F: Into<FieldId>, D: DekuContainerWrite>(field_id: F, field_data: D) -> Self {
+    pub fn new_deku<F: Into<FieldId>, D: DekuContainerWrite + DekuUpdate>(
+        field_id: F,
+        mut field_data: D,
+    ) -> Self {
+        field_data.update().expect("failed to update");
         let field_data: Vec<u8> = field_data.to_bytes().unwrap();
         Self::new(field_id, field_data)
     }
