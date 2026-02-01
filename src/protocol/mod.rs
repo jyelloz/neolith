@@ -1895,7 +1895,7 @@ impl AsyncDataSource {
 }
 
 pub struct FlattenedFileObject {
-    pub version: crate::protocol::handshake::Version,
+    pub version: handshake::Version,
     pub info: InfoFork,
     pub contents: HashMap<ForkType, AsyncDataSource>,
 }
