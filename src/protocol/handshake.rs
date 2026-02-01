@@ -36,7 +36,7 @@ impl Default for SubVersion {
     }
 }
 
-#[derive(Debug, Default, DekuRead, DekuWrite)]
+#[derive(Debug, Default, DekuRead, DekuWrite, DekuSize)]
 #[deku(magic = b"TRTP")]
 pub struct ClientHandshakeRequest {
     pub sub_protocol_id: SubProtocolId,
@@ -44,19 +44,10 @@ pub struct ClientHandshakeRequest {
     pub sub_version: SubVersion,
 }
 
-impl DekuSize for ClientHandshakeRequest {
-    const SIZE_BITS: usize =
-        SubProtocolId::SIZE_BITS + Version::SIZE_BITS + SubVersion::SIZE_BITS + 32;
-}
-
-#[derive(Debug, DekuRead, DekuWrite)]
+#[derive(Debug, DekuRead, DekuWrite, DekuSize)]
 #[deku(magic = b"TRTP")]
 pub struct ServerHandshakeReply {
     error_code: ErrorCode,
-}
-
-impl DekuSize for ServerHandshakeReply {
-    const SIZE_BITS: usize = ErrorCode::SIZE_BITS + 32usize;
 }
 
 impl ServerHandshakeReply {
