@@ -328,7 +328,6 @@ impl TryFrom<TransactionFrame> for ClientRequest {
             proto::TransactionType::GetFileNameList => {
                 proto::GetFileNameList::try_from(frame).map(Into::into)
             }
-            proto::TransactionType::Error => todo!(),
             proto::TransactionType::OldPostNews => proto::PostNews::try_from(frame).map(Into::into),
             proto::TransactionType::SendChat => proto::SendChat::try_from(frame).map(Into::into),
             proto::TransactionType::Login => proto::LoginRequest::try_from(frame).map(Into::into),
