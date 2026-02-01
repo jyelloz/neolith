@@ -823,7 +823,7 @@ pub struct FileNameWithInfo {
     pub file_size: FileSize,
     #[deku(pad_bytes_before = "4")]
     pub name_script: NameScript,
-    #[deku(endian = "big")]
+    #[deku(endian = "big", update = "self.file_name.len() as i16")]
     pub file_name_size: i16,
     #[deku(count = "file_name_size")]
     pub file_name: Vec<u8>,
