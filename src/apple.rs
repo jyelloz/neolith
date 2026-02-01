@@ -161,7 +161,7 @@ impl AppleSingleHeader {
     }
 }
 
-#[derive(DekuRead, DekuWrite, Debug, Clone, Copy, PartialEq, Eq)]
+#[derive(DekuRead, DekuWrite, Debug, Clone, Copy, PartialEq, Eq, DekuSize)]
 pub struct FinderInfo {
     pub file_type: FileType,
     pub creator: Creator,
@@ -186,15 +186,6 @@ impl FinderInfo {
     }
 }
 
-impl DekuSize for FinderInfo {
-    const SIZE_BITS: usize = FileType::SIZE_BITS
-        + Creator::SIZE_BITS
-        + FinderFlags::SIZE_BITS
-        + Point::SIZE_BITS
-        + Folder::SIZE_BITS
-        + (16 * 8);
-}
-
 #[derive(Debug, Clone, Copy, PartialEq, Eq, DekuRead, DekuWrite, DekuSize, From)]
 pub struct FourCC(pub [u8; 4]);
 #[derive(Debug, DekuRead, DekuWrite, DekuSize, Clone, Copy, PartialEq, Eq, From)]
@@ -202,7 +193,7 @@ pub struct FileType(pub FourCC);
 #[derive(Debug, DekuRead, DekuWrite, DekuSize, Clone, Copy, PartialEq, Eq)]
 pub struct Creator(pub FourCC);
 
-#[derive(Default, Debug, DekuRead, DekuWrite, Clone, Copy, PartialEq, Eq)]
+#[derive(Default, Debug, DekuRead, DekuWrite, DekuSize, Clone, Copy, PartialEq, Eq)]
 #[deku(endian = "big")]
 pub struct FinderFlags {
     #[deku(bits = "1")]
@@ -233,10 +224,6 @@ pub struct FinderFlags {
     #[deku(bits = "1")]
     #[deprecated]
     pub is_on_desktop: bool,
-}
-
-impl DekuSize for FinderFlags {
-    const SIZE_BITS: usize = 16;
 }
 
 impl From<u16> for FinderFlags {
