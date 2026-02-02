@@ -244,9 +244,10 @@ impl Default for ChatId {
 impl TryFrom<&Parameter> for ChatId {
     type Error = ProtocolError;
     fn try_from(parameter: &Parameter) -> Result<Self, Self::Error> {
-        parameter
-            .read_deku()
-            .map_err(|_| ProtocolError::MalformedData(TransactionField::ChatId))
+        let Some(parameter) = parameter.int() else {
+            return Err(ProtocolError::MalformedData(TransactionField::ChatId));
+        };
+        Ok(Self(i64::from(parameter) as i16))
     }
 }
 
@@ -313,9 +314,10 @@ pub struct UserId(i16);
 impl TryFrom<&Parameter> for UserId {
     type Error = ProtocolError;
     fn try_from(parameter: &Parameter) -> Result<Self, Self::Error> {
-        parameter
-            .read_deku()
-            .map_err(|_| ProtocolError::MalformedData(TransactionField::UserId))
+        let Some(parameter) = parameter.int() else {
+            return Err(ProtocolError::MalformedData(TransactionField::UserId));
+        };
+        Ok(Self(i64::from(parameter) as i16))
     }
 }
 
@@ -468,9 +470,10 @@ impl TryFrom<u64> for FileSize {
 impl TryFrom<&Parameter> for FileSize {
     type Error = ProtocolError;
     fn try_from(parameter: &Parameter) -> Result<Self, Self::Error> {
-        parameter
-            .read_deku()
-            .map_err(|_| ProtocolError::MalformedData(TransactionField::FileSize))
+        let Some(parameter) = parameter.int() else {
+            return Err(ProtocolError::MalformedData(TransactionField::FileSize));
+        };
+        Ok(Self(i64::from(parameter) as u32))
     }
 }
 
