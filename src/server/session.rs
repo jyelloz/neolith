@@ -2,11 +2,12 @@ use crate::{
     protocol::{self as proto, ChatMessage},
     server::{self, ClientRequestTransaction, ServerResponse},
 };
-use futures::channel::mpsc;
 use futures::{
-    FutureExt as _, Sink, SinkExt as _, Stream, StreamExt as _, stream::FuturesUnordered,
+    AsyncWrite,
+    channel::{mpsc, oneshot},
 };
-use tracing::{info, instrument};
+use futures::{Sink, SinkExt as _, Stream, StreamExt as _};
+use tracing::{error, info, instrument};
 
 /// Represents the operations that a Hotline server must support. Anything
 /// implementing this trait should be able to power a Session and handle clients.
@@ -110,7 +111,7 @@ impl<R: SessionStream, W: SessionSink, S: Server> Session<R, W, S> {
         info!("starting session");
 
         let r = ReadLoop {
-            server: server.clone(),
+            server,
             stream: reader,
             handle,
         };
@@ -120,19 +121,13 @@ impl<R: SessionStream, W: SessionSink, S: Server> Session<R, W, S> {
             outgoing: out_rx,
         };
 
-        let mut fu = FuturesUnordered::new();
-        fu.push(r.run().boxed_local());
-        fu.push(w.run().boxed_local());
+        let (r, r_cancel) = futures::future::abortable(r.run());
+        let (w, w_cancel) = futures::future::abortable(w.run());
 
-        while let Some(res) = fu.next().await {
-            match res {
-                Ok(_) => {
-                    tracing::info!("OK");
-                }
-                Err(e) => {
-                    tracing::error!("connection error: {e:?}");
-                }
-            }
+        if let Err(e) = futures::try_join!(r, w) {
+            r_cancel.abort();
+            w_cancel.abort();
+            error!("connection error: {e:?}");
         }
 
         info!("done");
@@ -158,7 +153,8 @@ impl<R: SessionStream, S: Server> ReadLoop<R, S> {
             match body {
                 server::ClientRequest::DownloadFile(req) => {
                     let reply = server.download_file(req).await;
-                    handle.reply(id, ServerResponse::DownloadFileReply(reply))
+                    handle
+                        .reply(id, ServerResponse::DownloadFileReply(reply))
                         .await;
                 }
                 server::ClientRequest::PostNews(req) => {
