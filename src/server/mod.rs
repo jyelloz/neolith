@@ -298,7 +298,7 @@ impl From<ServerResponse> for ServerResult<Option<ServerResponse>> {
     }
 }
 
-#[derive(Debug)]
+#[derive(Debug, Clone)]
 pub enum ServerRequest {
     Empty,
     Chat(ChatMessage),
@@ -314,6 +314,7 @@ pub enum ServerRequest {
     UserDisconnect(User),
 }
 
+#[derive(Debug)]
 pub enum ClientResponse {
     RejectChatInvite,
 }
@@ -410,6 +411,30 @@ impl TryFrom<TransactionFrame> for ClientRequest {
             )),
         }
     }
+}
+
+#[derive(Debug)]
+pub struct ClientRequestTransaction {
+    pub id: proto::Id,
+    pub body: ClientRequest,
+}
+
+#[derive(Debug)]
+pub struct ClientResponseTransaction {
+    pub id: proto::Id,
+    pub body: ClientResponse,
+}
+
+#[derive(Debug)]
+pub struct ServerResponseTransaction {
+    pub id: proto::Id,
+    pub body: ServerResponse,
+}
+
+#[derive(Debug, Clone)]
+pub struct ServerRequestTransaction {
+    pub id: proto::Id,
+    pub body: ServerRequest,
 }
 
 #[derive(Debug)]
