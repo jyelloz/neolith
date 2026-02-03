@@ -225,6 +225,7 @@ pub enum ClientRequest {
 
 #[derive(Debug, From)]
 pub enum ServerResponse {
+    LoginReply,
     GetUserNameListReply(proto::GetUserNameListReply),
     GetClientInfoTextReply(proto::GetClientInfoTextReply),
     GetMessagesReply(proto::GetMessagesReply),
@@ -265,6 +266,7 @@ impl ServerResponse {
 impl From<ServerResponse> for TransactionFrame {
     fn from(val: ServerResponse) -> Self {
         match val {
+            ServerResponse::LoginReply => GenericReply.into(),
             ServerResponse::GetUserNameListReply(reply) => reply.into(),
             ServerResponse::GetMessagesReply(reply) => reply.into(),
             ServerResponse::PostNewsReply => GenericReply.into(),
