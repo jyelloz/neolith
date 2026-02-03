@@ -37,6 +37,8 @@ where
     }
 }
 
+pub type ProtocolResult<T> = Result<T, ProtocolError>;
+
 #[derive(Debug, Error)]
 pub enum ProtocolError {
     #[error("i/o error")]
