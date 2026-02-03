@@ -12,6 +12,16 @@ use crate::{
     server::{ClientRequest, ServerResponse, transaction_stream::Frames},
 };
 
+async fn handle_request_transasction_frame(frame: TransactionFrame) -> anyhow::Result<Option<TransactionFrame>> {
+    let hdr = frame.header.clone();
+    let req = ClientRequest::try_from(frame)?;
+    let Some(res) = handle_request(req).await? else {
+        return Ok(None);
+    };
+    let reply = TransactionFrame::from(res);
+    Ok(Some(reply.reply_to(&hdr)))
+}
+
 async fn handle_request(req: ClientRequest) -> anyhow::Result<Option<ServerResponse>> {
     info!("req {req:?}");
     let response = match req {
@@ -129,9 +139,7 @@ async fn read_loop<R: AsyncRead + Unpin>(
     let mut frames = Box::pin(Frames::new(r).frames());
 
     let mut svc = tower::ServiceBuilder::new()
-        .map_request(|frame: TransactionFrame| ClientRequest::try_from(frame).ok().unwrap())
-        .layer_fn(|svc| svc)
-        .service_fn(handle_request);
+        .service_fn(handle_request_transasction_frame);
 
     while let Some(Ok(f)) = frames.next().await {
         let resp = svc.call(f.clone()).await?;
