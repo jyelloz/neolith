@@ -19,6 +19,11 @@ pub trait Server: Clone + Send + 'static {
         &self,
         msg: proto::DownloadFile,
     ) -> impl Future<Output = proto::DownloadFileReply> + Send;
+    fn get_file(
+        &self,
+        path: proto::FilePath,
+        name: proto::FileName,
+    ) -> impl Future<Output = proto::FlattenedFileObject> + Send;
 }
 
 pub trait SessionStream: Stream<Item = ClientRequestTransaction> + Unpin + Send + 'static {}
