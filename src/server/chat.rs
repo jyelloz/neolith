@@ -307,3 +307,13 @@ impl ChatUpdateProcessor {
         self.updates.subscribe()
     }
 }
+
+pub fn format_chat(username: &proto::Nickname, message: &[u8]) -> Vec<u8> {
+    [
+        b"\r ".as_slice(),
+        username.as_slice(),
+        b": ".as_slice(),
+        message,
+    ]
+    .concat()
+}

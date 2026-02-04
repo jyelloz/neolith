@@ -66,8 +66,7 @@ pub struct Chat(pub Option<ChatId>, pub User, pub Vec<u8>);
 impl From<Chat> for ChatMessage {
     fn from(val: Chat) -> Self {
         let Chat(chat_id, user, text) = val;
-        let username = user.0.username.take();
-        let message = [&b"\r "[..], &username[..], &b": "[..], &text[..]].concat();
+        let message = format_chat(&user.0.username, &text);
         ChatMessage { chat_id, message }
     }
 }
