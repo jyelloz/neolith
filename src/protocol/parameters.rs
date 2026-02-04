@@ -31,6 +31,9 @@ impl Nickname {
     pub fn take(self) -> Vec<u8> {
         self.0
     }
+    pub fn as_slice(&self) -> &[u8] {
+        self.0.as_slice()
+    }
     pub fn len(&self) -> usize {
         self.0.len()
     }
