@@ -1,5 +1,15 @@
+use std::{
+    future,
+    pin::Pin,
+    task::{Context, Poll},
+};
+
 use anyhow::Result;
-use futures::{SinkExt as _, StreamExt, channel::mpsc};
+use encoding_rs::MACINTOSH;
+use futures::{
+    SinkExt as _, StreamExt,
+    channel::mpsc::{self, UnboundedSender},
+};
 use tokio::io::{AsyncRead, AsyncReadExt, AsyncWrite, AsyncWriteExt};
 use tower::Service;
 use tracing::{error, info};
@@ -12,18 +22,43 @@ use crate::{
     server::{ClientRequest, ServerResponse, transaction_stream::Frames},
 };
 
-async fn handle_request_transasction_frame(frame: TransactionFrame) -> anyhow::Result<Option<TransactionFrame>> {
-    let hdr = frame.header.clone();
-    let req = ClientRequest::try_from(frame)?;
-    let Some(res) = handle_request(req).await? else {
-        return Ok(None);
-    };
-    let reply = TransactionFrame::from(res);
-    Ok(Some(reply.reply_to(&hdr)))
+#[derive(Clone)]
+struct HlConn(UnboundedSender<TransactionFrame>);
+
+impl Service<TransactionFrame> for HlConn {
+    type Response = Option<TransactionFrame>;
+    type Error = proto::ProtocolError;
+    type Future = Pin<Box<dyn Future<Output = Result<Self::Response, Self::Error>> + Send>>;
+
+    fn poll_ready(&mut self, _: &mut Context<'_>) -> Poll<Result<(), Self::Error>> {
+        Poll::Ready(Ok(()))
+    }
+
+    fn call(&mut self, frame: TransactionFrame) -> Self::Future {
+        let hdr = frame.header.clone();
+        let req = match ClientRequest::try_from(frame) {
+            Err(e) => return Box::pin(future::ready(Err(e))),
+            Ok(req) => req,
+        };
+        let tx = self.0.clone();
+        let fut = async move {
+            match handle_request(tx, req).await {
+                Ok(Some(resp)) => Ok(Some(TransactionFrame::from(resp).reply_to(&hdr))),
+                Ok(None) => Ok(None),
+                Err(e) => Err(e),
+            }
+        };
+        Box::pin(fut)
+    }
 }
 
-async fn handle_request(req: ClientRequest) -> anyhow::Result<Option<ServerResponse>> {
+async fn handle_request(
+    mut tx: UnboundedSender<TransactionFrame>,
+    req: ClientRequest,
+) -> Result<Option<ServerResponse>, proto::ProtocolError> {
     info!("req {req:?}");
+    const USERNAME: &str = "nobody";
+    const USERINFO: &str = "Nothing";
     let response = match req {
         ClientRequest::Login(..) => Some(ServerResponse::LoginReply),
         ClientRequest::GetMessages(..) => Some(ServerResponse::GetMessagesReply(
@@ -58,18 +93,28 @@ async fn handle_request(req: ClientRequest) -> anyhow::Result<Option<ServerRespo
                 icon_id: 410.into(),
                 user_flags: Default::default(),
                 username_len: Default::default(),
-                username: b"nobody".to_vec().into(),
+                username: USERNAME.as_bytes().to_vec().into(),
             }),
         )),
         ClientRequest::GetClientInfoText(..) => Some(ServerResponse::GetClientInfoTextReply(
             proto::GetClientInfoTextReply {
-                user_name: b"nobody".to_vec().into(),
-                text: b"nothing".to_vec().into(),
+                user_name: USERNAME.as_bytes().to_vec().into(),
+                text: USERINFO.as_bytes().to_vec().into(),
             },
         )),
         // ClientRequest::SetClientUserInfo(set_client_user_info) => todo!(),
         // ClientRequest::DisconnectUser(disconnect_user) => todo!(),
-        // ClientRequest::SendChat(send_chat) => todo!(),
+        ClientRequest::SendChat(chat) => {
+            let (chat_text, _, _) = MACINTOSH.decode(&chat.message);
+            let formatted_chat = format!("{USERNAME}: {chat_text}\r");
+            let (formatted_chat, _, _) = MACINTOSH.encode(&formatted_chat);
+            let msg = proto::ChatMessage {
+                chat_id: chat.chat_id,
+                message: formatted_chat.to_vec(),
+            };
+            let _ = tx.send(msg.into()).await;
+            None
+        }
         // ClientRequest::SendInstantMessage(send_instant_message) => todo!(),
         // ClientRequest::InviteToNewChat(invite_to_new_chat) => todo!(),
         // ClientRequest::InviteToChat(invite_to_chat) => todo!(),
@@ -138,8 +183,7 @@ async fn read_loop<R: AsyncRead + Unpin>(
 ) -> Result<()> {
     let mut frames = Box::pin(Frames::new(r).frames());
 
-    let mut svc = tower::ServiceBuilder::new()
-        .service_fn(handle_request_transasction_frame);
+    let mut svc = tower::ServiceBuilder::new().service(HlConn(tx.clone()));
 
     while let Some(Ok(f)) = frames.next().await {
         let resp = svc.call(f.clone()).await?;
