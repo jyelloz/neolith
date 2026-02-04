@@ -5,7 +5,6 @@ use std::{
 };
 
 use anyhow::Result;
-use encoding_rs::MACINTOSH;
 use futures::{
     SinkExt as _, StreamExt,
     channel::mpsc::{self, UnboundedSender},
@@ -19,7 +18,7 @@ use crate::{
         self as proto, ClientHandshakeRequest, HotlineProtocol, ProtocolVersion,
         ServerHandshakeReply, TransactionFrame,
     },
-    server::{ClientRequest, ServerResponse, transaction_stream::Frames},
+    server::{ClientRequest, ServerResponse, chat, transaction_stream::Frames},
 };
 
 #[derive(Clone)]
@@ -105,9 +104,10 @@ async fn handle_request(
         // ClientRequest::SetClientUserInfo(set_client_user_info) => todo!(),
         // ClientRequest::DisconnectUser(disconnect_user) => todo!(),
         ClientRequest::SendChat(chat) => {
-            let (chat_text, _, _) = MACINTOSH.decode(&chat.message);
-            let formatted_chat = format!("{USERNAME}: {chat_text}\r");
-            let (formatted_chat, _, _) = MACINTOSH.encode(&formatted_chat);
+            let formatted_chat = chat::format_chat(
+                &proto::Nickname::from(USERNAME.as_bytes().to_vec()),
+                chat.message.as_slice(),
+            );
             let msg = proto::ChatMessage {
                 chat_id: chat.chat_id,
                 message: formatted_chat.to_vec(),
