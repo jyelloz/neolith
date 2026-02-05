@@ -1504,7 +1504,7 @@ impl TryFrom<TransactionFrame> for SendBroadcast {
 
 impl From<SendBroadcast> for TransactionFrame {
     fn from(val: SendBroadcast) -> Self {
-        let header = TransactionType::GetClientInfoText.into();
+        let header = TransactionType::UserBroadcast.into();
         let SendBroadcast { message } = val;
         let body = vec![Parameter::new_data(message)].into();
         Self { header, body }
