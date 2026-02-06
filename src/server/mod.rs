@@ -206,7 +206,7 @@ pub enum ClientRequest {
     InviteToChat(proto::InviteToChat),
     JoinChat(proto::JoinChat),
     LeaveChat(proto::LeaveChat),
-    RejectChatInfo(proto::RejectChatInvite),
+    RejectChatInvite(proto::RejectChatInvite),
     SetChatSubject(proto::SetChatSubject),
     DownloadFile(proto::DownloadFile),
     UploadFile(proto::UploadFile),
