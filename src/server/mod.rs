@@ -1,6 +1,6 @@
 use self::{
     bus::{Notification, Notifications},
-    chat::{Chats, ChatsService},
+    chat::{Chats, ChatsService, format_chat},
     files::OsFiles,
     news::{News, NewsService},
     transaction_stream::Frames,
