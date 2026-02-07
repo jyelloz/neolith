@@ -220,8 +220,7 @@ impl ChatsService {
         Ok(())
     }
     pub async fn instant_message(&mut self, message: InstantMessage) -> Result<()> {
-        let Self(_, bus) = self;
-        bus.publish(message.into());
+        self.publish(message.into());
         Ok(())
     }
     pub async fn leave_all(&mut self, request: UserId) -> Result<Vec<ChatId>> {
