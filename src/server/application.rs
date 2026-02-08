@@ -595,10 +595,6 @@ impl<U: Users, F: Files, N: News, M: Messages> Application<U, F, N, M> {
         self.users.info(user).await
     }
 
-    pub async fn ls(&self, dir: Option<PathBuf>) -> ApplicationResult<FileList> {
-        self.files.list(dir).await
-    }
-
     pub async fn command() -> ApplicationResult<()> {
         Ok(())
     }
