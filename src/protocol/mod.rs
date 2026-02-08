@@ -334,14 +334,10 @@ impl TryFrom<&Parameter> for ServerBannerType {
     type Error = ProtocolError;
     fn try_from(parameter: &Parameter) -> Result<Self, Self::Error> {
         let Some(parameter) = parameter.int().map(u64::from) else {
-            return Err(ProtocolError::MalformedData(
-                TransactionField::ServerBannerType,
-            ));
+            return Err(ProtocolError::MalformedData(TransactionField::ServerBannerType));
         };
         let Ok(parameter) = Self::try_from(parameter as u8) else {
-            return Err(ProtocolError::MalformedData(
-                TransactionField::ServerBannerType,
-            ));
+            return Err(ProtocolError::MalformedData(TransactionField::ServerBannerType));
         };
         Ok(parameter)
     }
