@@ -9,11 +9,11 @@ async fn main() -> anyhow::Result<()> {
         .with(tracing_subscriber::fmt::layer())
         .try_init()?;
 
-    let listener = TcpListener::bind("127.0.0.1:5500").await?;
-    let mut id = 0u32;
+    let listener = TcpListener::bind("[::1]:5500").await?;
+    let mut id = 1u32;
     loop {
         let conn_id = id;
-        id += 1;
+        id = id.wrapping_add(1);
         let (socket, addr) = listener.accept().await?;
         tracing::info!("accept from {addr:?}!");
         let (r, w) = socket.into_split();
