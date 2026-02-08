@@ -1,7 +1,7 @@
 use num_enum::{IntoPrimitive, TryFromPrimitive};
 
 #[derive(Debug, Copy, Clone, Eq, PartialEq, Ord, PartialOrd, TryFromPrimitive, IntoPrimitive)]
-#[repr(i16)]
+#[repr(u16)]
 pub enum TransactionField {
     ErrorText = 100,
     Data,
