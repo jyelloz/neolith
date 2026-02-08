@@ -263,7 +263,7 @@ impl ChatUpdateProcessor {
             match command {
                 Command::Create(request, tx) => {
                     let ChatRoomCreationRequest(creator, ..) = request;
-                    let id = chats.create(vec![creator].into());
+                    let id = chats.create(vec![creator]);
                     if tx.send(id).is_err() {
                         Err(ChatError::ServiceUnavailable)?;
                     }
