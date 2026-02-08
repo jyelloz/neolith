@@ -47,7 +47,21 @@ impl From<IsReply> for bool {
 #[deku(endian = "big")]
 pub struct Type(u16);
 
-#[derive(Debug, Clone, Copy, Default, From, Into, DekuRead, DekuWrite, DekuSize)]
+#[derive(
+    Debug,
+    Clone,
+    Copy,
+    Default,
+    From,
+    Into,
+    DekuRead,
+    DekuWrite,
+    DekuSize,
+    PartialEq,
+    Eq,
+    PartialOrd,
+    Ord,
+)]
 #[deku(endian = "big")]
 #[into(u32, u64)]
 pub struct Id(u32);
@@ -322,7 +336,11 @@ pub struct TransactionFrame {
         self.header
     }")]
     pub header: TransactionHeader,
-    #[deku(update = "{ let b = &mut self.body; b.update()?; b.clone() }")]
+    #[deku(
+        cond = "header.data_size.0 > 0",
+        default = "Default::default()",
+        update = "{ let b = &mut self.body; b.update()?; b.clone() }"
+    )]
     pub body: TransactionBody,
 }
 
