@@ -37,14 +37,14 @@ impl<T> From<mpsc::error::SendError<T>> for UsersError {
 type UsersResult<T> = Result<T, UsersError>;
 
 #[derive(Debug, Clone)]
-pub struct Users(HashSet<User>, i16);
+pub struct Users(HashSet<User>, u16);
 
 #[derive(Debug, Clone, From, Into, Eq)]
 struct User(UserNameWithInfo);
 
 impl std::hash::Hash for User {
     fn hash<H: std::hash::Hasher>(&self, state: &mut H) {
-        i16::from(self.0.user_id).hash(state);
+        u16::from(self.0.user_id).hash(state);
     }
 }
 
