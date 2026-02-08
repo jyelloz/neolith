@@ -97,7 +97,7 @@ impl TryFrom<DirEntry> for proto::FileNameWithInfo {
                 if errors { None } else { Some(mac.to_vec()) }
             })
             .ok_or::<Self::Error>(ErrorKind::InvalidData.into())?;
-        let file_name_size = file_name.len() as i16;
+        let file_name_size = file_name.len() as u16;
         Ok(proto::FileNameWithInfo {
             file_name_size,
             file_name,
@@ -398,7 +398,7 @@ impl PlainFile {
             created_at: Default::default(),
             modified_at: Default::default(),
             name_script: Default::default(),
-            name_len: file_name.len() as i16,
+            name_len: file_name.len() as u16,
             file_name,
             comment_len: 0,
             comment: vec![],
@@ -516,9 +516,9 @@ impl AppleDoubleFile {
             created_at: Default::default(),
             modified_at: Default::default(),
             name_script: Default::default(),
-            name_len: file_name.len() as i16,
+            name_len: file_name.len() as u16,
             file_name,
-            comment_len: comment.len() as i16,
+            comment_len: comment.len() as u16,
             comment,
         };
         Ok(fork)
