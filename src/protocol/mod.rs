@@ -425,7 +425,7 @@ impl TryFrom<TransactionFrame> for SetClientUserInfo {
     }
 }
 
-#[derive(Debug, PartialEq, Eq, PartialOrd, Ord)]
+#[derive(Debug, Clone, PartialEq, Eq, PartialOrd, Ord)]
 pub struct NotifyUserChange {
     pub user_id: UserId,
     pub user_flags: UserFlags,
@@ -1071,7 +1071,7 @@ impl From<ChatMessage> for TransactionFrame {
     }
 }
 
-#[derive(Debug)]
+#[derive(Debug, Clone)]
 pub struct ServerMessage {
     pub user_id: Option<UserId>,
     pub user_name: Option<Nickname>,
@@ -1507,7 +1507,7 @@ impl From<GetClientInfoTextReply> for TransactionFrame {
     }
 }
 
-#[derive(Debug)]
+#[derive(Debug, Clone)]
 pub struct SendBroadcast {
     pub message: Vec<u8>,
 }
@@ -1992,7 +1992,7 @@ pub enum CompressionType {
     Other(u32),
 }
 
-#[derive(Debug, Clone, DekuRead, DekuWrite)]
+#[derive(Debug, Clone, DekuRead, DekuWrite, DekuSize)]
 #[deku(id_type = "[u8; 4]")]
 pub enum PlatformType {
     #[deku(id = b"AMAC")]
