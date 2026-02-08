@@ -16,7 +16,7 @@ anyhow = "*"
 async-stream = "0.3"
 clap = { version = "4", features = ["derive"] }
 deku = "0.20"
-derive_more = { version = "1", features = ["full"] }
+derive_more = { version = "2", features = ["full"] }
 dialoguer = "*"
 encoding_rs = "0.8"
 enumset = { version = "*", features = ["serde"] }
