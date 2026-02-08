@@ -319,28 +319,47 @@ impl TryFrom<&Parameter> for ServerAgreement {
     }
 }
 
+#[derive(Debug, Eq, PartialEq, Ord, PartialOrd, IntoPrimitive, TryFromPrimitive)]
+#[repr(u8)]
 enum ServerBannerType {
-    Url,
-    Data,
+    Url = 1,
+    Jpeg = 3,
+    Giff = 4,
+    Bmp = 5,
+    Pict = 6,
+}
+
+impl TryFrom<&Parameter> for ServerBannerType {
+    type Error = ProtocolError;
+    fn try_from(parameter: &Parameter) -> Result<Self, Self::Error> {
+        let Some(parameter) = parameter.int().map(u64::from) else {
+            return Err(ProtocolError::MalformedData(TransactionField::ServerBannerType));
+        };
+        let Ok(parameter) = Self::try_from(parameter as u8) else {
+            return Err(ProtocolError::MalformedData(TransactionField::ServerBannerType));
+        };
+        Ok(parameter)
+    }
+}
+
+impl TryFrom<transaction::IntParameter> for ServerBannerType {
+    type Error = ProtocolError;
+    fn try_from(value: transaction::IntParameter) -> Result<Self, Self::Error> {
+        Self::try_from(u64::from(value) as u8)
+            .map_err(|_| ProtocolError::MalformedData(TransactionField::ServerBannerType))
+    }
+}
+
+impl From<ServerBannerType> for Parameter {
+    fn from(value: ServerBannerType) -> Self {
+        Parameter::new_int(TransactionField::ServerBannerType, u8::from(value))
+    }
 }
 
 #[derive(Debug, PartialEq, Eq, PartialOrd, Ord)]
 pub enum ServerBanner {
     URL(Vec<u8>),
     Data(Vec<u8>),
-}
-
-impl TryFrom<&Parameter> for ServerBannerType {
-    type Error = ProtocolError;
-    fn try_from(parameter: &Parameter) -> Result<Self, Self::Error> {
-        match *parameter.field_data {
-            [1] => Ok(ServerBannerType::Url),
-            [0] => Ok(ServerBannerType::Data),
-            _ => Err(ProtocolError::MalformedData(
-                TransactionField::ServerBannerType,
-            )),
-        }
-    }
 }
 
 impl From<TransactionType> for Type {
