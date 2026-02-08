@@ -1,5 +1,5 @@
 use deku::prelude::*;
-use derive_more::{From, Into};
+use derive_more::{Display, From, Into};
 use maplit::hashmap;
 use num_enum::{IntoPrimitive, TryFromPrimitive};
 use std::collections::HashMap;
@@ -320,13 +320,18 @@ impl TryFrom<&Parameter> for ServerAgreement {
     }
 }
 
-#[derive(Debug, Eq, PartialEq, Ord, PartialOrd, IntoPrimitive, TryFromPrimitive)]
+#[derive(Debug, Eq, PartialEq, Ord, PartialOrd, IntoPrimitive, TryFromPrimitive, Display)]
 #[repr(u8)]
 enum ServerBannerType {
+    #[display("URL")]
     Url = 1,
+    #[display("JPEG")]
     Jpeg = 3,
+    #[display("GIFf")]
     Giff = 4,
+    #[display("BMP")]
     Bmp = 5,
+    #[display("PICT")]
     Pict = 6,
 }
 
