@@ -34,7 +34,7 @@ impl Service<TransactionFrame> for HlConn {
     }
 
     fn call(&mut self, frame: TransactionFrame) -> Self::Future {
-        let hdr = frame.header.clone();
+        let hdr = frame.header;
         let req = match ClientRequest::try_from(frame) {
             Err(e) => return Box::pin(future::ready(Err(e))),
             Ok(req) => req,
