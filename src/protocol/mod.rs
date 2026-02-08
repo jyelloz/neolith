@@ -334,10 +334,14 @@ impl TryFrom<&Parameter> for ServerBannerType {
     type Error = ProtocolError;
     fn try_from(parameter: &Parameter) -> Result<Self, Self::Error> {
         let Some(parameter) = parameter.int().map(u64::from) else {
-            return Err(ProtocolError::MalformedData(TransactionField::ServerBannerType));
+            return Err(ProtocolError::MalformedData(
+                TransactionField::ServerBannerType,
+            ));
         };
         let Ok(parameter) = Self::try_from(parameter as u8) else {
-            return Err(ProtocolError::MalformedData(TransactionField::ServerBannerType));
+            return Err(ProtocolError::MalformedData(
+                TransactionField::ServerBannerType,
+            ));
         };
         Ok(parameter)
     }
@@ -394,15 +398,8 @@ pub struct SetClientUserInfo {
 
 impl From<SetClientUserInfo> for TransactionFrame {
     fn from(val: SetClientUserInfo) -> Self {
-        let SetClientUserInfo {
-            username,
-            icon_id,
-        } = val;
-        let body = vec![
-            icon_id.into(),
-            username.into(),
-        ]
-        .into();
+        let SetClientUserInfo { username, icon_id } = val;
+        let body = vec![icon_id.into(), username.into()].into();
         Self {
             header: TransactionType::SetClientUserInfo.into(),
             body,
@@ -438,10 +435,6 @@ pub struct NotifyUserChange {
 
 impl From<NotifyUserChange> for TransactionFrame {
     fn from(val: NotifyUserChange) -> Self {
-        let header = TransactionHeader {
-            type_: TransactionType::NotifyUserChange.into(),
-            ..Default::default()
-        };
         let NotifyUserChange {
             user_id,
             username,
@@ -455,7 +448,10 @@ impl From<NotifyUserChange> for TransactionFrame {
             username.into(),
         ]
         .into();
-        Self { header, body }
+        Self {
+            header: TransactionType::NotifyUserChange.into(),
+            body,
+        }
     }
 }
 
@@ -477,26 +473,19 @@ impl From<&UserNameWithInfo> for NotifyUserChange {
     }
 }
 
-#[derive(Debug, PartialEq, Eq, PartialOrd, Ord)]
+#[derive(Debug, Clone, PartialEq, Eq, PartialOrd, Ord, From)]
 pub struct NotifyUserDelete {
     pub user_id: UserId,
 }
 
 impl From<NotifyUserDelete> for TransactionFrame {
     fn from(val: NotifyUserDelete) -> Self {
-        let header = TransactionHeader {
-            type_: TransactionType::NotifyUserDelete.into(),
-            ..Default::default()
-        };
         let NotifyUserDelete { user_id } = val;
         let body = vec![user_id.into()].into();
-        Self { header, body }
-    }
-}
-
-impl From<UserId> for NotifyUserDelete {
-    fn from(user_id: UserId) -> Self {
-        Self { user_id }
+        Self {
+            header: TransactionType::NotifyUserDelete.into(),
+            body,
+        }
     }
 }
 
@@ -517,10 +506,6 @@ pub struct NotifyChatUserChange {
 
 impl From<NotifyChatUserChange> for TransactionFrame {
     fn from(val: NotifyChatUserChange) -> Self {
-        let header = TransactionHeader {
-            type_: TransactionType::NotifyChatUserChange.into(),
-            ..Default::default()
-        };
         let NotifyChatUserChange {
             chat_id,
             user_id,
@@ -536,7 +521,10 @@ impl From<NotifyChatUserChange> for TransactionFrame {
             user_name.into(),
         ]
         .into();
-        Self { header, body }
+        Self {
+            header: TransactionType::NotifyChatUserChange.into(),
+            body,
+        }
     }
 }
 
@@ -567,13 +555,12 @@ pub struct NotifyChatUserDelete {
 
 impl From<NotifyChatUserDelete> for TransactionFrame {
     fn from(val: NotifyChatUserDelete) -> Self {
-        let header = TransactionHeader {
-            type_: TransactionType::NotifyChatUserDelete.into(),
-            ..Default::default()
-        };
         let NotifyChatUserDelete { chat_id, user_id } = val;
         let body = vec![chat_id.into(), user_id.into()].into();
-        Self { header, body }
+        Self {
+            header: TransactionType::NotifyChatUserDelete.into(),
+            body,
+        }
     }
 }
 
@@ -585,13 +572,12 @@ pub struct NotifyChatSubject {
 
 impl From<NotifyChatSubject> for TransactionFrame {
     fn from(val: NotifyChatSubject) -> Self {
-        let header = TransactionHeader {
-            type_: TransactionType::NotifyChatSubject.into(),
-            ..Default::default()
-        };
         let NotifyChatSubject { chat_id, subject } = val;
         let body = vec![chat_id.into(), subject.into()].into();
-        Self { header, body }
+        Self {
+            header: TransactionType::NotifyChatSubject.into(),
+            body,
+        }
     }
 }
 
