@@ -251,7 +251,7 @@ pub enum ServerResponse {
 impl ServerResponse {
     fn reject(message: Option<String>) -> TransactionFrame {
         let mut frame = TransactionFrame::empty(proto::TransactionType::Error);
-        frame.header.error_code = 1i32.into();
+        frame.header.error_code = 1u32.into();
         if let Some(reason) = message {
             frame
                 .body
@@ -486,7 +486,7 @@ impl <TS: transfers::TransferStream + 'static> NeolithServer<TS> {
     ) -> ServerResult<Option<ServerResponse>> {
         let user = self.require_current_user()?;
         let span = tracing::Span::current();
-        span.record("user_id", format!("{}", i16::from(user.user_id)));
+        span.record("user_id", format!("{}", u16::from(user.user_id)));
         span.record("nick", format!("{}", user.username));
         match request.into() {
             ClientRequest::GetUserNameList(_) => Ok(Some(self.get_users().into())),
