@@ -194,8 +194,8 @@ impl FromIterator<FileOperation> for FilePermissions {
     }
 }
 
-impl From<i64> for FilePermissions {
-    fn from(bits: i64) -> Self {
+impl From<u64> for FilePermissions {
+    fn from(bits: u64) -> Self {
         let mut flags = FlagSet::empty();
         for op in FileOperation::iter() {
             let bit = 1 & (bits >> (63 - (op as u8))) == 1;
@@ -207,7 +207,7 @@ impl From<i64> for FilePermissions {
     }
 }
 
-impl From<FilePermissions> for i64 {
+impl From<FilePermissions> for u64 {
     fn from(val: FilePermissions) -> Self {
         let mut bits = 0;
         for op in val.into_iter() {
@@ -243,8 +243,8 @@ impl FromIterator<UserOperation> for UserPermissions {
     }
 }
 
-impl From<i64> for UserPermissions {
-    fn from(bits: i64) -> Self {
+impl From<u64> for UserPermissions {
+    fn from(bits: u64) -> Self {
         let mut flags = FlagSet::empty();
         for op in UserOperation::iter() {
             let bit = 1 & (bits >> (63 - (op as u8))) == 1;
@@ -256,7 +256,7 @@ impl From<i64> for UserPermissions {
     }
 }
 
-impl From<UserPermissions> for i64 {
+impl From<UserPermissions> for u64 {
     fn from(val: UserPermissions) -> Self {
         let mut bits = 0;
         for op in val.into_iter() {
@@ -292,8 +292,8 @@ impl FromIterator<NewsOperation> for NewsPermissions {
     }
 }
 
-impl From<i64> for NewsPermissions {
-    fn from(bits: i64) -> Self {
+impl From<u64> for NewsPermissions {
+    fn from(bits: u64) -> Self {
         let mut flags = FlagSet::empty();
         for op in NewsOperation::iter() {
             let bit = 1 & (bits >> (63 - (op as u8))) == 1;
@@ -305,7 +305,7 @@ impl From<i64> for NewsPermissions {
     }
 }
 
-impl From<NewsPermissions> for i64 {
+impl From<NewsPermissions> for u64 {
     fn from(val: NewsPermissions) -> Self {
         let mut bits = 0;
         for op in val.into_iter() {
@@ -340,8 +340,8 @@ impl FromIterator<ChatOperation> for ChatPermissions {
     }
 }
 
-impl From<i64> for ChatPermissions {
-    fn from(bits: i64) -> Self {
+impl From<u64> for ChatPermissions {
+    fn from(bits: u64) -> Self {
         let mut flags = FlagSet::empty();
         for op in ChatOperation::iter() {
             let bit = 1 & (bits >> (63 - (op as u8))) == 1;
@@ -353,7 +353,7 @@ impl From<i64> for ChatPermissions {
     }
 }
 
-impl From<ChatPermissions> for i64 {
+impl From<ChatPermissions> for u64 {
     fn from(val: ChatPermissions) -> Self {
         let mut bits = 0;
         for op in val.into_iter() {
@@ -387,8 +387,8 @@ impl FromIterator<MiscOperation> for MiscPermissions {
     }
 }
 
-impl From<i64> for MiscPermissions {
-    fn from(bits: i64) -> Self {
+impl From<u64> for MiscPermissions {
+    fn from(bits: u64) -> Self {
         let mut flags = FlagSet::empty();
         for op in MiscOperation::iter() {
             let bit = 1 & (bits >> (63 - (op as u8))) == 1;
@@ -400,7 +400,7 @@ impl From<i64> for MiscPermissions {
     }
 }
 
-impl From<MiscPermissions> for i64 {
+impl From<MiscPermissions> for u64 {
     fn from(val: MiscPermissions) -> Self {
         let mut bits = 0;
         for op in val.into_iter() {
@@ -449,8 +449,8 @@ pub struct UserAccountPermissions {
     pub misc: MiscPermissions,
 }
 
-impl From<i64> for UserAccountPermissions {
-    fn from(i: i64) -> Self {
+impl From<u64> for UserAccountPermissions {
+    fn from(i: u64) -> Self {
         Self {
             file: i.into(),
             user: i.into(),
@@ -461,20 +461,20 @@ impl From<i64> for UserAccountPermissions {
     }
 }
 
-impl From<UserAccountPermissions> for i64 {
+impl From<UserAccountPermissions> for u64 {
     fn from(val: UserAccountPermissions) -> Self {
-        let file: i64 = val.file.into();
-        let user: i64 = val.user.into();
-        let news: i64 = val.news.into();
-        let chat: i64 = val.chat.into();
-        let misc: i64 = val.misc.into();
+        let file: u64 = val.file.into();
+        let user: u64 = val.user.into();
+        let news: u64 = val.news.into();
+        let chat: u64 = val.chat.into();
+        let misc: u64 = val.misc.into();
         file | user | news | chat | misc
     }
 }
 
 impl From<UserAccountPermissions> for proto::UserAccess {
     fn from(value: UserAccountPermissions) -> Self {
-        Self::from(i64::from(value))
+        Self::from(u64::from(value))
     }
 }
 
@@ -549,7 +549,7 @@ pub struct OnlineUser;
 pub struct UserInfo {
     username: String,
     nickname: String,
-    icon_id: i32,
+    icon_id: u32,
     address: String,
 }
 
