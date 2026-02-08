@@ -1,7 +1,7 @@
 use num_enum::{IntoPrimitive, TryFromPrimitive};
 
 #[derive(Debug, Eq, PartialEq, Ord, PartialOrd, IntoPrimitive, TryFromPrimitive)]
-#[repr(i16)]
+#[repr(u16)]
 pub enum TransactionType {
     Reply = 0,
 
