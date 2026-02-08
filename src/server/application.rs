@@ -1,7 +1,7 @@
 use derive_more::{From, Into};
 use enumset::{EnumSet, EnumSetIter, EnumSetType, enum_set};
 use serde::{Deserialize, Deserializer, Serialize, Serializer, de::Visitor, ser::SerializeMap};
-use std::{fmt, future::Future, marker::PhantomData, pin::Pin};
+use std::{fmt, future::Future, marker::PhantomData};
 use strum::{Display, EnumIter, EnumString, IntoEnumIterator};
 
 use crate::protocol as proto;
