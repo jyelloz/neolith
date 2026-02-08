@@ -387,14 +387,14 @@ impl<TS: TransferStream + 'static> UploadTransfer<TS> {
     async fn read_file_info(&mut self) -> TransferResult<proto::InfoFork> {
         let mut buf = vec![0u8; 72];
         self.stream.read_exact(&mut buf[..72]).await?;
-        let filename_len = i16::from_be_bytes([buf[70], buf[71]]) as usize;
+        let filename_len = u16::from_be_bytes([buf[70], buf[71]]) as usize;
         let mut filename = vec![0u8; filename_len + 2];
         self.stream
             .read_exact(&mut filename[..filename_len + 2])
             .await?;
         buf.extend(&filename);
         let comment_len =
-            i16::from_be_bytes([filename[filename_len], filename[filename_len + 1]]) as usize;
+            u16::from_be_bytes([filename[filename_len], filename[filename_len + 1]]) as usize;
         if comment_len > 0 {
             let mut comment = vec![0u8; comment_len];
             self.stream.read_exact(&mut comment[..comment_len]).await?;
@@ -486,7 +486,7 @@ impl<TS: TransferStream + 'static> TransfersUpdateProcessor<TS> {
                 let transfer = DownloadTransfer { stream, file };
                 transfer.run().await
             }
-            .instrument(info_span!("download", reference = i64::from(reference))),
+            .instrument(info_span!("download", reference = u64::from(reference))),
         );
         Ok(reply)
     }
@@ -512,7 +512,7 @@ impl<TS: TransferStream + 'static> TransfersUpdateProcessor<TS> {
                 };
                 transfer.run().await
             }
-            .instrument(info_span!("upload", reference = i64::from(reference))),
+            .instrument(info_span!("upload", reference = u64::from(reference))),
         );
         Ok(reply)
     }
