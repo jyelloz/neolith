@@ -7,7 +7,7 @@ use self::{
     transfers::TransfersService,
     users::{UserAccounts, Users, UsersService},
 };
-use crate::protocol::{
+use super::protocol::{
     self as proto, ChatId, ChatMessage, GenericReply, Message, NotifyNewsMessage, ProtocolError,
     ServerMessage, TransactionFrame, UserId, UserNameWithInfo,
 };
@@ -452,7 +452,7 @@ pub struct NeolithServer<TS: transfers::TransferStream> {
 
 type ServerResult<T> = anyhow::Result<T>;
 
-impl <TS: transfers::TransferStream + 'static> NeolithServer<TS> {
+impl<TS: transfers::TransferStream + 'static> NeolithServer<TS> {
     #[allow(clippy::too_many_arguments)]
     pub fn new(
         user_id: proto::UserId,
@@ -686,11 +686,15 @@ impl <TS: transfers::TransferStream + 'static> NeolithServer<TS> {
         };
         Ok(reply)
     }
-    async fn new_folder(&mut self, path: &proto::FilePath, name: &proto::FileName) -> ServerResponse {
+    async fn new_folder(
+        &mut self,
+        path: &proto::FilePath,
+        name: &proto::FileName,
+    ) -> ServerResponse {
         let path = PathBuf::from(path.clone()).join(PathBuf::from(name));
         if let Err(e) = self.files.mkdir(&path).await {
-            let msg =  e.to_string();
-            return ServerResponse::Rejected(Some(msg))
+            let msg = e.to_string();
+            return ServerResponse::Rejected(Some(msg));
         }
         ServerResponse::NewFolderReply
     }
