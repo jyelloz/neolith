@@ -185,7 +185,7 @@ impl Credential for Password {
     Debug, Default, Clone, Copy, From, Into, PartialEq, Eq, PartialOrd, Ord, DekuRead, DekuWrite,
 )]
 #[deku(endian = "big")]
-pub struct UserAccess(i64);
+pub struct UserAccess(u64);
 
 impl TryFrom<&Parameter> for UserAccess {
     type Error = ProtocolError;
@@ -204,7 +204,7 @@ impl From<UserAccess> for Parameter {
 
 #[derive(Debug, Clone, Copy, From, Into, DekuRead, DekuWrite)]
 #[deku(endian = "big")]
-pub struct ChatOptions(i32);
+pub struct ChatOptions(u32);
 
 impl ChatOptions {
     pub fn none() -> Self {
@@ -235,8 +235,8 @@ impl From<ChatOptions> for Parameter {
 
 #[derive(Debug, Clone, Copy, From, Into, PartialEq, Eq, PartialOrd, Ord, DekuRead, DekuWrite)]
 #[deku(endian = "big")]
-#[into(i16, i32)]
-pub struct ChatId(i16);
+#[into(u32)]
+pub struct ChatId(u16);
 
 impl Default for ChatId {
     fn default() -> Self {
@@ -250,7 +250,7 @@ impl TryFrom<&Parameter> for ChatId {
         let Some(parameter) = parameter.int() else {
             return Err(ProtocolError::MalformedData(TransactionField::ChatId));
         };
-        Ok(Self(i64::from(parameter) as i16))
+        Ok(Self(u64::from(parameter) as u16))
     }
 }
 
@@ -279,7 +279,8 @@ impl From<ChatSubject> for Parameter {
 
 #[derive(Debug, Clone, Copy, From, Into, PartialEq, Eq, PartialOrd, Ord, DekuRead, DekuWrite)]
 #[deku(endian = "big")]
-pub struct IconId(i16);
+#[into(u16, u32)]
+pub struct IconId(u16);
 
 impl From<IconId> for Parameter {
     fn from(val: IconId) -> Self {
@@ -312,7 +313,8 @@ impl TryFrom<&Parameter> for IconId {
     DekuWrite,
 )]
 #[deku(endian = "big")]
-pub struct UserId(i16);
+#[into(u16, u32)]
+pub struct UserId(u16);
 
 impl TryFrom<&Parameter> for UserId {
     type Error = ProtocolError;
@@ -320,7 +322,7 @@ impl TryFrom<&Parameter> for UserId {
         let Some(parameter) = parameter.int() else {
             return Err(ProtocolError::MalformedData(TransactionField::UserId));
         };
-        Ok(Self(i64::from(parameter) as i16))
+        Ok(Self(u64::from(parameter) as u16))
     }
 }
 
@@ -363,8 +365,8 @@ pub struct UserNameWithInfo {
     pub user_id: UserId,
     pub icon_id: IconId,
     pub user_flags: UserFlags,
-    #[deku(endian = "big", update = "self.username.len() as i16")]
-    pub username_len: i16,
+    #[deku(endian = "big", update = "self.username.len() as u16")]
+    pub username_len: u16,
     #[deku(ctx = "*username_len as usize")]
     pub username: Nickname,
 }
@@ -372,7 +374,7 @@ pub struct UserNameWithInfo {
 impl UserNameWithInfo {
     pub fn anonymous(username: Nickname, icon_id: IconId) -> Self {
         Self {
-            username_len: username.len() as i16,
+            username_len: username.len() as u16,
             username,
             icon_id,
             user_flags: Default::default(),
@@ -476,7 +478,7 @@ impl TryFrom<&Parameter> for FileSize {
         let Some(parameter) = parameter.int() else {
             return Err(ProtocolError::MalformedData(TransactionField::FileSize));
         };
-        Ok(Self(i64::from(parameter) as u32))
+        Ok(Self(u64::from(parameter) as u32))
     }
 }
 
@@ -815,7 +817,7 @@ impl From<TransferSize> for Parameter {
     Hash,
 )]
 #[deku(endian = "big")]
-#[into(u32, u64, i64)]
+#[into(u32, u64)]
 pub struct ReferenceNumber(u32);
 
 impl TryFrom<&Parameter> for ReferenceNumber {
@@ -847,7 +849,7 @@ impl HotlineProtocol for ReferenceNumber {
     Debug, Default, Clone, Copy, From, Into, PartialEq, Eq, PartialOrd, Ord, DekuRead, DekuWrite,
 )]
 #[deku(endian = "big")]
-pub struct WaitingCount(pub i32);
+pub struct WaitingCount(pub u32);
 
 impl TryFrom<&Parameter> for WaitingCount {
     type Error = ProtocolError;
@@ -866,7 +868,7 @@ impl From<WaitingCount> for Parameter {
 
 #[derive(Debug, Default, Clone, Copy, From, Into, DekuRead, DekuWrite)]
 #[deku(endian = "big")]
-pub struct TransactionOptions(i32);
+pub struct TransactionOptions(u32);
 
 impl TryFrom<&Parameter> for TransactionOptions {
     type Error = ProtocolError;
@@ -885,7 +887,7 @@ impl From<TransactionOptions> for Parameter {
 
 #[derive(Debug, Default, Clone, Copy, From, Into, DekuRead, DekuWrite)]
 #[deku(endian = "big")]
-pub struct FileTransferOptions(i16);
+pub struct FileTransferOptions(u16);
 
 impl TryFrom<&Parameter> for FileTransferOptions {
     type Error = ProtocolError;
