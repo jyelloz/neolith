@@ -1,6 +1,7 @@
 use deku::prelude::*;
 use derive_more::{From, Into};
 use maplit::hashmap;
+use num_enum::{IntoPrimitive, TryFromPrimitive};
 use std::collections::HashMap;
 use thiserror::Error;
 use tokio::io::AsyncRead;
