@@ -8,7 +8,7 @@ use derive_more::{From, Into};
 use encoding_rs::MACINTOSH;
 
 #[derive(Debug, Clone, Copy, From, Into, DekuRead, DekuWrite, DekuSize)]
-pub struct Flags(i8);
+pub struct Flags(u8);
 
 impl Flags {
     pub fn none() -> Self {
@@ -23,7 +23,7 @@ impl Default for Flags {
 }
 
 #[derive(Debug, Clone, Copy, Default, From, Into, DekuRead, DekuWrite, DekuSize)]
-pub struct IsReply(i8);
+pub struct IsReply(u8);
 
 impl IsReply {
     pub fn reply() -> Self {
@@ -45,7 +45,7 @@ impl From<IsReply> for bool {
 
 #[derive(Debug, Clone, Copy, Default, From, Into, DekuRead, DekuWrite, DekuSize)]
 #[deku(endian = "big")]
-pub struct Type(i16);
+pub struct Type(u16);
 
 #[derive(Debug, Clone, Copy, Default, From, Into, DekuRead, DekuWrite, DekuSize)]
 #[deku(endian = "big")]
@@ -137,15 +137,15 @@ impl From<TransactionType> for TransactionHeader {
 
 #[derive(Debug, Clone, Copy, From, Into, DekuRead, DekuWrite, DekuSize)]
 #[deku(endian = "big")]
-pub struct FieldId(i16);
+pub struct FieldId(u16);
 
 #[derive(Debug, Clone, Copy, From, Into, DekuRead, DekuWrite, DekuSize)]
 #[deku(endian = "big")]
-struct FieldSize(i16);
+struct FieldSize(u16);
 
 #[derive(Debug, Clone, Copy, From, Into, DekuRead, DekuWrite, DekuSize)]
 #[deku(endian = "big")]
-struct ParameterCount(i16);
+struct ParameterCount(u16);
 
 #[derive(Debug, Clone, DekuRead, DekuWrite)]
 pub struct Parameter {
@@ -196,7 +196,7 @@ impl Parameter {
         Self::new(TransactionField::ErrorText, message.to_vec())
     }
     pub fn field_matches(&self, field: TransactionField) -> bool {
-        self.field_id.0 == field as i16
+        self.field_id.0 == field as u16
     }
     pub fn take(self) -> Vec<u8> {
         self.field_data
@@ -216,25 +216,25 @@ impl Parameter {
 }
 
 #[derive(Debug, Clone, Copy, From, Into)]
-#[from(i8, i16, i32, u8, u16, u32)]
-pub struct IntParameter(i64);
+#[from(u8, u16, u32)]
+pub struct IntParameter(u64);
 
 impl IntParameter {
-    pub fn from_i8(data: &[u8]) -> Option<i64> {
+    pub fn from_u8(data: &[u8]) -> Option<u64> {
         let data: &[u8; 1] = data.try_into().ok()?;
-        Some(i8::from_be_bytes(*data) as i64)
+        Some(u8::from_be_bytes(*data) as u64)
     }
-    pub fn from_i16(data: &[u8]) -> Option<i64> {
+    pub fn from_u16(data: &[u8]) -> Option<u64> {
         let data: &[u8; 2] = data.try_into().ok()?;
-        Some(i16::from_be_bytes(*data) as i64)
+        Some(u16::from_be_bytes(*data) as u64)
     }
-    pub fn from_i32(data: &[u8]) -> Option<i64> {
+    pub fn from_u32(data: &[u8]) -> Option<u64> {
         let data: &[u8; 4] = data.try_into().ok()?;
-        Some(i32::from_be_bytes(*data) as i64)
+        Some(u32::from_be_bytes(*data) as u64)
     }
-    pub fn from_i64(data: &[u8]) -> Option<i64> {
+    pub fn from_u64(data: &[u8]) -> Option<u64> {
         let data: &[u8; 8] = data.try_into().ok()?;
-        Some(i64::from_be_bytes(*data))
+        Some(u64::from_be_bytes(*data))
     }
 }
 
@@ -242,10 +242,10 @@ impl From<&Parameter> for Option<IntParameter> {
     fn from(p: &Parameter) -> Self {
         let data = p.field_data.as_slice();
         let value = match data.len() {
-            1 => IntParameter::from_i8(data),
-            2 => IntParameter::from_i16(data),
-            4 => IntParameter::from_i32(data),
-            8 => IntParameter::from_i64(data),
+            1 => IntParameter::from_u8(data),
+            2 => IntParameter::from_u16(data),
+            4 => IntParameter::from_u32(data),
+            8 => IntParameter::from_u64(data),
             _ => None,
         };
         value.map(IntParameter)
@@ -255,14 +255,12 @@ impl From<&Parameter> for Option<IntParameter> {
 impl From<IntParameter> for Vec<u8> {
     fn from(val: IntParameter) -> Self {
         let IntParameter(int) = val;
-        if int < (i16::MIN as i64) {
-            int.to_be_bytes().to_vec()
-        } else if int < (i8::MIN as i64) {
-            (int as i16).to_be_bytes().to_vec()
-        } else if int <= (i8::MAX as i64) {
-            (int as i8).to_be_bytes().to_vec()
-        } else if int <= (i16::MAX as i64) {
-            (int as i16).to_be_bytes().to_vec()
+        if int <= (u8::MAX as u64) {
+            (int as u8).to_be_bytes().to_vec()
+        } else if int <= (u16::MAX as u64) {
+            (int as u16).to_be_bytes().to_vec()
+        } else if int <= (u32::MAX as u64) {
+            (int as u32).to_be_bytes().to_vec()
         } else {
             int.to_be_bytes().to_vec()
         }
@@ -272,7 +270,7 @@ impl From<IntParameter> for Vec<u8> {
 #[derive(Debug, Clone, Default, DekuRead, DekuWrite)]
 pub struct TransactionBody {
     #[deku(endian = "big", update = "self.parameters.len()")]
-    parameter_count: i16,
+    parameter_count: u16,
     #[deku(count = "parameter_count")]
     pub parameters: Vec<Parameter>,
 }
@@ -311,7 +309,7 @@ impl FromIterator<Parameter> for TransactionBody {
 impl From<Vec<Parameter>> for TransactionBody {
     fn from(parameters: Vec<Parameter>) -> Self {
         Self {
-            parameter_count: parameters.len() as i16,
+            parameter_count: parameters.len() as u16,
             parameters,
         }
     }
