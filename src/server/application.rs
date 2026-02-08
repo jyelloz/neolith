@@ -563,20 +563,18 @@ pub trait Users {
 }
 pub trait Files {}
 pub trait News {}
-pub trait Messages {}
 
 impl Unpin for UserList {}
 
-pub struct Application<U: Users, F: Files, N: News, M: Messages> {
+pub struct Application<U: Users, F: Files, N: News> {
     users: U,
     files: F,
     news: N,
-    messages: M,
 }
 
 type ApplicationResult<T> = Result<T, Error>;
 
-impl<U: Users, F: Files, N: News, M: Messages> Application<U, F, N, M> {
+impl<U: Users, F: Files, N: News> Application<U, F, N> {
     pub async fn login(&self, credentials: &Credentials) -> ApplicationResult<()> {
         let result = self.users.authenticate(credentials).await?;
         if result {
@@ -609,8 +607,6 @@ mod tests {
     impl Files for EmptyFiles {}
     struct EmptyNews;
     impl News for EmptyNews {}
-    struct EmptyMessages;
-    impl Messages for EmptyMessages {}
 
     struct TestUsers;
 
@@ -647,7 +643,6 @@ mod tests {
             users: TestUsers,
             files: EmptyFiles,
             news: EmptyNews,
-            messages: EmptyMessages,
         };
         let who = application.who().await?;
         assert_eq!(who.users, vec![test_user()]);
@@ -660,7 +655,6 @@ mod tests {
             users: TestUsers,
             files: EmptyFiles,
             news: EmptyNews,
-            messages: EmptyMessages,
         };
         let u = OnlineUser;
         let info = application.info(&u).await?;
