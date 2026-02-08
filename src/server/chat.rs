@@ -35,14 +35,14 @@ pub struct ChatRoomId(ChatId, ChatRoom);
 impl ChatRoomId {
     pub fn next(&self) -> Self {
         let Self(id, _) = self;
-        let id: i16 = (i32::from(*id) + 1i32) as i16;
-        Self(id.into(), Default::default())
+        let id = u16::from(*id).wrapping_add(1);
+        Self(id.into(), ChatRoom::default())
     }
 }
 
 impl std::hash::Hash for ChatRoomId {
     fn hash<H: std::hash::Hasher>(&self, state: &mut H) {
-        i32::from(self.0).hash(state);
+        u16::from(self.0).hash(state);
     }
 }
 
@@ -103,6 +103,7 @@ impl Chats {
     }
     pub fn create(&mut self, users: Vec<UserId>) -> ChatId {
         let chat = self.next.0;
+        // FIXME: Ensure next ID is unused
         self.next = self.next.next();
         for user in users {
             self.join(chat, user);
