@@ -54,9 +54,9 @@ pub enum ProtocolError {
     #[error("the transaction body has malformed data in field {0:?}")]
     MalformedData(TransactionField),
     #[error("expected transaction {expected:?}, got {encountered:?}")]
-    UnexpectedTransaction { expected: i16, encountered: i16 },
+    UnexpectedTransaction { expected: u16, encountered: u16 },
     #[error("the transaction header refers to unsupported type {0:?}")]
-    UnsupportedTransaction(i16),
+    UnsupportedTransaction(u16),
     #[error("system error")]
     SystemError,
 }
@@ -65,7 +65,7 @@ pub enum ProtocolError {
     Debug, PartialEq, Eq, PartialOrd, Ord, Clone, Copy, From, Into, DekuRead, DekuWrite, DekuSize,
 )]
 #[deku(endian = "big")]
-pub struct ErrorCode(i32);
+pub struct ErrorCode(u32);
 
 impl ErrorCode {
     pub fn ok() -> Self {
@@ -193,7 +193,7 @@ impl From<LoginRequest> for TransactionBody {
 pub struct LoginReply(ProtocolVersion);
 
 impl LoginReply {
-    pub fn new(version: i16) -> Self {
+    pub fn new(version: u16) -> Self {
         Self(ProtocolVersion(version))
     }
 }
@@ -234,7 +234,7 @@ impl TryFrom<TransactionFrame> for LoginReply {
 
 #[derive(Debug, Clone, Copy, From, Into, PartialEq, Eq, PartialOrd, Ord, DekuRead, DekuWrite)]
 #[deku(endian = "big")]
-pub struct ProtocolVersion(i16);
+pub struct ProtocolVersion(u16);
 
 impl From<ProtocolVersion> for Parameter {
     fn from(val: ProtocolVersion) -> Self {
@@ -345,13 +345,13 @@ impl TryFrom<&Parameter> for ServerBannerType {
 
 impl From<TransactionType> for Type {
     fn from(_type: TransactionType) -> Self {
-        Self::from(_type as i16)
+        Self::from(_type as u16)
     }
 }
 
 impl From<TransactionField> for FieldId {
     fn from(field: TransactionField) -> Self {
-        Self::from(field as i16)
+        Self::from(field as u16)
     }
 }
 
@@ -360,7 +360,7 @@ impl From<ShowAgreement> for TransactionBody {
         let parameter = if let Some(agreement) = val.agreement {
             agreement.into()
         } else {
-            Parameter::new_int(TransactionField::NoServerAgreement, 1i16)
+            Parameter::new_int(TransactionField::NoServerAgreement, 1u16)
         };
         vec![parameter].into()
     }
@@ -825,8 +825,8 @@ pub struct FileNameWithInfo {
     pub file_size: FileSize,
     #[deku(pad_bytes_before = "4")]
     pub name_script: NameScript,
-    #[deku(endian = "big", update = "self.file_name.len() as i16")]
-    pub file_name_size: i16,
+    #[deku(endian = "big", update = "self.file_name.len() as u16")]
+    pub file_name_size: u16,
     #[deku(count = "file_name_size")]
     pub file_name: Vec<u8>,
 }
@@ -839,7 +839,7 @@ impl From<FileNameWithInfo> for Parameter {
 
 #[derive(Debug, Default, Clone, Copy, From, Into, DekuRead, DekuWrite)]
 #[deku(endian = "big")]
-pub struct NameScript(i16);
+pub struct NameScript(u16);
 
 #[derive(Debug, Clone)]
 pub struct GetFileInfo {
@@ -1876,13 +1876,13 @@ impl From<DownloadFileReply> for TransactionFrame {
 
 #[derive(Debug, PartialEq, Eq, PartialOrd, Ord, Clone, Copy, From, Into, DekuRead, DekuWrite)]
 #[deku(endian = "big")]
-pub struct ForkCount(i16);
+pub struct ForkCount(u16);
 
 #[derive(Debug, PartialEq, Eq, PartialOrd, Ord, Clone, Copy, From, Into, DekuRead, DekuWrite)]
 #[deku(magic = b"FILP")]
 pub struct FlattenedFileHeader {
     #[deku(endian = "big")]
-    version: i16,
+    version: u16,
     #[deku(pad_bytes_before = "16")]
     pub fork_count: ForkCount,
 }
@@ -1921,7 +1921,7 @@ impl FlattenedFileObject {
         }
     }
     pub fn header(&self) -> FlattenedFileHeader {
-        let fork_count = (self.contents.len() + 1) as i16;
+        let fork_count = (self.contents.len() + 1) as u16;
         FlattenedFileHeader {
             version: 1,
             fork_count: fork_count.into(),
@@ -2010,7 +2010,7 @@ pub enum ForkType {
     DekuSize,
 )]
 #[deku(endian = "big")]
-pub struct FileFlags(i32);
+pub struct FileFlags(u32);
 
 #[derive(
     Debug, Default, Clone, Copy, PartialEq, Eq, PartialOrd, Ord, From, Into, DekuRead, DekuWrite,
@@ -2038,11 +2038,11 @@ pub struct InfoFork {
     pub modified_at: FileModifiedAt,
     pub name_script: NameScript,
     #[deku(endian = "big")]
-    pub name_len: i16,
+    pub name_len: u16,
     #[deku(count = "name_len")]
     pub file_name: Vec<u8>,
     #[deku(endian = "big")]
-    pub comment_len: i16,
+    pub comment_len: u16,
     #[deku(count = "comment_len")]
     pub comment: Vec<u8>,
 }
