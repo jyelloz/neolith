@@ -38,7 +38,7 @@ fn main() -> anyhow::Result<()> {
     for f in frames {
         let f = f?;
         let tt = f.header.transaction_type();
-        eprintln!("frame {tt:?} {f:?}");
+        println!("frame {tt:?} {f:?}");
     }
     Ok(())
 }
