@@ -71,7 +71,7 @@ async fn handle_request(
                 file_size: 134.into(),
                 name_script: Default::default(),
                 file_name_size: Default::default(),
-                file_name: b"SimpleText".to_vec().into(),
+                file_name: b"SimpleText".to_vec(),
             }),
         )),
         ClientRequest::GetFileInfo(..) => {
