@@ -6,9 +6,6 @@ use strum::{Display, EnumIter, EnumString, IntoEnumIterator};
 
 use crate::protocol as proto;
 
-type Pbdf<O> = Pin<Box<dyn Future<Output = O>>>;
-type Ppdfr<O> = Pbdf<Result<O, Error>>;
-
 #[derive(Debug, thiserror::Error)]
 pub enum Error {
     #[error("Authentication Failure")]
@@ -559,10 +556,10 @@ pub struct UserList {
 }
 
 pub trait Users {
-    fn online(&self) -> Ppdfr<UserList>;
-    fn info(&self, user: &OnlineUser) -> Ppdfr<UserInfo>;
-    fn authenticate(&self, credentials: &Credentials) -> Ppdfr<bool>;
-    fn authorize<I: Identity>(&self, identity: &I) -> Ppdfr<bool>;
+    fn online(&self) -> impl Future<Output = Result<UserList, Error>>;
+    fn info(&self, user: &OnlineUser) -> impl Future<Output = Result<UserInfo, Error>>;
+    fn authenticate(&self, credentials: &Credentials) -> impl Future<Output = Result<bool, Error>>;
+    fn authorize<I: Identity>(&self, identity: &I) -> impl Future<Output = Result<bool, Error>>;
 }
 pub trait Files {}
 pub trait News {}
@@ -577,8 +574,10 @@ pub struct Application<U: Users, F: Files, N: News, M: Messages> {
     messages: M,
 }
 
+type ApplicationResult<T> = Result<T, Error>;
+
 impl<U: Users, F: Files, N: News, M: Messages> Application<U, F, N, M> {
-    async fn login(&self, credentials: &Credentials) -> Result<(), Error> {
+    pub async fn login(&self, credentials: &Credentials) -> ApplicationResult<()> {
         let result = self.users.authenticate(credentials).await?;
         if result {
             Ok(())
@@ -587,17 +586,20 @@ impl<U: Users, F: Files, N: News, M: Messages> Application<U, F, N, M> {
         }
     }
 
-    pub async fn who(&self) -> Result<UserList, Error> {
+    pub async fn who(&self) -> ApplicationResult<UserList> {
         let who = self.users.online();
         who.await
     }
 
-    pub async fn info(&self, user: &OnlineUser) -> Result<UserInfo, Error> {
-        let info = self.users.info(user);
-        info.await
+    pub async fn info(&self, user: &OnlineUser) -> ApplicationResult<UserInfo> {
+        self.users.info(user).await
     }
 
-    async fn command() -> Result<(), ()> {
+    pub async fn ls(&self, dir: Option<PathBuf>) -> ApplicationResult<FileList> {
+        self.files.list(dir).await
+    }
+
+    pub async fn command() -> ApplicationResult<()> {
         Ok(())
     }
 }
@@ -606,7 +608,6 @@ impl<U: Users, F: Files, N: News, M: Messages> Application<U, F, N, M> {
 mod tests {
     use super::*;
     use anyhow::Result;
-    use std::future;
 
     struct EmptyFiles;
     impl Files for EmptyFiles {}
@@ -626,29 +627,21 @@ mod tests {
         }
     }
 
-    fn futrok<T>(value: T) -> future::Ready<Result<T, Error>> {
-        future::ready(Ok(value))
-    }
-    fn pbfutrok<T>(value: T) -> Pin<Box<future::Ready<Result<T, Error>>>> {
-        Box::pin(futrok(value))
-    }
-
     impl Users for TestUsers {
-        fn online(&self) -> Ppdfr<UserList> {
+        async fn online(&self) -> ApplicationResult<UserList> {
             let users = UserList {
                 users: vec![test_user()],
             };
-            pbfutrok(users)
+            Ok(users)
         }
-        fn info(&self, _: &OnlineUser) -> Ppdfr<UserInfo> {
-            let user = test_user();
-            pbfutrok(user)
+        async fn info(&self, _: &OnlineUser) -> ApplicationResult<UserInfo> {
+            Ok(test_user())
         }
-        fn authenticate(&self, _: &Credentials) -> Ppdfr<bool> {
-            pbfutrok(true)
+        async fn authenticate(&self, _: &Credentials) -> ApplicationResult<bool> {
+            Ok(true)
         }
-        fn authorize<I: Identity>(&self, _: &I) -> Ppdfr<bool> {
-            pbfutrok(true)
+        async fn authorize<I: Identity>(&self, _: &I) -> ApplicationResult<bool> {
+            Ok(true)
         }
     }
 
