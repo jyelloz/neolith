@@ -11,10 +11,13 @@ pub struct Connection<S> {
     socket: S,
 }
 
-impl<S: AsyncRead + AsyncWrite + Unpin> Connection<S> {
+impl<S> Connection<S> {
     pub fn new(socket: S) -> Self {
         Self { socket }
     }
+}
+
+impl<S: AsyncRead + AsyncWrite + Unpin> Connection<S> {
     pub async fn read_frame(&mut self) -> Result<TransactionFrame> {
         let header = self.header().await?;
         let size = header.body_len();
