@@ -391,6 +391,24 @@ pub struct SetClientUserInfo {
     pub icon_id: IconId,
 }
 
+impl From<SetClientUserInfo> for TransactionFrame {
+    fn from(val: SetClientUserInfo) -> Self {
+        let SetClientUserInfo {
+            username,
+            icon_id,
+        } = val;
+        let body = vec![
+            icon_id.into(),
+            username.into(),
+        ]
+        .into();
+        Self {
+            header: TransactionType::SetClientUserInfo.into(),
+            body,
+        }
+    }
+}
+
 impl TryFrom<TransactionFrame> for SetClientUserInfo {
     type Error = ProtocolError;
     fn try_from(frame: TransactionFrame) -> Result<Self, Self::Error> {
