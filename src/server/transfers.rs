@@ -80,13 +80,13 @@ impl<TS> RequestsInner<TS> {
         let id = self.next_id();
         self.downloads.insert(id, conn);
         debug!("added download {id:?}, size={}", self.uploads.len());
-        id.into()
+        id
     }
     fn add_upload(&mut self, conn: oneshot::Sender<TS>) -> ReferenceNumber {
         let id = self.next_id();
         self.uploads.insert(id, conn);
         debug!("added upload {id:?}, size={}", self.uploads.len());
-        id.into()
+        id
     }
 }
 
