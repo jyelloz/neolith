@@ -25,8 +25,11 @@ fn invert_credential(data: &[u8]) -> Vec<u8> {
 pub struct Nickname(#[deku(count = "len")] Vec<u8>);
 
 impl Nickname {
-    fn new(nickname: Vec<u8>) -> Self {
+    pub fn new(nickname: Vec<u8>) -> Self {
         Self(nickname)
+    }
+    pub fn new_empty() -> Self {
+        Self(Default::default())
     }
     pub fn take(self) -> Vec<u8> {
         self.0
@@ -235,7 +238,7 @@ impl From<ChatOptions> for Parameter {
 
 #[derive(Debug, Clone, Copy, From, Into, PartialEq, Eq, PartialOrd, Ord, DekuRead, DekuWrite)]
 #[deku(endian = "big")]
-#[into(u32)]
+#[into(u16, u32)]
 pub struct ChatId(u16);
 
 impl Default for ChatId {
