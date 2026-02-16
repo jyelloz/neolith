@@ -99,6 +99,14 @@ impl Globals {
         self.transaction_id += 1;
         proto::Id::from(id)
     }
+    async fn disconnect(&mut self) {
+        if let Some(user) = self.user() {
+            self.chat_remove(&user).await;
+            self.user_remove(&user).await;
+        } else {
+            debug!("no user to remove");
+        };
+    }
 }
 
 async fn new_listener_from_listenfd<A: ToSocketAddrs>(
