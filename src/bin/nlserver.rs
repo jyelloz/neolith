@@ -216,7 +216,7 @@ impl<R: AsyncRead + Unpin, W: AsyncWrite + Unpin> State<R, W> {
                 state.handle().await?;
                 Self::Closed
             }
-            Self::Closed => Self::Closed,
+            Self::Closed => bail!("closed"),
         };
         Ok(())
     }
