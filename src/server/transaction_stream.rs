@@ -1,4 +1,7 @@
-use std::io::{self, Read};
+use std::{
+    io::{self, Read},
+    marker::PhantomData,
+};
 
 use crate::protocol::{self as proto, HotlineProtocol as _};
 
@@ -9,20 +12,17 @@ use tokio::io::{AsyncRead, AsyncReadExt as _};
 
 pub type Result<T> = core::result::Result<T, proto::ProtocolError>;
 
-pub struct Frames<R>(R);
+pub struct Frames<'r, R>(PhantomData<&'r R>, R);
 
-impl<R> Frames<R> {
+impl<'r, R> Frames<'r, R> {
     pub fn new(reader: R) -> Self {
-        Self(reader)
-    }
-    pub fn take(self) -> R {
-        self.0
+        Self(PhantomData, reader)
     }
 }
 
-impl<R: Read> Frames<R> {
+impl<'r, R: Read> Frames<'r, R> {
     fn header_sync(&mut self) -> Result<Option<proto::TransactionHeader>> {
-        let Self(reader) = self;
+        let Self(_, reader) = self;
         let mut buf = [0u8; proto::TransactionHeader::SIZE_BYTES.unwrap()];
         match reader.read_exact(&mut buf) {
             Ok(_) => {}
@@ -34,7 +34,7 @@ impl<R: Read> Frames<R> {
         proto::TransactionHeader::from_bytes(&buf).map(Some)
     }
     fn body_sync(&mut self, size: usize) -> Result<proto::TransactionBody> {
-        let Self(reader) = self;
+        let Self(_, reader) = self;
         let buf = &mut vec![0u8; size][..size];
         reader.read_exact(buf)?;
         proto::TransactionBody::from_bytes(buf)
@@ -48,7 +48,7 @@ impl<R: Read> Frames<R> {
     }
 }
 
-impl<R: Read> Iterator for Frames<R> {
+impl<'r, R: Read> Iterator for Frames<'r, R> {
     type Item = Result<proto::TransactionFrame>;
 
     fn next(&mut self) -> Option<Self::Item> {
@@ -60,7 +60,7 @@ impl<R: Read> Iterator for Frames<R> {
     }
 }
 
-impl<R: AsyncRead + Unpin> Frames<R> {
+impl<'r, R: AsyncRead + Unpin + Send> Frames<'r, R> {
     pub fn frames(mut self) -> impl Stream<Item = Result<proto::TransactionFrame>> {
         stream! {
             loop {
@@ -75,13 +75,13 @@ impl<R: AsyncRead + Unpin> Frames<R> {
         Ok(proto::TransactionFrame { header, body })
     }
     async fn header(&mut self) -> Result<proto::TransactionHeader> {
-        let Self(reader) = self;
+        let Self(_, reader) = self;
         let mut buf = [0u8; proto::TransactionHeader::SIZE_BYTES.unwrap()];
         reader.read_exact(&mut buf).await?;
         proto::TransactionHeader::from_bytes(&buf)
     }
     async fn body(&mut self, size: usize) -> Result<proto::TransactionBody> {
-        let Self(reader) = self;
+        let Self(_, reader) = self;
         let buf = &mut vec![0u8; size][..size];
         reader.read_exact(buf).await?;
         proto::TransactionBody::from_bytes(buf)
