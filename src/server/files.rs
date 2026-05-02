@@ -2,8 +2,8 @@ use crate::{
     apple,
     protocol::{self as proto, AsyncDataSource, FlattenedFileObject},
 };
-use deku::prelude::*;
-use derive_more::Into;
+use adfs::asyncio as adfs;
+use async_compat::Compat;
 use encoding_rs::MACINTOSH;
 use four_cc::FourCC;
 use magic::Cookie;
@@ -11,13 +11,13 @@ use std::{
     cell::RefCell,
     ffi::OsStr,
     fs::Metadata,
-    io::{self, ErrorKind, SeekFrom, prelude::*},
+    io::{self, ErrorKind, SeekFrom},
+    os::unix::ffi::OsStrExt,
     path::{Component, Path, PathBuf},
     time::SystemTime,
 };
-use tokio::fs::{self, DirEntry as OsDirEntry};
-use tokio::io::{AsyncRead, AsyncReadExt, AsyncSeek, AsyncSeekExt, AsyncWrite};
-use tracing::trace;
+use tokio::fs;
+use tokio::io::{AsyncSeekExt as _, AsyncWrite};
 
 #[derive(Debug)]
 pub struct FileType(FourCC);
@@ -191,7 +191,6 @@ pub struct OsFiles {
 }
 
 impl OsFiles {
-    const APPLEDOUBLE_PREFIX: &'static str = "._";
     pub async fn with_root<P: Into<PathBuf>>(root: P) -> io::Result<Self> {
         let root = root.into().canonicalize()?;
         let metadata = fs::metadata(&root).await?;
@@ -201,39 +200,49 @@ impl OsFiles {
             Err(ErrorKind::InvalidInput.into())
         }
     }
-    fn is_appledouble(dirent: &OsDirEntry) -> bool {
-        let name = dirent.file_name();
-        let Some(name) = name.to_str() else {
-            return false;
-        };
-        name.starts_with(Self::APPLEDOUBLE_PREFIX)
-    }
     pub async fn list(&self, path: &Path) -> io::Result<Vec<DirEntry>> {
         let path = self.subpath(path)?;
-        let mut listing = fs::read_dir(path).await?;
+        let mut listing = adfs::read_dir(&path).await?;
         let mut entries = vec![];
-        while let Some(entry) = listing.next_entry().await? {
-            if Self::is_appledouble(&entry) {
+        while let Some(ent) = futures::StreamExt::next(&mut listing).await {
+            let Ok(ent) = ent else {
                 continue;
-            }
-            entries.push(self.decorate_direntry(entry).await?);
+            };
+            let path = ent.inner.path();
+            let metadata = self.resolve_metadata(&ent).await?;
+            let dirent = self.decorate_metadata(path, &metadata).await?;
+            entries.push(dirent);
         }
         Ok(entries)
     }
-    async fn decorate_direntry(&self, dirent: OsDirEntry) -> io::Result<DirEntry> {
-        let metadata = dirent.metadata().await?;
-        let path = dirent.path();
+    async fn resolve_metadata(
+        &self,
+        dirent: &adfs::AppleDoubleDirEntry,
+    ) -> io::Result<adfs::Metadata> {
+        let mut metadata = dirent.metadata().await?;
+        if !metadata.inner.is_symlink() {
+            return Ok(metadata);
+        }
+        let resolved = fs::metadata(dirent.inner.path()).await?;
+        metadata.inner = resolved;
+        Ok(metadata)
+    }
+    async fn decorate_metadata(
+        &self,
+        path: PathBuf,
+        metadata: &adfs::Metadata,
+    ) -> io::Result<DirEntry> {
         let ExtendedMetadata {
             data_len,
             rsrc_len,
             file_type: type_code,
             creator: creator_code,
             ..
-        } = if metadata.is_dir() {
+        } = if metadata.inner.is_dir() {
             ExtendedMetadata::directory()
         } else {
-            self.appledouble_magic(&path, &metadata)
-                .or_else(|_| self.apple_magic(&path, &metadata))?
+            self.appledouble_magic(metadata)
+                .or_else(|_| self.apple_magic(&path, &metadata.inner))?
         };
         Ok(DirEntry {
             path,
@@ -245,14 +254,14 @@ impl OsFiles {
     }
     pub async fn get_info(&self, path: &Path) -> io::Result<FileInfo> {
         let path = self.subpath(path)?;
-        let metadata = fs::metadata(&path).await?;
-        let info = if metadata.is_dir() {
+        let mut metadata = adfs::metadata(&path).await?;
+        let info = if metadata.inner.is_dir() {
             ExtendedMetadata::directory()
         } else {
-            self.appledouble_magic(&path, &metadata)
-                .or_else(|_| self.apple_magic(&path, &metadata))?
+            self.appledouble_magic(&mut metadata)
+                .or_else(|_| self.apple_magic(&path, &metadata.inner))?
         };
-        (path, metadata, info).try_into()
+        (path, metadata.inner, info).try_into()
     }
     fn validate_path(path: &Path) -> io::Result<&Path> {
         let complex = path.components().any(|p| p == Component::ParentDir);
@@ -272,38 +281,18 @@ impl OsFiles {
         let appledouble_basename = format!("._{basename}");
         Path::join(path.parent().unwrap(), appledouble_basename)
     }
-    fn appledouble_magic(&self, path: &Path, metadata: &Metadata) -> io::Result<ExtendedMetadata> {
-        let path = Self::appledouble_path(path);
-        let mut ad_file = std::fs::OpenOptions::new()
-            .read(true)
-            .write(false)
-            .create(false)
-            .append(false)
-            .open(path)?;
-        let (_, header) = apple::AppleSingleHeader::from_reader((&mut ad_file, 0))?;
-        let finf = if let Some(finf_entry) = header.finder_info() {
-            ad_file.seek(SeekFrom::Start(finf_entry.offset as u64))?;
-            let (_, finf) = apple::FinderInfo::from_reader((&mut ad_file, 0))?;
-            finf
+    fn appledouble_magic(&self, metadata: &adfs::Metadata) -> io::Result<ExtendedMetadata> {
+        let (ftyp, crea) = if let Some(finf) = metadata.finder_info.clone() {
+            (finf.info.file_type.0, finf.info.creator.0)
         } else {
-            apple::FinderInfo::windows_file()
+            (*b"BINA", *b"dosa")
         };
-        let comment = if let Some(comment_entry) = header.entry(apple::EntryId::Comment) {
-            ad_file.seek(SeekFrom::Start(comment_entry.offset as u64))?;
-            let len = comment_entry.length as usize;
-            let mut comment = vec![0u8; len];
-            ad_file.read_exact(&mut comment[..len])?;
-            comment
-        } else {
-            vec![]
-        };
-        let rsrc_len = header.entry_len(apple::EntryId::ResourceFork).unwrap_or(0);
-
+        let comment = metadata.comment.clone().unwrap_or_default();
         let info = ExtendedMetadata {
-            data_len: metadata.len(),
-            rsrc_len,
-            file_type: FileType((&finf.file_type.0.0).into()),
-            creator: Creator((&finf.creator.0.0).into()),
+            data_len: metadata.inner.len(),
+            rsrc_len: metadata.rsrc_size,
+            file_type: FileType(FourCC(ftyp)),
+            creator: Creator(FourCC(crea)),
             comment,
         };
         Ok(info)
@@ -327,16 +316,77 @@ impl OsFiles {
         self.root.clone()
     }
     pub async fn read(&self, path: &Path) -> io::Result<FlattenedFileObject> {
+        match self.read_adfs(path).await {
+            Ok(ffo) => Ok(ffo),
+            Err(adfs::AppleDoubleError::Io(e)) => Err(e),
+            Err(e) => Err(std::io::Error::other(format!("appledouble: {e:?}"))),
+        }
+    }
+    async fn read_adfs(&self, path: &Path) -> Result<FlattenedFileObject, adfs::AppleDoubleError> {
+        Err(adfs::AppleDoubleError::UnexpectedEof)?;
         let path = self.subpath(path)?;
         let appledouble_path = Self::appledouble_path(&path);
-        let file = if appledouble_path.is_file() {
-            let file = AppleDoubleFile::new(path, appledouble_path);
-            file.read().await
+        let file = adfs::AppleDoubleFile {
+            data_path: path.clone(),
+            metadata_path: Some(appledouble_path),
+        };
+
+        let meta = fs::metadata(&path).await?;
+
+        let Some(mut arch) = file.open_async().await? else {
+            let file = PlainFile::new(path, meta);
+            return Ok(file.read().await?);
+        };
+
+        let name = path.file_name().unwrap_or_default();
+        let info = self
+            .read_adfs_info_fork(name.as_bytes(), &meta, &mut arch)
+            .await?;
+        let Some(info) = info else {
+            let file = PlainFile::new(path, meta);
+            return Ok(file.read().await?);
+        };
+
+        let rsrc = arch.owned_entry_reader(adfs::EntryId::ResourceFork)?;
+        let data = fs::File::open(path).await?;
+        let meta = data.metadata().await?;
+        let data_len = meta.len();
+        let data_rdr = AsyncDataSource::new(data_len, data);
+        let ffo = if let Some(rsrc) = rsrc {
+            let rsrc_rdr = AsyncDataSource::new(rsrc.len(), Compat::new(rsrc));
+            FlattenedFileObject::with_forks(info, data_rdr, rsrc_rdr)
         } else {
-            let file = PlainFile::new(path);
-            file.read().await
-        }?;
-        Ok(file)
+            FlattenedFileObject::with_data(info, data_rdr)
+        };
+        Ok(ffo)
+    }
+    async fn read_adfs_info_fork(
+        &self,
+        name: &[u8],
+        meta: &Metadata,
+        arch: &mut adfs::AppleDoubleArchive,
+    ) -> Result<Option<proto::InfoFork>, adfs::AppleDoubleError> {
+        let Some(finf) = arch.finder_info().await? else {
+            return Ok(None);
+        };
+        let created = meta.created().map(proto::FileCreatedAt::from);
+        let modified = meta.modified().map(proto::FileModifiedAt::from);
+        let comment = arch.comment().await?.unwrap_or_default();
+        let info = proto::InfoFork {
+            platform: proto::PlatformType::AppleMac,
+            type_code: finf.file_type().into(),
+            creator_code: finf.creator().into(),
+            flags: proto::FileFlags::default(),
+            platform_flags: proto::PlatformFlags::default(),
+            created_at: created.unwrap_or_default(),
+            modified_at: modified.unwrap_or_default(),
+            name_script: proto::NameScript::default(),
+            name_len: name.len() as u16,
+            file_name: name.to_vec(),
+            comment_len: comment.len() as u16,
+            comment,
+        };
+        Ok(Some(info))
     }
     // TODO: Add more structured writer, similar to reader
     pub async fn write(
@@ -368,11 +418,12 @@ impl OsFiles {
 
 struct PlainFile {
     path: PathBuf,
+    meta: Metadata,
 }
 
 impl PlainFile {
-    pub fn new(path: PathBuf) -> Self {
-        Self { path }
+    pub fn new(path: PathBuf, meta: Metadata) -> Self {
+        Self { path, meta }
     }
     async fn read_info_fork(&self) -> io::Result<proto::InfoFork> {
         let finf = apple::FinderInfo::windows_file();
@@ -389,14 +440,16 @@ impl PlainFile {
             panic!("bad filename");
         }
         let file_name = file_name.into_owned();
+        let created = self.meta.created().map(proto::FileCreatedAt::from);
+        let modified = self.meta.modified().map(proto::FileModifiedAt::from);
         let fork = proto::InfoFork {
             platform: proto::PlatformType::MicrosoftWin,
             type_code,
             creator_code,
+            created_at: created.unwrap_or_default(),
+            modified_at: modified.unwrap_or_default(),
             flags: Default::default(),
             platform_flags: Default::default(),
-            created_at: Default::default(),
-            modified_at: Default::default(),
             name_script: Default::default(),
             name_len: file_name.len() as u16,
             file_name,
@@ -415,140 +468,6 @@ impl PlainFile {
         let info = self.read_info_fork().await?;
         let data = self.read_data_fork().await?;
         let file = FlattenedFileObject::with_data(info, data);
-        Ok(file)
-    }
-}
-
-#[derive(Into)]
-struct AppleDoubleFile {
-    path: PathBuf,
-    appledouble_path: PathBuf,
-}
-
-impl AppleDoubleFile {
-    pub fn new(path: PathBuf, appledouble_path: PathBuf) -> Self {
-        Self {
-            path,
-            appledouble_path,
-        }
-    }
-    async fn read_appledouble_header_stub(
-        mut reader: impl AsyncRead + Unpin,
-    ) -> io::Result<apple::AppleSingleHeaderStub> {
-        let mut buf = [0u8; apple::AppleSingleHeaderStub::calculate_size()];
-        reader.read_exact(&mut buf).await?;
-        let stub = apple::AppleSingleHeaderStub::try_from(&buf[..])?;
-        Ok(stub)
-    }
-    async fn seek_to(
-        mut reader: impl AsyncSeekExt + Unpin,
-        entry: apple::EntryDescriptor,
-    ) -> io::Result<()> {
-        reader.seek(SeekFrom::Start(entry.offset as u64)).await?;
-        Ok(())
-    }
-    async fn read_finf(
-        mut reader: impl AsyncRead + AsyncSeek + Unpin,
-        header: &apple::AppleSingleHeader,
-    ) -> io::Result<Option<apple::FinderInfo>> {
-        let Some(finf_entry) = header.finder_info() else {
-            return Ok(None);
-        };
-        Self::seek_to(&mut reader, finf_entry).await?;
-        let mut buf = [0u8; apple::FinderInfo::calculate_size()];
-        reader.read_exact(&mut buf).await?;
-        let finf = apple::FinderInfo::try_from(&buf[..])?;
-        Ok(Some(finf))
-    }
-    async fn read_appledouble_header(
-        mut reader: impl AsyncRead + Unpin,
-    ) -> io::Result<apple::AppleSingleHeader> {
-        let stub = Self::read_appledouble_header_stub(&mut reader).await?;
-        let mut entries = vec![];
-        for _ in 0..stub.n_descriptors {
-            let mut buf = [0u8; apple::EntryDescriptor::calculate_size()];
-            reader.read_exact(&mut buf).await?;
-            entries.push(apple::EntryDescriptor::try_from(&buf[..])?);
-        }
-        Ok(apple::AppleSingleHeader::new_double(entries))
-    }
-    async fn read_comment(
-        &self,
-        header: &apple::AppleSingleHeader,
-        mut reader: impl AsyncRead + AsyncSeek + Unpin,
-    ) -> io::Result<Vec<u8>> {
-        let Some(entry) = header.entry(apple::EntryId::Comment) else {
-            return Ok(vec![]);
-        };
-        Self::seek_to(&mut reader, entry).await?;
-        let len = entry.length as usize;
-        let mut comment = vec![0u8; len];
-        reader.read_exact(&mut comment[..len]).await?;
-        Ok(comment)
-    }
-    async fn read_info_fork(&self) -> io::Result<proto::InfoFork> {
-        let mut file = tokio::fs::File::open(&self.appledouble_path).await?;
-        let header = Self::read_appledouble_header(&mut file).await?;
-        let finf = Self::read_finf(&mut file, &header)
-            .await?
-            .unwrap_or_else(apple::FinderInfo::windows_file);
-        let type_code = proto::FileType::from(finf.file_type);
-        let creator_code = proto::Creator::from(finf.creator);
-        let filename = self
-            .path
-            .file_name()
-            .expect("no filename")
-            .to_str()
-            .expect("no string filename");
-        let (file_name, _, failed) = MACINTOSH.encode(filename);
-        if failed {
-            panic!("bad filename");
-        }
-        let comment = self.read_comment(&header, &mut file).await?;
-        let platform_flags = u16::from(finf.flags) as u32;
-        let file_name = file_name.into_owned();
-        let fork = proto::InfoFork {
-            platform: proto::PlatformType::AppleMac,
-            type_code,
-            creator_code,
-            flags: Default::default(),
-            platform_flags: proto::PlatformFlags::from(platform_flags),
-            created_at: Default::default(),
-            modified_at: Default::default(),
-            name_script: Default::default(),
-            name_len: file_name.len() as u16,
-            file_name,
-            comment_len: comment.len() as u16,
-            comment,
-        };
-        Ok(fork)
-    }
-    async fn read_data_fork(&self) -> io::Result<AsyncDataSource> {
-        let file = tokio::fs::File::open(&self.path).await?;
-        let meta = file.metadata().await?;
-        let len = meta.len() as u64;
-        Ok(AsyncDataSource::new(len, file))
-    }
-    async fn read_rsrc_fork(&self) -> io::Result<Option<AsyncDataSource>> {
-        let mut file = tokio::fs::File::open(&self.appledouble_path).await?;
-        let header = Self::read_appledouble_header(&mut file).await?;
-        let Some(rsrc_entry) = header.resource_fork() else {
-            return Ok(None);
-        };
-        trace!("have rsrc entry {rsrc_entry:?}");
-        file.seek(SeekFrom::Start(rsrc_entry.offset as u64)).await?;
-        let len = rsrc_entry.length as u64;
-        Ok(Some(AsyncDataSource::new(len, file)))
-    }
-    async fn read(self) -> io::Result<FlattenedFileObject> {
-        let info = self.read_info_fork().await?;
-        let data = self.read_data_fork().await?;
-        let rsrc = self.read_rsrc_fork().await?;
-        let file = if let Some(rsrc) = rsrc {
-            FlattenedFileObject::with_forks(info, data, rsrc)
-        } else {
-            FlattenedFileObject::with_data(info, data)
-        };
         Ok(file)
     }
 }
