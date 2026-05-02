@@ -867,7 +867,7 @@ impl From<FileNameWithInfo> for Parameter {
     }
 }
 
-#[derive(Debug, Default, Clone, Copy, From, Into, DekuRead, DekuWrite)]
+#[derive(Debug, Default, Clone, Copy, From, Into, DekuRead, DekuWrite, DekuSize)]
 #[deku(endian = "big")]
 pub struct NameScript(u16);
 
@@ -1904,11 +1904,11 @@ impl From<DownloadFileReply> for TransactionFrame {
     }
 }
 
-#[derive(Debug, PartialEq, Eq, PartialOrd, Ord, Clone, Copy, From, Into, DekuRead, DekuWrite)]
+#[derive(Debug, PartialEq, Eq, PartialOrd, Ord, Clone, Copy, From, Into, DekuRead, DekuWrite, DekuSize)]
 #[deku(endian = "big")]
 pub struct ForkCount(u16);
 
-#[derive(Debug, PartialEq, Eq, PartialOrd, Ord, Clone, Copy, From, Into, DekuRead, DekuWrite)]
+#[derive(Debug, PartialEq, Eq, PartialOrd, Ord, Clone, Copy, From, Into, DekuRead, DekuWrite, DekuSize)]
 #[deku(magic = b"FILP")]
 pub struct FlattenedFileHeader {
     #[deku(endian = "big")]
@@ -2043,7 +2043,7 @@ pub enum ForkType {
 pub struct FileFlags(u32);
 
 #[derive(
-    Debug, Default, Clone, Copy, PartialEq, Eq, PartialOrd, Ord, From, Into, DekuRead, DekuWrite,
+    Debug, Default, Clone, Copy, PartialEq, Eq, PartialOrd, Ord, From, Into, DekuRead, DekuWrite, DekuSize,
 )]
 #[deku(endian = "big")]
 pub struct PlatformFlags(u32);
