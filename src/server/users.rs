@@ -7,13 +7,14 @@ use thiserror::Error;
 
 use std::{
     collections::{HashMap, HashSet},
+    fs::FileType,
     path::{Path, PathBuf},
 };
 
 use tokio::fs;
 use tokio::sync::{mpsc, oneshot, watch};
 
-use tracing::{debug, error};
+use tracing::{debug, error, warn};
 
 use super::{
     application::UserAccount,
@@ -219,6 +220,22 @@ impl UserAccounts {
             .context(format!("user directory: {path:?}"))?;
         while let Some(file) = dir.next_entry().await? {
             let path = file.path();
+            if file
+                .file_type()
+                .await
+                .ok()
+                .filter(FileType::is_dir)
+                .is_some()
+            {
+                continue;
+            }
+            if path.extension().filter(|ext| *ext == "toml").is_none() {
+                warn!(
+                    "skipping non-toml file in users directory {:?}",
+                    path.canonicalize()
+                );
+                continue;
+            };
             let Ok(data) = fs::read_to_string(&path).await else {
                 error!("failed to read user account file {path:?}");
                 continue;
