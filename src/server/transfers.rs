@@ -40,6 +40,7 @@ enum Request {
 enum TransferReply {
     FileDownload(proto::DownloadFileReply),
     FileUpload(proto::UploadFileReply),
+    Error(proto::ErrorCode),
 }
 
 impl From<proto::DownloadFileReply> for TransferReply {
@@ -420,15 +421,27 @@ impl<TS: TransferStream + 'static> TransfersUpdateProcessor<TS> {
         Self { queue, requests }
     }
     #[tracing::instrument(name = "TransfersUpdateProcessor", skip(self))]
-    pub async fn run(mut self) -> TransferResult<()> {
+    pub async fn run(mut self) {
         while let Some(command) = self.queue.recv().await {
             match command {
                 Command::Transfer(Request::FileDownload { root, path }, tx) => {
-                    let reply = self.handle_download(&root, &path, 0).await?;
-                    tx.send(reply.into()).ok();
+                    let reply = match self.handle_download(&root, &path, 0).await {
+                        Ok(reply) => reply.into(),
+                        Err(e) => {
+                            tracing::error!("error handling download request: {e:?}");
+                            TransferReply::Error(0.into())
+                        }
+                    };
+                    tx.send(reply).ok();
                 }
                 Command::Transfer(Request::FileUpload { root, path }, tx) => {
-                    let reply = self.handle_upload(&root, &path, 0).await?;
+                    let reply = match self.handle_upload(&root, &path, 0).await {
+                        Ok(reply) => reply.into(),
+                        Err(e) => {
+                            tracing::error!("error handling upload request: {e:?}");
+                            TransferReply::Error(0.into())
+                        }
+                    };
                     tx.send(reply.into()).ok();
                 }
                 Command::StartDownload(id, conn, tx) => {
@@ -455,7 +468,6 @@ impl<TS: TransferStream + 'static> TransfersUpdateProcessor<TS> {
                 }
             };
         }
-        Ok(())
     }
     #[instrument(skip(self))]
     async fn handle_download(
