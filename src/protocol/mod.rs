@@ -70,7 +70,7 @@ pub enum ProtocolError {
 pub struct ErrorCode(u32);
 
 impl ErrorCode {
-    pub fn ok() -> Self {
+    pub const fn ok() -> Self {
         Self(0)
     }
 }
