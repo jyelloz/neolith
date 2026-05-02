@@ -12,7 +12,9 @@ default-run = "nlserver"
 # See more keys and their definitions at https://doc.rust-lang.org/cargo/reference/manifest.html
 
 [dependencies]
+adfs = { path = "../adfs", features = ["async"] }
 anyhow = "*"
+async-compat = "0.2"
 async-stream = "0.3"
 clap = { version = "4", features = ["derive"] }
 deku = "0.20"
@@ -22,6 +24,7 @@ encoding_rs = "0.8"
 enumset = { version = "*", features = ["serde"] }
 four-cc = "*"
 futures = "0.3"
+futures-lite = "2"
 listenfd = "1"
 magic = "0.16"
 maplit = "1"
