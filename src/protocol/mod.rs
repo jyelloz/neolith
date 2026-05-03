@@ -1,9 +1,9 @@
 use deku::prelude::*;
 use derive_more::{From, Into};
-use strum::{AsRefStr, EnumString};
 use maplit::hashmap;
 use num_enum::{IntoPrimitive, TryFromPrimitive};
 use std::collections::HashMap;
+use strum::{AsRefStr, EnumString};
 use thiserror::Error;
 use tokio::io::AsyncRead;
 
@@ -321,7 +321,9 @@ impl TryFrom<&Parameter> for ServerAgreement {
     }
 }
 
-#[derive(Debug, Eq, PartialEq, Ord, PartialOrd, IntoPrimitive, TryFromPrimitive, EnumString, AsRefStr)]
+#[derive(
+    Debug, Eq, PartialEq, Ord, PartialOrd, IntoPrimitive, TryFromPrimitive, EnumString, AsRefStr,
+)]
 #[repr(u8)]
 enum ServerBannerType {
     #[strum(serialize = "URL")]
@@ -1904,11 +1906,15 @@ impl From<DownloadFileReply> for TransactionFrame {
     }
 }
 
-#[derive(Debug, PartialEq, Eq, PartialOrd, Ord, Clone, Copy, From, Into, DekuRead, DekuWrite, DekuSize)]
+#[derive(
+    Debug, PartialEq, Eq, PartialOrd, Ord, Clone, Copy, From, Into, DekuRead, DekuWrite, DekuSize,
+)]
 #[deku(endian = "big")]
 pub struct ForkCount(u16);
 
-#[derive(Debug, PartialEq, Eq, PartialOrd, Ord, Clone, Copy, From, Into, DekuRead, DekuWrite, DekuSize)]
+#[derive(
+    Debug, PartialEq, Eq, PartialOrd, Ord, Clone, Copy, From, Into, DekuRead, DekuWrite, DekuSize,
+)]
 #[deku(magic = b"FILP")]
 pub struct FlattenedFileHeader {
     #[deku(endian = "big")]
