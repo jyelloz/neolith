@@ -152,7 +152,6 @@ impl Chats {
 
 #[derive(Debug)]
 enum Command {
-    // Chat(Chat),
     Create(ChatRoomCreationRequest, oneshot::Sender<ChatId>),
     SubjectUpdate(ChatRoomSubject, oneshot::Sender<()>),
     UserJoin(ChatRoomPresence, oneshot::Sender<()>),
