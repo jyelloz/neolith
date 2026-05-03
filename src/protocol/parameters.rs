@@ -639,7 +639,7 @@ impl std::fmt::Debug for FileComment {
     }
 }
 
-#[derive(Debug, Clone, Copy, From, Into, DekuRead, DekuWrite)]
+#[derive(Debug, Clone, Copy, From, Into, DekuRead, DekuWrite, DekuSize)]
 pub struct FileType(pub [u8; 4]);
 
 impl TryFrom<&Parameter> for FileType {
@@ -667,12 +667,24 @@ impl From<crate::apple::FileType> for FileType {
     }
 }
 
-#[derive(Debug, Clone, Copy, From, Into, DekuRead, DekuWrite)]
+impl From<adfs::FourCC> for FileType {
+    fn from(value: adfs::FourCC) -> Self {
+        Self(value.0)
+    }
+}
+
+#[derive(Debug, Clone, Copy, From, Into, DekuRead, DekuWrite, DekuSize)]
 pub struct Creator(pub [u8; 4]);
 
 impl From<crate::apple::Creator> for Creator {
     fn from(value: crate::apple::Creator) -> Self {
         Self(value.0.0)
+    }
+}
+
+impl From<adfs::FourCC> for Creator {
+    fn from(value: adfs::FourCC) -> Self {
+        Self(value.0)
     }
 }
 
@@ -716,7 +728,7 @@ impl From<FileCreatorString> for Parameter {
     }
 }
 
-#[derive(Debug, Default, Clone, Copy, From, Into, PartialEq, Eq, DekuRead, DekuWrite)]
+#[derive(Debug, Default, Clone, Copy, From, Into, PartialEq, Eq, DekuRead, DekuWrite, DekuSize)]
 pub struct FileCreatedAt(DateParameter);
 
 impl From<SystemTime> for FileCreatedAt {
@@ -740,7 +752,7 @@ impl From<FileCreatedAt> for Parameter {
     }
 }
 
-#[derive(Debug, Default, Clone, Copy, From, Into, PartialEq, Eq, DekuRead, DekuWrite)]
+#[derive(Debug, Default, Clone, Copy, From, Into, PartialEq, Eq, DekuRead, DekuWrite, DekuSize)]
 pub struct FileModifiedAt(DateParameter);
 
 impl From<SystemTime> for FileModifiedAt {
