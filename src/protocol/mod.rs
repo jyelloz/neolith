@@ -1994,7 +1994,7 @@ impl FlattenedFileObject {
     }
 }
 
-#[derive(Debug, Default, Clone, DekuRead, DekuWrite, DekuSize, From)]
+#[derive(Debug, Default, Clone, DekuRead, DekuWrite, From)]
 #[deku(id_type = "u32")]
 pub enum CompressionType {
     #[default]
@@ -2004,7 +2004,11 @@ pub enum CompressionType {
     Other(u32),
 }
 
-#[derive(Debug, Clone, DekuRead, DekuWrite, DekuSize)]
+impl DekuSize for CompressionType {
+    const SIZE_BITS: usize = <u32 as DekuSize>::SIZE_BITS;
+}
+
+#[derive(Debug, Clone, DekuRead, DekuWrite)]
 #[deku(id_type = "[u8; 4]")]
 pub enum PlatformType {
     #[deku(id = b"AMAC")]
@@ -2015,9 +2019,11 @@ pub enum PlatformType {
     Other([u8; 4]),
 }
 
-#[derive(
-    Debug, Clone, Copy, Hash, PartialEq, Eq, PartialOrd, Ord, DekuRead, DekuWrite, DekuSize,
-)]
+impl DekuSize for PlatformType {
+    const SIZE_BITS: usize = <[u8; 4] as DekuSize>::SIZE_BITS;
+}
+
+#[derive(Debug, Clone, Copy, Hash, PartialEq, Eq, PartialOrd, Ord, DekuRead, DekuWrite)]
 #[deku(id_type = "[u8; 4]")]
 pub enum ForkType {
     #[deku(id = b"INFO")]
@@ -2028,6 +2034,10 @@ pub enum ForkType {
     Resource,
     #[deku(id_pat = "_")]
     Other([u8; 4]),
+}
+
+impl DekuSize for ForkType {
+    const SIZE_BITS: usize = <[u8; 4] as DekuSize>::SIZE_BITS;
 }
 
 #[derive(
