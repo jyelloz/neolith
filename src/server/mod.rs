@@ -1,41 +1,45 @@
 use self::{
-    bus::{Notification, Notifications},
+    bus::Notification,
     chat::{Chats, ChatsService, format_chat},
     files::OsFiles,
     news::{News, NewsService},
-    transaction_stream::Frames,
     transfers::TransfersService,
     users::{UserAccounts, Users, UsersService},
 };
 use super::protocol::{
-    self as proto, ChatId, ChatMessage, GenericReply, Message, NotifyNewsMessage, ProtocolError,
-    ServerMessage, TransactionFrame, UserId, UserNameWithInfo,
+    self as proto, ChatId, ChatMessage, Message, NotifyNewsMessage, ProtocolError, ServerMessage,
+    TransactionFrame, UserId, UserNameWithInfo,
 };
 use derive_more::{From, Into};
 use encoding_rs::MACINTOSH;
-use futures::stream::{Stream, StreamExt as _, TryStreamExt as _, select};
 use std::path::PathBuf;
 use thiserror::Error;
-use tokio::{
-    io::AsyncRead,
-    sync::{
-        broadcast::error::{RecvError, SendError},
-        watch,
-    },
+use tokio::sync::{
+    broadcast::error::{RecvError, SendError},
+    watch,
 };
 use tracing::debug;
 
 pub mod application;
 pub mod bus;
 pub mod chat;
+pub mod client_request;
+pub mod client_response;
 pub mod connection;
 pub mod files;
 pub mod news;
+pub mod server_request;
+pub mod server_response;
 pub mod session;
 pub mod transaction_stream;
 pub mod transfers;
 pub mod user_editor;
 pub mod users;
+
+pub use client_request::ClientRequest;
+pub use client_response::ClientResponse;
+pub use server_request::ServerRequest;
+pub use server_response::ServerResponse;
 
 #[derive(Debug, Error)]
 pub enum BusError {
@@ -154,261 +158,9 @@ pub enum EventError {
     Protocol(#[from] ProtocolError),
 }
 
-pub struct ServerEvents<S> {
-    frames: Frames<S>,
-    notifications: Notifications,
-}
-
-type EventItem = Result<Event, EventError>;
-
-impl<S: AsyncRead + Unpin> ServerEvents<S> {
-    pub fn new(reader: S, notifications: Notifications) -> Self {
-        Self {
-            frames: Frames::new(reader),
-            notifications,
-        }
-    }
-    fn notifications(notifications: Notifications) -> impl Stream<Item = EventItem> {
-        notifications.incoming().map(|n| Ok(Event::Notification(n)))
-    }
-    fn frames<F: AsyncRead + Unpin>(frames: Frames<F>) -> impl Stream<Item = EventItem> {
-        frames
-            .frames()
-            .map_ok(Event::Frame)
-            .map_err(ProtocolError::into)
-    }
-    pub fn events(self) -> impl Stream<Item = EventItem> {
-        let Self {
-            frames,
-            notifications,
-        } = self;
-        let frames = Self::frames(frames);
-        let notifications = Self::notifications(notifications);
-        select(frames, notifications)
-    }
-}
-
-#[derive(Debug, From)]
-pub enum ClientRequest {
-    Login(proto::LoginRequest),
-    GetMessages(proto::GetMessages),
-    PostNews(proto::PostNews),
-    GetFileNameList(proto::GetFileNameList),
-    GetFileInfo(proto::GetFileInfo),
-    SetFileInfo(proto::SetFileInfo),
-    GetUserNameList(proto::GetUserNameList),
-    GetClientInfoText(proto::GetClientInfoText),
-    SetClientUserInfo(proto::SetClientUserInfo),
-    DisconnectUser(proto::DisconnectUser),
-    SendChat(proto::SendChat),
-    SendInstantMessage(proto::SendInstantMessage),
-    InviteToNewChat(proto::InviteToNewChat),
-    InviteToChat(proto::InviteToChat),
-    JoinChat(proto::JoinChat),
-    LeaveChat(proto::LeaveChat),
-    RejectChatInvite(proto::RejectChatInvite),
-    SetChatSubject(proto::SetChatSubject),
-    DownloadFile(proto::DownloadFile),
-    UploadFile(proto::UploadFile),
-    DeleteFile(proto::DeleteFile),
-    MoveFile(proto::MoveFile),
-    NewFolder(proto::NewFolder),
-    MakeFileAlias(proto::MakeFileAlias),
-    NewUser(proto::NewUser),
-    DeleteUser(proto::DeleteUser),
-    GetUser(proto::GetUser),
-    SetUser(proto::SetUser),
-    UserAccess,
-    SendBroadcast(proto::SendBroadcast),
-}
-
-#[derive(Debug, From)]
-pub enum ServerResponse {
-    LoginReply,
-    GetUserNameListReply(proto::GetUserNameListReply),
-    GetClientInfoTextReply(proto::GetClientInfoTextReply),
-    GetMessagesReply(proto::GetMessagesReply),
-    PostNewsReply,
-    GetFileNameListReply(proto::GetFileNameListReply),
-    GetFileInfoReply(proto::GetFileInfoReply),
-    SetFileInfoReply(proto::SetFileInfoReply),
-    DownloadFileReply(proto::DownloadFileReply),
-    UploadFileReply(proto::UploadFileReply),
-    DeleteFileReply(proto::DeleteFileReply),
-    MoveFileReply(proto::MoveFileReply),
-    GetUserReply(proto::GetUserReply),
-    SendInstantMessageReply,
-    JoinChatReply(proto::JoinChatReply),
-    InviteToNewChatReply(proto::InviteToNewChatReply),
-    NewFolderReply,
-    SendBroadcastReply,
-    SetUserReply,
-    NewUserReply,
-    DeleteUserReply,
-    Rejected(Option<String>),
-}
-
-impl ServerResponse {
-    fn reject(message: Option<String>) -> TransactionFrame {
-        let mut frame = TransactionFrame::empty(proto::TransactionType::Error);
-        frame.header.error_code = 1u32.into();
-        if let Some(reason) = message {
-            frame
-                .body
-                .parameters
-                .push(proto::Parameter::new_error(reason));
-        }
-        frame
-    }
-}
-
-impl From<ServerResponse> for TransactionFrame {
-    fn from(val: ServerResponse) -> Self {
-        match val {
-            ServerResponse::LoginReply => GenericReply.into(),
-            ServerResponse::GetUserNameListReply(reply) => reply.into(),
-            ServerResponse::GetMessagesReply(reply) => reply.into(),
-            ServerResponse::PostNewsReply => GenericReply.into(),
-            ServerResponse::GetFileNameListReply(reply) => reply.into(),
-            ServerResponse::GetFileInfoReply(reply) => reply.into(),
-            ServerResponse::SetFileInfoReply(reply) => reply.into(),
-            ServerResponse::GetClientInfoTextReply(reply) => reply.into(),
-            ServerResponse::DownloadFileReply(reply) => reply.into(),
-            ServerResponse::UploadFileReply(reply) => reply.into(),
-            ServerResponse::DeleteFileReply(reply) => reply.into(),
-            ServerResponse::MoveFileReply(reply) => reply.into(),
-            ServerResponse::NewFolderReply => GenericReply.into(),
-            ServerResponse::GetUserReply(reply) => reply.into(),
-            ServerResponse::Rejected(message) => ServerResponse::reject(message),
-            ServerResponse::SetUserReply => GenericReply.into(),
-            ServerResponse::NewUserReply => GenericReply.into(),
-            ServerResponse::DeleteUserReply => GenericReply.into(),
-            ServerResponse::SendBroadcastReply => GenericReply.into(),
-            ServerResponse::SendInstantMessageReply => GenericReply.into(),
-            ServerResponse::JoinChatReply(reply) => reply.into(),
-            ServerResponse::InviteToNewChatReply(reply) => reply.into(),
-        }
-    }
-}
-
 impl From<ServerResponse> for ServerResult<Option<ServerResponse>> {
     fn from(val: ServerResponse) -> Self {
         Ok(Some(val))
-    }
-}
-
-#[derive(Debug, Clone)]
-pub enum ServerRequest {
-    Empty,
-    Chat(ChatMessage),
-    ChatRoomSubjectUpdate(ChatRoomSubject),
-    ChatRoomInvite(ChatRoomInvite),
-    ChatRoomJoin(ChatRoomPresence),
-    ChatRoomLeave(ChatRoomLeave),
-    Broadcast(Broadcast),
-    News(Article),
-    InstantMessage(InstantMessage),
-    UserConnect(User),
-    UserUpdate(User),
-    UserDisconnect(User),
-}
-
-#[derive(Debug)]
-pub enum ClientResponse {
-    RejectChatInvite,
-}
-
-impl TryFrom<TransactionFrame> for ClientRequest {
-    type Error = proto::ProtocolError;
-
-    fn try_from(frame: TransactionFrame) -> Result<Self, Self::Error> {
-        match frame.transaction_type()? {
-            proto::TransactionType::GetMessages => {
-                proto::GetMessages::try_from(frame).map(Into::into)
-            }
-            proto::TransactionType::PostNewsArticle => {
-                proto::PostNews::try_from(frame).map(Into::into)
-            }
-            proto::TransactionType::GetFileNameList => {
-                proto::GetFileNameList::try_from(frame).map(Into::into)
-            }
-            proto::TransactionType::OldPostNews => proto::PostNews::try_from(frame).map(Into::into),
-            proto::TransactionType::SendChat => proto::SendChat::try_from(frame).map(Into::into),
-            proto::TransactionType::Login => proto::LoginRequest::try_from(frame).map(Into::into),
-            proto::TransactionType::SendInstantMessage => {
-                proto::SendInstantMessage::try_from(frame).map(Into::into)
-            }
-            proto::TransactionType::DisconnectUser => {
-                proto::DisconnectUser::try_from(frame).map(Into::into)
-            }
-            proto::TransactionType::InviteToNewChat => {
-                proto::InviteToNewChat::try_from(frame).map(Into::into)
-            }
-            proto::TransactionType::InviteToChat => {
-                proto::InviteToChat::try_from(frame).map(Into::into)
-            }
-            proto::TransactionType::RejectChatInvite => {
-                proto::RejectChatInvite::try_from(frame).map(Into::into)
-            }
-            proto::TransactionType::JoinChat => proto::JoinChat::try_from(frame).map(Into::into),
-            proto::TransactionType::LeaveChat => proto::LeaveChat::try_from(frame).map(Into::into),
-            proto::TransactionType::SetChatSubject => {
-                proto::SetChatSubject::try_from(frame).map(Into::into)
-            }
-            proto::TransactionType::Agreed => todo!(),
-            proto::TransactionType::DownloadFile => {
-                proto::DownloadFile::try_from(frame).map(Into::into)
-            }
-            proto::TransactionType::UploadFile => {
-                proto::UploadFile::try_from(frame).map(Into::into)
-            }
-            proto::TransactionType::DeleteFile => {
-                proto::DeleteFile::try_from(frame).map(Into::into)
-            }
-            proto::TransactionType::NewFolder => proto::NewFolder::try_from(frame).map(Into::into),
-            proto::TransactionType::GetFileInfo => {
-                proto::GetFileInfo::try_from(frame).map(Into::into)
-            }
-            proto::TransactionType::SetFileInfo => {
-                proto::SetFileInfo::try_from(frame).map(Into::into)
-            }
-            proto::TransactionType::MoveFile => proto::MoveFile::try_from(frame).map(Into::into),
-            proto::TransactionType::MakeFileAlias => {
-                proto::MakeFileAlias::try_from(frame).map(Into::into)
-            }
-            proto::TransactionType::DownloadFolder => todo!(),
-            proto::TransactionType::DownloadBanner => todo!(),
-            proto::TransactionType::UploadFolder => todo!(),
-            proto::TransactionType::GetUserNameList => {
-                proto::GetUserNameList::try_from(frame).map(Into::into)
-            }
-            proto::TransactionType::GetClientInfoText => {
-                proto::GetClientInfoText::try_from(frame).map(Into::into)
-            }
-            proto::TransactionType::SetClientUserInfo => {
-                proto::SetClientUserInfo::try_from(frame).map(Into::into)
-            }
-            proto::TransactionType::NewUser => proto::NewUser::try_from(frame).map(Into::into),
-            proto::TransactionType::DeleteUser => {
-                proto::DeleteUser::try_from(frame).map(Into::into)
-            }
-            proto::TransactionType::GetUser => proto::GetUser::try_from(frame).map(Into::into),
-            proto::TransactionType::SetUser => proto::SetUser::try_from(frame).map(Into::into),
-            proto::TransactionType::UserBroadcast => {
-                proto::SendBroadcast::try_from(frame).map(Into::into)
-            }
-            proto::TransactionType::GetNewsCategoryNameList => todo!(),
-            proto::TransactionType::GetNewsArticleNameList => todo!(),
-            proto::TransactionType::DeleteNewsItem => todo!(),
-            proto::TransactionType::NewNewsFolder => todo!(),
-            proto::TransactionType::NewNewsCategory => todo!(),
-            proto::TransactionType::GetNewsArticleData => todo!(),
-            proto::TransactionType::DeleteNewsArticle => todo!(),
-            proto::TransactionType::ConnectionKeepAlive => todo!(),
-            _ => Err(proto::ProtocolError::UnsupportedTransaction(
-                frame.header.type_.into(),
-            )),
-        }
     }
 }
 
@@ -480,15 +232,15 @@ impl<TS: transfers::TransferStream + 'static> NeolithServer<TS> {
         }
     }
     #[tracing::instrument(fields(user_id, nick), skip(self, request))]
-    pub async fn handle_client<R: Into<ClientRequest>>(
+    pub async fn handle_client(
         &mut self,
-        request: R,
+        request: ClientRequest,
     ) -> ServerResult<Option<ServerResponse>> {
         let user = self.require_current_user()?;
         let span = tracing::Span::current();
         span.record("user_id", format!("{}", u16::from(user.user_id)));
         span.record("nick", format!("{}", user.username));
-        match request.into() {
+        match request {
             ClientRequest::GetUserNameList(_) => Ok(Some(self.get_users().into())),
             ClientRequest::GetMessages(_) => Ok(Some(self.get_news().await.into())),
             ClientRequest::PostNews(req) => self.post_news(req.0).await.into(),
