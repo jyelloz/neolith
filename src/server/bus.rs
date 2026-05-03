@@ -9,7 +9,7 @@ use super::{
 
 #[derive(Debug, Clone, From)]
 pub enum Notification {
-    Empty,
+    End,
     #[from]
     Chat(ChatMessage),
     #[from]
