@@ -1,11 +1,14 @@
 use crate::{
     apple,
     protocol::{self as proto, AsyncDataSource, FlattenedFileObject},
+    server::transfers::{FlattenedFileStream, TransferStream},
 };
 use adfs::asyncio as adfs;
 use async_compat::Compat;
+use deku::DekuContainerWrite as _;
 use encoding_rs::MACINTOSH;
 use four_cc::FourCC;
+use futures_lite::{AsyncReadExt as _, AsyncSeekExt as _};
 use magic::Cookie;
 use std::{
     cell::RefCell,
@@ -17,7 +20,6 @@ use std::{
     time::SystemTime,
 };
 use tokio::fs;
-use tokio::io::{AsyncSeekExt as _, AsyncWrite};
 
 #[derive(Debug)]
 pub struct FileType(FourCC);
@@ -154,6 +156,26 @@ impl TryFrom<(PathBuf, Metadata, ExtendedMetadata)> for FileInfo {
     }
 }
 
+impl From<FileInfo> for proto::GetFileInfoReply {
+    fn from(info: FileInfo) -> Self {
+        let basename = info
+            .path
+            .file_name()
+            .and_then(|n| n.to_str())
+            .map(|s| s.as_bytes().to_vec())
+            .unwrap_or_default();
+        Self {
+            filename: basename.into(),
+            size: (info.total_size() as u32).into(),
+            type_code: proto::FileType::from(*info.file_type.bytes()),
+            creator: info.creator.bytes().to_vec().into(),
+            comment: info.comment.into(),
+            created_at: info.created_at.into(),
+            modified_at: info.modified_at.into(),
+        }
+    }
+}
+
 #[derive(Debug)]
 struct ExtendedMetadata {
     data_len: u64,
@@ -276,6 +298,12 @@ impl OsFiles {
         let subpath = root.components().chain(path.components()).collect();
         Ok(subpath)
     }
+    fn appledouble_file(data_path: &Path) -> adfs::AppleDoubleFile {
+        adfs::AppleDoubleFile {
+            data_path: data_path.to_path_buf(),
+            metadata_path: Self::appledouble_path(data_path),
+        }
+    }
     fn appledouble_path(path: &Path) -> PathBuf {
         let basename = path.file_name().and_then(|p| p.to_str()).unwrap();
         let appledouble_basename = format!("._{basename}");
@@ -325,12 +353,7 @@ impl OsFiles {
     async fn read_adfs(&self, path: &Path) -> Result<FlattenedFileObject, adfs::AppleDoubleError> {
         Err(adfs::AppleDoubleError::UnexpectedEof)?;
         let path = self.subpath(path)?;
-        let appledouble_path = Self::appledouble_path(&path);
-        let file = adfs::AppleDoubleFile {
-            data_path: path.clone(),
-            metadata_path: Some(appledouble_path),
-        };
-
+        let file = Self::appledouble_file(&path);
         let meta = fs::metadata(&path).await?;
 
         let Some(mut arch) = file.open_async().await? else {
@@ -373,41 +396,81 @@ impl OsFiles {
         let modified = meta.modified().map(proto::FileModifiedAt::from);
         let comment = arch.comment().await?.unwrap_or_default();
         let info = proto::InfoFork {
-            platform: proto::PlatformType::AppleMac,
-            type_code: finf.file_type().into(),
-            creator_code: finf.creator().into(),
-            flags: proto::FileFlags::default(),
-            platform_flags: proto::PlatformFlags::default(),
-            created_at: created.unwrap_or_default(),
-            modified_at: modified.unwrap_or_default(),
-            name_script: proto::NameScript::default(),
-            name_len: name.len() as u16,
-            file_name: name.to_vec(),
-            comment_len: comment.len() as u16,
-            comment,
+            header: proto::InfoForkHeader {
+                platform: proto::PlatformType::AppleMac,
+                type_code: finf.file_type().into(),
+                creator_code: finf.creator().into(),
+                flags: proto::FileFlags::default(),
+                platform_flags: proto::PlatformFlags::default(),
+                created_at: created.unwrap_or_default(),
+                modified_at: modified.unwrap_or_default(),
+                name_script: proto::NameScript::default(),
+            },
+            filename: name.to_vec().into(),
+            comment: comment.into(),
         };
         Ok(Some(info))
     }
-    // TODO: Add more structured writer, similar to reader
-    pub async fn write(
+    pub async fn write<TS: TransferStream>(
         &self,
         path: &Path,
-        offset: u64,
-    ) -> io::Result<Box<dyn AsyncWrite + Unpin + Send>> {
+        mut stream: FlattenedFileStream<TS>,
+    ) -> io::Result<()> {
         let path = self.subpath(path)?;
-        let file = if offset > 0 {
-            let mut file = fs::OpenOptions::new().write(true).open(path).await?;
-            file.seek(SeekFrom::Start(offset)).await?;
-            file
-        } else {
-            fs::OpenOptions::new()
-                .write(true)
-                .create(true)
-                .truncate(true)
-                .open(path)
-                .await?
+        let file = Self::appledouble_file(&path);
+
+        let info = match stream.info().await {
+            Ok(info) => info,
+            Err(e) => {
+                return Err(io::Error::other(format!("no info fork in stream: {e:?}")));
+            }
         };
-        Ok(Box::new(file))
+
+        let mut data_file = file.write_data_async().await?;
+        let mut rsrc_file = file.write_async().await?;
+
+        let finf = adfs::FinderInfo {
+            info: adfs::entry::FInfo {
+                file_type: info.header.type_code.0.into(),
+                creator: info.header.creator_code.0.into(),
+                flags: 0,
+                location: [0u8; 4],
+                folder_id: 0,
+            },
+            extended: Default::default(),
+        };
+
+        let finf_data = finf.to_bytes()?;
+
+        rsrc_file
+            .add_entry_buffer(adfs::EntryId::FinderInfo, &finf_data)
+            .await?;
+        if info.comment.len > 0 {
+            rsrc_file
+                .add_entry_buffer(adfs::EntryId::Comment, &info.comment.val)
+                .await?;
+        }
+
+        while let Ok(Some(fork)) = stream.next().await {
+            let size = u64::from(fork.data_size);
+            let mut reader = Compat::new(stream.as_mut()).take(size);
+            match fork.fork_type {
+                proto::ForkType::Data => {
+                    data_file.seek(SeekFrom::Start(0)).await?;
+                    futures_lite::io::copy(&mut reader, &mut data_file).await?;
+                }
+                proto::ForkType::Resource => {
+                    rsrc_file
+                        .add_entry(adfs::EntryId::ResourceFork, &mut reader)
+                        .await?;
+                }
+                _ => {}
+            }
+        }
+
+        rsrc_file.finish().await?;
+
+        Ok(())
     }
     pub async fn mkdir(&self, path: &Path) -> io::Result<()> {
         let path = self.subpath(path)?;
@@ -429,32 +492,22 @@ impl PlainFile {
         let finf = apple::FinderInfo::windows_file();
         let type_code = proto::FileType::from(finf.file_type);
         let creator_code = proto::Creator::from(finf.creator);
-        let filename = self
-            .path
-            .file_name()
-            .expect("no filename")
-            .to_str()
-            .expect("no string filename");
-        let (file_name, _, failed) = MACINTOSH.encode(filename);
-        if failed {
-            panic!("bad filename");
-        }
-        let file_name = file_name.into_owned();
+        let name = self.path.file_name().unwrap_or_default().as_bytes();
         let created = self.meta.created().map(proto::FileCreatedAt::from);
         let modified = self.meta.modified().map(proto::FileModifiedAt::from);
         let fork = proto::InfoFork {
-            platform: proto::PlatformType::MicrosoftWin,
-            type_code,
-            creator_code,
-            created_at: created.unwrap_or_default(),
-            modified_at: modified.unwrap_or_default(),
-            flags: Default::default(),
-            platform_flags: Default::default(),
-            name_script: Default::default(),
-            name_len: file_name.len() as u16,
-            file_name,
-            comment_len: 0,
-            comment: vec![],
+            header: proto::InfoForkHeader {
+                platform: proto::PlatformType::MicrosoftWin,
+                type_code,
+                creator_code,
+                created_at: created.unwrap_or_default(),
+                modified_at: modified.unwrap_or_default(),
+                flags: Default::default(),
+                platform_flags: Default::default(),
+                name_script: Default::default(),
+            },
+            filename: name.to_vec().into(),
+            comment: vec![].into(),
         };
         Ok(fork)
     }
