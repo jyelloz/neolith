@@ -1,13 +1,16 @@
+use std::{net::SocketAddr, pin::pin};
+
 use anyhow::bail;
+use deku::DekuSize as _;
 use derive_more::Into;
 use encoding_rs::MACINTOSH;
-use futures::stream::TryStreamExt;
+use futures::{FutureExt as _, Stream, StreamExt as _, stream::TryStreamExt};
 use tokio::{
     io::{AsyncRead, AsyncReadExt as _, AsyncWrite, AsyncWriteExt as _},
     net::{TcpListener, TcpStream, ToSocketAddrs},
-    sync::watch,
+    sync::{mpsc, watch},
 };
-use tracing::{debug, instrument, trace, warn};
+use tracing::{debug, info, instrument, trace, warn};
 use tracing_subscriber::{layer::SubscriberExt as _, util::SubscriberInitExt as _};
 
 type Result<T> = anyhow::Result<T>;
@@ -21,8 +24,8 @@ use neolith::{
         SetClientUserInfo, TransactionFrame, UserId, UserNameWithInfo,
     },
     server::{
-        ChatRoomInvite, ChatRoomLeave, ChatRoomPresence, ChatRoomSubject, ClientRequest, Event,
-        InstantMessage, NeolithServer, ServerEvents, User,
+        ChatRoomInvite, ChatRoomLeave, ChatRoomPresence, ChatRoomSubject, ClientRequest,
+        InstantMessage, NeolithServer, User,
         bus::{Bus, Notification},
         chat::{Chats, ChatsService},
         files::OsFiles,
@@ -171,13 +174,16 @@ async fn main() -> Result<()> {
     loop {
         let (socket, addr) = listener.accept().await?;
         let (r, w) = socket.into_split();
-        let mut conn = Connection::new(r, w, globals.clone());
-        tokio::task::spawn(async move {
-            while conn.process().await.is_ok() {}
-            debug!("disconnect from {:?}", addr);
-        });
+        let conn = Connection::new(r, w, globals.clone());
+        tokio::task::spawn(conn.run(addr));
     }
 }
+
+trait StateRead: AsyncRead + Unpin + Send + Sync + 'static {}
+trait StateWrite: AsyncWrite + Unpin + Send + 'static {}
+
+impl<R: AsyncRead + Unpin + Send + Sync + 'static> StateRead for R {}
+impl<W: AsyncWrite + Unpin + Send + 'static> StateWrite for W {}
 
 #[instrument(skip(transfers_tx))]
 async fn transfers(listener: TcpListener, transfers_tx: TransfersService<TcpStream>) -> Result<()> {
@@ -196,7 +202,7 @@ enum State<R, W> {
     Borrowed,
 }
 
-impl<R: AsyncRead + Unpin, W: AsyncWrite + Unpin> State<R, W> {
+impl<R: StateRead, W: StateWrite> State<R, W> {
     async fn process(&mut self) -> Result<()> {
         *self = match std::mem::replace(self, Self::Borrowed) {
             Self::Borrowed => {
@@ -244,19 +250,21 @@ impl<R, W> std::fmt::Debug for Connection<R, W> {
     }
 }
 
-impl<R: AsyncRead + Unpin, W: AsyncWrite + Unpin> Connection<R, W> {
+impl<R: StateRead, W: StateWrite> Connection<R, W> {
     fn new(r: R, w: W, globals: Globals) -> Self {
         Self {
             state: State::New(New(r, w, globals)),
         }
     }
-    async fn process(&mut self) -> Result<()> {
-        self.state.process().await
+    pub async fn run(mut self, addr: SocketAddr) -> Result<()> {
+        while self.state.process().await.is_ok() {}
+        info!("disconnect from {:?}", addr);
+        Ok(())
     }
 }
 
 struct New<R, W>(R, W, Globals);
-impl<R: AsyncRead + Unpin, W: AsyncWrite + Unpin> New<R, W> {
+impl<R: StateRead, W: StateWrite> New<R, W> {
     fn handshake_sync(buf: &[u8]) -> Result<ProtocolVersion> {
         match ClientHandshakeRequest::try_from(buf) {
             Ok(_request) => Ok(123u16.into()),
@@ -266,7 +274,7 @@ impl<R: AsyncRead + Unpin, W: AsyncWrite + Unpin> New<R, W> {
     pub async fn handshake(&mut self) -> Result<ProtocolVersion> {
         let Self(r, w, _) = self;
 
-        let mut buf = [0u8; 12];
+        let mut buf = [0u8; ClientHandshakeRequest::SIZE_BYTES.unwrap()];
         r.read_exact(&mut buf).await?;
         let version = Self::handshake_sync(&buf)?;
 
@@ -304,7 +312,7 @@ impl VersionedLoginRequest {
 }
 
 struct Unauthenticated<R, W>(R, W, Globals);
-impl<R: AsyncRead + Unpin, W: AsyncWrite + Unpin> Unauthenticated<R, W> {
+impl<R: StateRead, W: StateWrite> Unauthenticated<R, W> {
     pub async fn login(&mut self) -> Result<LoginRequest> {
         debug!("login attempt");
 
@@ -320,7 +328,7 @@ impl<R: AsyncRead + Unpin, W: AsyncWrite + Unpin> Unauthenticated<R, W> {
         let password = request.password();
 
         let Some(account) = globals.accounts.verify(login, password) else {
-            anyhow::bail!("login failure");
+            bail!("login failure");
         };
 
         debug!("login ok");
@@ -369,51 +377,61 @@ struct Established<R, W> {
     globals: Globals,
 }
 
-impl<R: AsyncRead + Unpin, W: AsyncWrite + Unpin> Established<R, W> {
+impl<R: StateRead, W: StateWrite> Established<R, W> {
     pub fn new(r: R, w: W, globals: Globals) -> Self {
         debug!("connection established");
         Self { r, w, globals }
     }
     #[instrument(fields(nick), skip(self))]
-    pub async fn handle(mut self) -> Result<()> {
-        match self.handle_inner().await {
-            Ok(ok) => Ok(ok),
-            Err(err) => {
-                debug!("error: {:?}", &err);
-                self.disconnect().await;
-                Err(err)
-            }
-        }
+    pub async fn handle(self) -> Result<()> {
+        let mut globals = self.globals.clone();
+        let result = self.handle_inner().await;
+        globals.disconnect().await;
+        result
     }
-    async fn handle_inner(&mut self) -> Result<()> {
+    async fn handle_inner(self) -> Result<()> {
         let Self { r, w, globals } = self;
-        let events = ServerEvents::new(r, globals.bus.subscribe()).events();
-        let mut events = Box::pin(events);
-        while let Some(event) = events.try_next().await? {
-            match event {
-                Event::Frame(frame) => Self::transaction(w, globals, frame).await,
-                Event::Notification(notification) => {
-                    Self::notification(w, globals, notification).await
-                }
-            }?;
+        if let Some(user_id) = globals.user_id {
+            tracing::Span::current().record("user.id", u16::from(user_id));
         }
+        let (tx, rx) = mpsc::unbounded_channel();
+        let (notifications, notifications_abort) =
+            futures::stream::abortable(globals.bus.subscribe().incoming());
+        info!("starting I/O loops");
+        let (read_result, write_result, notifications_result) = futures::try_join!(
+            tokio::spawn({
+                let nc = notifications_abort.clone();
+                Self::read_loop(r, globals.clone(), tx.clone()).then(async move |r| {
+                    nc.abort();
+                    r
+                })
+            }),
+            tokio::spawn({
+                let nc = notifications_abort.clone();
+                Self::write_loop(w, rx, globals.clone()).then(async move |r| {
+                    nc.abort();
+                    r
+                })
+            }),
+            tokio::spawn(Self::notifications_loop(
+                globals.clone(),
+                notifications,
+                tx.clone()
+            )),
+        )?;
+        info!("done with I/O loops");
+        read_result?;
+        write_result?;
+        notifications_result?;
+        info!("done");
         Ok(())
     }
-    async fn transaction(w: &mut W, globals: &mut Globals, frame: TransactionFrame) -> Result<()> {
+    async fn transaction(
+        server: &mut NeolithServer<TcpStream>,
+        frame: TransactionFrame,
+        replies: &mut mpsc::UnboundedSender<Option<TransactionFrame>>,
+    ) -> Result<()> {
         let TransactionFrame { header, body } = frame.clone();
-        let mut server = NeolithServer::new(
-            globals.user_id.unwrap_or_default(),
-            globals.files.clone(),
-            globals.accounts.clone(),
-            globals.users.clone(),
-            globals.users_tx.clone(),
-            globals.news.clone(),
-            globals.news_tx.clone(),
-            globals.chats.clone(),
-            globals.chats_tx.clone(),
-            globals.transfers_tx.clone(),
-        );
-
         let reply = if let Ok(req) = ClientRequest::try_from(frame.clone()) {
             trace!("auto decode using tryfrom: {req:?}");
             server
@@ -432,107 +450,143 @@ impl<R: AsyncRead + Unpin, W: AsyncWrite + Unpin> Established<R, W> {
 
         if let Some(reply) = reply {
             trace!("replying with {reply:?}");
-            write_frame(w, reply).await?;
-            trace!("replied");
+            replies.send(Some(reply))?;
         }
 
         Ok(())
     }
-    async fn notification(
-        w: &mut W,
-        globals: &mut Globals,
-        notification: Notification,
+    #[instrument(name = "rx", skip_all)]
+    async fn read_loop(
+        r: R,
+        globals: Globals,
+        mut replies: mpsc::UnboundedSender<Option<TransactionFrame>>,
     ) -> Result<()> {
-        let current_user = globals.user();
+        let mut frames = pin!(Frames::new(r).frames());
+        let mut server = NeolithServer::new(
+            globals.user_id.unwrap_or_default(),
+            globals.files.clone(),
+            globals.accounts.clone(),
+            globals.users.clone(),
+            globals.users_tx.clone(),
+            globals.news.clone(),
+            globals.news_tx.clone(),
+            globals.chats.clone(),
+            globals.chats_tx.clone(),
+            globals.transfers_tx.clone(),
+        );
+        while let Ok(Some(frame)) = frames.try_next().await {
+            info!("frame {:?}", frame.header);
+            Self::transaction(&mut server, frame, &mut replies).await?;
+        }
+        replies.send(None)?;
+        info!("done");
+        Ok(())
+    }
+    #[instrument(name = "tx", skip_all)]
+    async fn write_loop(
+        mut w: W,
+        mut frames: mpsc::UnboundedReceiver<Option<TransactionFrame>>,
+        mut globals: Globals,
+    ) -> Result<()> {
+        while let Some(mut frame) = frames.recv().await.flatten() {
+            let id = if frame.is_reply() {
+                trace!("write reply id {:?}", frame.header.id);
+                frame.header.id
+            } else {
+                let current_id = globals.next_transaction_id();
+                trace!("write outgoing frame id {current_id:?} {frame:?}");
+                frame = frame.id(current_id);
+                current_id
+            };
+            write_frame(&mut w, frame).await?;
+            trace!("wrote {id:?}");
+        }
+        info!("done");
+        Ok(())
+    }
+    #[instrument(name = "notifications", skip_all)]
+    async fn notifications_loop<N: Stream<Item = Notification>>(
+        globals: Globals,
+        notifications: N,
+        frames: mpsc::UnboundedSender<Option<TransactionFrame>>,
+    ) -> Result<()> {
+        let mut notifications = pin!(notifications);
+        while let Some(n) = notifications.next().await {
+            info!("notification {n:?}");
+            if matches!(n, Notification::End) {
+                info!("end");
+                break;
+            }
+            let Some(frame) = Self::notification(&globals, n).await else {
+                continue;
+            };
+            frames.send(Some(frame))?;
+        }
+        info!("done");
+        Ok(())
+    }
+    async fn notification(
+        globals: &Globals,
+        notification: Notification,
+    ) -> Option<TransactionFrame> {
+        let Some(current_user) = globals.user() else {
+            return None;
+        };
         match notification {
-            Notification::Empty => {}
+            Notification::End => return None,
             Notification::Chat(chat) => {
-                let username = current_user.as_ref().map(|u| &u.username);
+                let username = &current_user.username;
                 if let Some(id) = chat.chat_id {
                     let chat_members = globals.chat_list(id);
                     debug!("chat {id:?} contains {chat_members:?}");
-                    if let Some(user) = &current_user
-                        && globals.chat_list(id).contains(user)
-                    {
+                    if globals.chat_list(id).contains(&current_user) {
                         debug!("private chat notification -> {username:?}: {:?}", &chat);
-                        Self::write_frame(w, globals, chat).await?;
+                        Some(chat.into())
+                    } else {
+                        None
                     }
                 } else {
                     debug!("chat notification -> {username:?}: {:?}", &chat);
-                    Self::write_frame(w, globals, chat).await?;
+                    Some(chat.into())
                 }
             }
             Notification::InstantMessage(message) => {
                 let InstantMessage { from, to, message } = message;
-                if current_user.map(|u| u.user_id) == Some(to.0.user_id) {
+                if current_user.user_id == to.0.user_id {
                     let message = ServerMessage {
                         user_id: Some(from.0.user_id),
                         user_name: Some(from.0.username),
                         message,
                     };
-                    Self::write_frame(w, globals, message).await?;
+                    Some(message.into())
+                } else {
+                    None
                 }
             }
-            Notification::Broadcast(message) => {
-                let broadcast: ServerMessage = message.into();
-                Self::write_frame(w, globals, broadcast).await?;
-            }
-            Notification::DownloadInfo(info) => {
-                let info: DownloadInfo = info.into();
-                Self::write_frame(w, globals, info).await?;
-            }
-            Notification::News(article) => {
-                let article: NotifyNewsMessage = article.into();
-                Self::write_frame(w, globals, article).await?;
-            }
+            Notification::Broadcast(message) => Some(ServerMessage::from(message).into()),
+            Notification::DownloadInfo(info) => Some(DownloadInfo::from(info).into()),
+            Notification::News(article) => Some(NotifyNewsMessage::from(article).into()),
             Notification::UserConnect(User(user)) | Notification::UserUpdate(User(user)) => {
-                let notify: NotifyUserChange = (&user).into();
-                Self::write_frame(w, globals, notify).await?;
+                Some(NotifyUserChange::from(&user).into())
             }
-            Notification::UserDisconnect(User(user)) => {
-                let notify: NotifyUserDelete = (&user).into();
-                Self::write_frame(w, globals, notify).await?;
-            }
+            Notification::UserDisconnect(User(user)) => Some(NotifyUserDelete::from(&user).into()),
             Notification::ChatRoomInvite(ChatRoomInvite(chat_id, user_id)) => {
-                if Some(user_id) == current_user.map(|u| u.user_id) {
-                    let invite = InviteToChat { user_id, chat_id };
-                    Self::write_frame(w, globals, invite).await?;
+                if user_id == current_user.user_id {
+                    Some(InviteToChat { user_id, chat_id }.into())
+                } else {
+                    None
                 }
             }
             Notification::ChatRoomJoin(ChatRoomPresence(room, user)) => {
-                let notify: NotifyChatUserChange = (room, &user.0).into();
-                Self::write_frame(w, globals, notify).await?;
+                Some(NotifyChatUserChange::from((room, &user.0)).into())
             }
             Notification::ChatRoomLeave(ChatRoomLeave(room, user)) => {
-                let notify: NotifyChatUserDelete = (room, user).into();
-                Self::write_frame(w, globals, notify).await?;
+                Some(NotifyChatUserDelete::from((room, user)).into())
             }
             Notification::ChatRoomSubjectUpdate(ChatRoomSubject(room, subject)) => {
-                let notification = NotifyChatSubject::from((room, subject.into()));
-                Self::write_frame(w, globals, notification).await?;
+                Some(NotifyChatSubject::from((room, subject.into())).into())
             }
         }
-        Ok(())
-    }
-    async fn write_frame<F: proto::IntoFrameExt>(
-        w: &mut W,
-        globals: &mut Globals,
-        f: F,
-    ) -> Result<()> {
-        let current_id = globals.next_transaction_id();
-        let framed = f.framed().id(current_id);
-        write_frame(w, framed).await?;
-        Ok(())
-    }
-    async fn disconnect(&mut self) {
-        debug!("disconnecting");
-        let Self { globals, .. } = self;
-        if let Some(user) = globals.user() {
-            globals.chat_remove(&user).await;
-            globals.user_remove(&user).await;
-        } else {
-            debug!("no user to remove");
-        };
     }
 }
 
