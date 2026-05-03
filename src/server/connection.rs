@@ -140,7 +140,7 @@ async fn handle_request(
 }
 
 #[tracing::instrument(name = "conn", skip(r, w))]
-pub async fn handle_conn<R: AsyncRead + Unpin, W: AsyncWrite + Unpin>(
+pub async fn handle_conn<R: AsyncRead + Unpin + Send, W: AsyncWrite + Unpin>(
     id: u32,
     mut r: R,
     mut w: W,
@@ -177,7 +177,7 @@ async fn handshake<R: AsyncRead + Unpin, W: AsyncWrite + Unpin>(
 }
 
 #[tracing::instrument(name = "rx", skip_all)]
-async fn read_loop<R: AsyncRead + Unpin>(
+async fn read_loop<R: AsyncRead + Unpin + Send>(
     r: R,
     mut tx: mpsc::UnboundedSender<TransactionFrame>,
 ) -> Result<()> {
