@@ -12,9 +12,9 @@ default-run = "nlserver"
 # See more keys and their definitions at https://doc.rust-lang.org/cargo/reference/manifest.html
 
 [dependencies]
-adfs = { path = "../adfs", features = ["async"] }
 anyhow = "*"
 async-compat = "0.2"
+async-fs = "2"
 async-stream = "0.3"
 clap = { version = "4", features = ["derive"] }
 deku = "0.20"
@@ -40,3 +40,8 @@ toml = "*"
 tower = { version = "0.5", features = ["full"] }
 tracing = "0.1"
 tracing-subscriber = { version = "0.3", features = ["env-filter"] }
+[dependencies.adfs]
+git = "https://iris.radicle.xyz/zGUcPta6ndSN6JjNfMpecKHrnLQk.git"
+rev = "205117a49f668e965ecc0c321c15adbec46fd27a"
+features = ["async"]
+
