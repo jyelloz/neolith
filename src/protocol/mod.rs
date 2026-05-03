@@ -1846,7 +1846,7 @@ impl From<DownloadFile> for TransactionFrame {
     }
 }
 
-#[derive(Debug, PartialEq, Eq, PartialOrd, Ord, Clone)]
+#[derive(Debug, Default, PartialEq, Eq, PartialOrd, Ord, Clone)]
 pub struct DownloadFileReply {
     pub transfer_size: TransferSize,
     pub file_size: FileSize,
