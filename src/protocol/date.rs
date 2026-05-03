@@ -5,7 +5,7 @@ use std::time::SystemTime;
 
 use time::{Date, Duration, OffsetDateTime, UtcOffset, ext::NumericalStdDuration as _};
 
-#[derive(Debug, Default, Clone, Copy, PartialEq, Eq, DekuRead, DekuWrite)]
+#[derive(Debug, Default, Clone, Copy, PartialEq, Eq, DekuRead, DekuWrite, DekuSize)]
 #[deku(endian = "big")]
 pub struct DateParameter {
     pub year: i16,
