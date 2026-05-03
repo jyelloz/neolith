@@ -2,11 +2,7 @@ use crate::{
     protocol::{self as proto, ChatMessage},
     server::{self, ClientRequestTransaction, ServerResponse},
 };
-use futures::{
-    AsyncWrite,
-    channel::{mpsc, oneshot},
-};
-use futures::{Sink, SinkExt as _, Stream, StreamExt as _};
+use futures::{Sink, SinkExt as _, Stream, StreamExt as _, channel::mpsc};
 use tracing::{error, info, instrument};
 
 /// Represents the operations that a Hotline server must support. Anything
