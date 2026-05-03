@@ -10,9 +10,8 @@ use tokio::{
     io::{self, AsyncRead, AsyncReadExt, AsyncWrite, AsyncWriteExt},
     sync::{Mutex, mpsc, oneshot},
 };
-use tracing::{Instrument as _, debug, error, info_span, instrument};
+use tracing::{Instrument as _, debug, info_span, instrument};
 
-use crate::apple;
 use crate::protocol::{self as proto, HotlineProtocol, ReferenceNumber};
 use crate::server::{bus::Bus, files::OsFiles};
 
@@ -292,6 +291,104 @@ impl<TS: TransferStream + 'static> DownloadTransfer<TS> {
     }
 }
 
+pub struct FlattenedFileStream<S> {
+    stream: S,
+    hdr: Option<proto::FlattenedFileHeader>,
+    info: Option<proto::InfoFork>,
+    position: u16,
+}
+
+impl<TS: TransferStream> FlattenedFileStream<TS> {
+    fn new(stream: TS) -> Self {
+        Self {
+            stream,
+            hdr: None,
+            info: None,
+            position: 0,
+        }
+    }
+    async fn header(&mut self) -> TransferResult<proto::FlattenedFileHeader> {
+        if let Some(hdr) = self.hdr {
+            return Ok(hdr);
+        }
+        let hdr = self.read_file_header().await?;
+        self.hdr.replace(hdr);
+        Ok(hdr)
+    }
+    pub async fn info(&mut self) -> TransferResult<proto::InfoFork> {
+        if let Some(info) = self.info.clone() {
+            return Ok(info);
+        }
+        self.header().await?;
+        let hdr = self.read_fork_header().await?;
+        if hdr.fork_type != proto::ForkType::Info {
+            return Err(proto::ProtocolError::ParseHeader.into());
+        };
+        let mut buf = [0u8; proto::InfoForkHeader::SIZE_BYTES.unwrap()];
+        self.stream.read_exact(&mut buf).await?;
+        let info_hdr = match proto::InfoForkHeader::try_from(&buf[..]) {
+            Ok(hdr) => hdr,
+            Err(e) => return Err(proto::ProtocolError::from(e).into()),
+        };
+        let filename = self.read_pstring().await?;
+        let comment = self.read_pstring().await?;
+        let info = proto::InfoFork {
+            header: info_hdr,
+            filename,
+            comment,
+        };
+        self.info.replace(info.clone());
+        self.position = 1;
+        Ok(info)
+    }
+    async fn read_pstring(&mut self) -> TransferResult<proto::PString> {
+        let len = self.stream.read_u16().await?;
+        let mut val = vec![0u8; len as usize];
+        if len > 0 {
+            self.stream.read_exact(&mut val[..len as usize]).await?;
+        }
+        Ok(val.into())
+    }
+    pub async fn next(&mut self) -> TransferResult<Option<proto::ForkHeader>> {
+        let hdr = self.header().await?;
+        let _ = self.info().await?;
+
+        let fork_count = u16::from(hdr.fork_count);
+
+        if self.position >= fork_count {
+            return Ok(None);
+        }
+
+        let fork_hdr = self.read_fork_header().await?;
+
+        self.position += 1;
+
+        Ok(Some(fork_hdr))
+    }
+    async fn read_file_header(&mut self) -> TransferResult<proto::FlattenedFileHeader> {
+        let mut buf = [0u8; proto::FlattenedFileHeader::SIZE_BYTES.unwrap()];
+        self.stream.read_exact(&mut buf).await?;
+        match proto::FlattenedFileHeader::try_from(&buf[..]) {
+            Ok(header) => Ok(header),
+            Err(e) => Err(proto::ProtocolError::from(e).into()),
+        }
+    }
+    async fn read_fork_header(&mut self) -> TransferResult<proto::ForkHeader> {
+        let mut buf = [0u8; proto::ForkHeader::SIZE_BYTES.unwrap()];
+        self.stream.read_exact(&mut buf).await?;
+        match proto::ForkHeader::try_from(&buf[..]) {
+            Ok(header) => Ok(header),
+            Err(e) => Err(proto::ProtocolError::from(e).into()),
+        }
+    }
+}
+
+impl<TS: TransferStream> AsMut<TS> for FlattenedFileStream<TS> {
+    fn as_mut(&mut self) -> &mut TS {
+        &mut self.stream
+    }
+}
+
 struct UploadTransfer<S> {
     stream: S,
     path: PathBuf,
@@ -300,118 +397,9 @@ struct UploadTransfer<S> {
 
 impl<TS: TransferStream + 'static> UploadTransfer<TS> {
     async fn run(mut self) -> TransferResult<()> {
-        let path = self.path.clone();
-        let header = self.read_file_header().await?;
-        debug!("got header {header:?}");
-        let _finf_header = self.read_fork_header().await?;
-        let finf = self.read_file_info().await?;
-        debug!("got finf {finf:?}");
-        for _ in 1..header.fork_count.into() {
-            let fork_header = self.read_fork_header().await?;
-            let size = u32::from(fork_header.data_size) as u64;
-            match fork_header.fork_type {
-                proto::ForkType::Data => {
-                    debug!("data fork {size} => {path:?}");
-                    let mut stream = self.stream.take(size);
-                    let mut file = self.files.write(&path, 0).await?;
-                    tokio::io::copy(&mut stream, &mut file).await?;
-                    self.stream = stream.into_inner();
-                    debug!("copied data fork");
-                }
-                proto::ForkType::Resource => {
-                    let finf_descriptor = apple::EntryDescriptor {
-                        id: apple::EntryId::FinderInfo.into(),
-                        length: apple::FinderInfo::calculate_size() as u32,
-                        offset: 0,
-                    };
-                    let comment_descriptor = apple::EntryDescriptor {
-                        id: apple::EntryId::Comment.into(),
-                        length: finf.comment_len as u32,
-                        offset: 0,
-                    };
-                    let rsrc_descriptor = apple::EntryDescriptor {
-                        id: apple::EntryId::ResourceFork.into(),
-                        length: size as u32,
-                        offset: 0,
-                    };
-                    let entries = vec![finf_descriptor, comment_descriptor, rsrc_descriptor];
-                    let hdr = apple::AppleSingleHeader::new_double(entries);
-
-                    let flags_bytes: u32 = finf.platform_flags.into();
-                    let flags = apple::FinderFlags::from(flags_bytes as u16);
-                    let comment = finf.comment.as_slice();
-
-                    let finf = apple::FinderInfo {
-                        file_type: apple::FileType(finf.type_code.0.into()),
-                        creator: apple::Creator(finf.creator_code.0.into()),
-                        flags,
-                        location: Default::default(),
-                        folder: Default::default(),
-                    };
-
-                    let rsrc_path = Self::get_appledouble(&path);
-                    debug!("rsrc fork {size} => {rsrc_path:?}");
-                    let mut stream = self.stream.take(size);
-                    let mut file = self.files.write(&rsrc_path, 0).await?;
-                    file.write_all(hdr.to_bytes().unwrap().as_slice()).await?;
-                    file.write_all(finf.to_bytes().unwrap().as_slice()).await?;
-                    file.write_all(comment).await?;
-                    tokio::io::copy(&mut stream, &mut file).await?;
-                    self.stream = stream.into_inner();
-                    debug!("copied rsrc fork");
-                }
-                fork => {
-                    error!("ignoring {fork:?} fork");
-                    tokio::io::copy(&mut self.stream, &mut tokio::io::sink()).await?;
-                }
-            }
-        }
+        let stream = FlattenedFileStream::new(&mut self.stream);
+        self.files.write_adfs(&self.path, stream).await?;
         Ok(())
-    }
-    async fn read_file_header(&mut self) -> TransferResult<proto::FlattenedFileHeader> {
-        let mut buf = [0u8; 24];
-        self.stream.read_exact(&mut buf).await?;
-        match proto::FlattenedFileHeader::try_from(&buf[..]) {
-            Ok(header) => Ok(header),
-            _ => Err(proto::ProtocolError::ParseHeader.into()),
-        }
-    }
-    async fn read_fork_header(&mut self) -> TransferResult<proto::ForkHeader> {
-        let mut buf = [0u8; 16];
-        self.stream.read_exact(&mut buf).await?;
-        match proto::ForkHeader::try_from(&buf[..]) {
-            Ok(header) => Ok(header),
-            _ => Err(proto::ProtocolError::ParseHeader.into()),
-        }
-    }
-    async fn read_file_info(&mut self) -> TransferResult<proto::InfoFork> {
-        let mut buf = vec![0u8; 72];
-        self.stream.read_exact(&mut buf[..72]).await?;
-        let filename_len = u16::from_be_bytes([buf[70], buf[71]]) as usize;
-        let mut filename = vec![0u8; filename_len + 2];
-        self.stream
-            .read_exact(&mut filename[..filename_len + 2])
-            .await?;
-        buf.extend(&filename);
-        let comment_len =
-            u16::from_be_bytes([filename[filename_len], filename[filename_len + 1]]) as usize;
-        if comment_len > 0 {
-            let mut comment = vec![0u8; comment_len];
-            self.stream.read_exact(&mut comment[..comment_len]).await?;
-            buf.extend(&comment);
-        }
-        match proto::InfoFork::try_from(&buf[..]) {
-            Ok(info) => Ok(info),
-            _ => Err(proto::ProtocolError::ParseHeader.into()),
-        }
-    }
-    fn get_appledouble(path: &Path) -> PathBuf {
-        let basename = path
-            .file_name()
-            .and_then(|name| name.to_str())
-            .map(|name| format!("._{}", name))
-            .expect("no filename");
-        path.to_path_buf().with_file_name(basename)
     }
 }
 
