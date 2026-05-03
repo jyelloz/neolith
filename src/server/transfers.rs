@@ -398,7 +398,7 @@ struct UploadTransfer<S> {
 impl<TS: TransferStream + 'static> UploadTransfer<TS> {
     async fn run(mut self) -> TransferResult<()> {
         let stream = FlattenedFileStream::new(&mut self.stream);
-        self.files.write_adfs(&self.path, stream).await?;
+        self.files.write(&self.path, stream).await?;
         Ok(())
     }
 }
