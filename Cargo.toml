@@ -45,3 +45,5 @@ git = "https://iris.radicle.xyz/zGUcPta6ndSN6JjNfMpecKHrnLQk.git"
 rev = "205117a49f668e965ecc0c321c15adbec46fd27a"
 features = ["async"]
 
+[profile.release]
+lto = "fat"
