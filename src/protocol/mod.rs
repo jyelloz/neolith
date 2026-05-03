@@ -2059,12 +2059,24 @@ impl DekuSize for ForkType {
 pub struct FileFlags(u32);
 
 #[derive(
-    Debug, Default, Clone, Copy, PartialEq, Eq, PartialOrd, Ord, From, Into, DekuRead, DekuWrite, DekuSize,
+    Debug,
+    Default,
+    Clone,
+    Copy,
+    PartialEq,
+    Eq,
+    PartialOrd,
+    Ord,
+    From,
+    Into,
+    DekuRead,
+    DekuWrite,
+    DekuSize,
 )]
 #[deku(endian = "big")]
 pub struct PlatformFlags(u32);
 
-#[derive(Debug, Clone, DekuRead, DekuWrite)]
+#[derive(Debug, Clone, DekuRead, DekuWrite, DekuSize)]
 pub struct ForkHeader {
     pub fork_type: ForkType,
     pub compression_type: CompressionType,
@@ -2072,8 +2084,8 @@ pub struct ForkHeader {
     pub data_size: DataSize,
 }
 
-#[derive(Debug, Clone, DekuRead, DekuWrite)]
-pub struct InfoFork {
+#[derive(Debug, Clone, DekuRead, DekuWrite, DekuSize)]
+pub struct InfoForkHeader {
     pub platform: PlatformType,
     pub type_code: FileType,
     pub creator_code: Creator,
@@ -2083,19 +2095,42 @@ pub struct InfoFork {
     pub created_at: FileCreatedAt,
     pub modified_at: FileModifiedAt,
     pub name_script: NameScript,
+}
+
+#[derive(Debug, Clone, DekuRead, DekuWrite)]
+pub struct PString {
     #[deku(endian = "big")]
-    pub name_len: u16,
-    #[deku(count = "name_len")]
-    pub file_name: Vec<u8>,
-    #[deku(endian = "big")]
-    pub comment_len: u16,
-    #[deku(count = "comment_len")]
-    pub comment: Vec<u8>,
+    pub len: u16,
+    #[deku(count = "len")]
+    pub val: Vec<u8>,
+}
+
+impl PString {
+    pub fn size(&self) -> usize {
+        <u16 as DekuSize>::SIZE_BYTES.unwrap() + self.len as usize
+    }
+}
+
+impl From<Vec<u8>> for PString {
+    fn from(mut value: Vec<u8>) -> Self {
+        value.truncate(u16::MAX as usize);
+        Self {
+            len: value.len() as u16,
+            val: value,
+        }
+    }
+}
+
+#[derive(Debug, Clone, DekuRead, DekuWrite)]
+pub struct InfoFork {
+    pub header: InfoForkHeader,
+    pub filename: PString,
+    pub comment: PString,
 }
 
 impl InfoFork {
     pub fn size(&self) -> usize {
-        74 + self.file_name.len() + self.comment.len()
+        InfoForkHeader::SIZE_BYTES.unwrap() + self.filename.size() + self.comment.size()
     }
 }
 
