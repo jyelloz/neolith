@@ -351,7 +351,6 @@ impl OsFiles {
         }
     }
     async fn read_adfs(&self, path: &Path) -> Result<FlattenedFileObject, adfs::AppleDoubleError> {
-        Err(adfs::AppleDoubleError::UnexpectedEof)?;
         let path = self.subpath(path)?;
         let file = Self::appledouble_file(&path);
         let meta = fs::metadata(&path).await?;
