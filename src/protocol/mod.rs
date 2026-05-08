@@ -2097,7 +2097,7 @@ pub struct InfoForkHeader {
     pub name_script: NameScript,
 }
 
-#[derive(Debug, Clone, DekuRead, DekuWrite)]
+#[derive(Debug, Default, Clone, DekuRead, DekuWrite)]
 pub struct PString {
     #[deku(endian = "big")]
     pub len: u16,
