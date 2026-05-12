@@ -181,9 +181,6 @@ impl FinderInfo {
             folder: Folder::default(),
         }
     }
-    pub const fn calculate_size() -> usize {
-        Self::SIZE_BYTES.unwrap()
-    }
 }
 
 #[derive(Debug, Clone, Copy, PartialEq, Eq, DekuRead, DekuWrite, DekuSize, From)]
@@ -263,7 +260,7 @@ mod tests {
         let finf_descriptor = EntryDescriptor {
             id: EntryId::FinderInfo.into(),
             offset: start,
-            length: FinderInfo::calculate_size() as u32,
+            length: FinderInfo::SIZE_BYTES.unwrap() as u32,
         };
         let rsrc_descriptor = EntryDescriptor {
             id: EntryId::ResourceFork.into(),
