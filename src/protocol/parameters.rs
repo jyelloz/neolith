@@ -661,12 +661,6 @@ impl From<FileType> for Parameter {
     }
 }
 
-impl From<crate::apple::FileType> for FileType {
-    fn from(value: crate::apple::FileType) -> Self {
-        Self(value.0.0)
-    }
-}
-
 impl From<adfs::FourCC> for FileType {
     fn from(value: adfs::FourCC) -> Self {
         Self(value.0)
@@ -675,12 +669,6 @@ impl From<adfs::FourCC> for FileType {
 
 #[derive(Debug, Clone, Copy, From, Into, DekuRead, DekuWrite, DekuSize)]
 pub struct Creator(pub [u8; 4]);
-
-impl From<crate::apple::Creator> for Creator {
-    fn from(value: crate::apple::Creator) -> Self {
-        Self(value.0.0)
-    }
-}
 
 impl From<adfs::FourCC> for Creator {
     fn from(value: adfs::FourCC) -> Self {
