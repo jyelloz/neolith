@@ -1,5 +1,4 @@
 use crate::{
-    apple,
     protocol::{self as proto, AsyncDataSource, FlattenedFileObject},
     server::transfers::{FlattenedFileStream, TransferStream},
 };
@@ -484,13 +483,14 @@ struct PlainFile {
 }
 
 impl PlainFile {
+    const CREATOR_CODE: &[u8; 4] = b"dosa";
+    const TYPE_CODE: &[u8; 4] = b"BINA";
     pub fn new(path: PathBuf, meta: Metadata) -> Self {
         Self { path, meta }
     }
     async fn read_info_fork(&self) -> io::Result<proto::InfoFork> {
-        let finf = apple::FinderInfo::windows_file();
-        let type_code = proto::FileType::from(finf.file_type);
-        let creator_code = proto::Creator::from(finf.creator);
+        let type_code = proto::FileType::from(*Self::TYPE_CODE);
+        let creator_code = proto::Creator::from(*Self::CREATOR_CODE);
         let name = self.path.file_name().unwrap_or_default().as_bytes();
         let created = self.meta.created().map(proto::FileCreatedAt::from);
         let modified = self.meta.modified().map(proto::FileModifiedAt::from);
