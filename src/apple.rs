@@ -161,95 +161,6 @@ impl AppleSingleHeader {
     }
 }
 
-#[derive(DekuRead, DekuWrite, Debug, Clone, Copy, PartialEq, Eq, DekuSize)]
-pub struct FinderInfo {
-    pub file_type: FileType,
-    pub creator: Creator,
-    pub flags: FinderFlags,
-    pub location: Point,
-    #[deku(pad_bytes_after = "16")]
-    pub folder: Folder,
-}
-
-impl FinderInfo {
-    pub fn windows_file() -> Self {
-        Self {
-            file_type: FileType(FourCC(*b"BINA")),
-            creator: Creator(FourCC(*b"dosa")),
-            flags: FinderFlags::default(),
-            location: Point::default(),
-            folder: Folder::default(),
-        }
-    }
-}
-
-#[derive(Debug, Clone, Copy, PartialEq, Eq, DekuRead, DekuWrite, DekuSize, From)]
-pub struct FourCC(pub [u8; 4]);
-#[derive(Debug, DekuRead, DekuWrite, DekuSize, Clone, Copy, PartialEq, Eq, From)]
-pub struct FileType(pub FourCC);
-#[derive(Debug, DekuRead, DekuWrite, DekuSize, Clone, Copy, PartialEq, Eq)]
-pub struct Creator(pub FourCC);
-
-#[derive(Default, Debug, DekuRead, DekuWrite, DekuSize, Clone, Copy, PartialEq, Eq)]
-#[deku(endian = "big")]
-pub struct FinderFlags {
-    #[deku(bits = "1")]
-    pub is_alias: bool,
-    #[deku(bits = "1")]
-    pub is_invisible: bool,
-    #[deku(bits = "1")]
-    pub has_bundle: bool,
-    #[deku(bits = "1")]
-    pub name_locked: bool,
-    #[deku(bits = "1")]
-    pub is_stationery: bool,
-    #[deku(bits = "1", pad_bits_after = "1")]
-    pub has_custom_icon: bool,
-
-    #[deku(bits = "1")]
-    pub has_been_inited: bool,
-    #[deku(bits = "1")]
-    pub has_no_inits: bool,
-    #[deku(bits = "1")]
-    pub is_shared: bool,
-    #[deprecated]
-    #[deku(bits = "1", pad_bits_after = "1")]
-    pub requires_switch_launch: bool,
-
-    #[deku(bits = "3")]
-    pub color: u8,
-    #[deku(bits = "1")]
-    #[deprecated]
-    pub is_on_desktop: bool,
-}
-
-impl From<u16> for FinderFlags {
-    fn from(value: u16) -> Self {
-        let bytes = value.to_be_bytes();
-        Self::try_from(bytes.as_slice()).expect("failed to parse 4 bytes into finder flags")
-    }
-}
-
-impl From<FinderFlags> for u16 {
-    fn from(value: FinderFlags) -> Self {
-        let bytes = value.to_bytes().unwrap();
-        Self::from_be_bytes(bytes.try_into().expect("must be 2 bytes"))
-    }
-}
-
-#[derive(Debug, DekuRead, DekuWrite, DekuSize, Default, Clone, Copy, PartialEq, Eq)]
-#[deku(endian = "big")]
-pub struct Point {
-    pub vertical: i16,
-    pub horizontal: i16,
-}
-
-#[derive(
-    Debug, DekuRead, DekuWrite, DekuSize, Default, Clone, Copy, PartialEq, Eq, PartialOrd, Ord,
-)]
-#[deku(endian = "big")]
-pub struct Folder(u16);
-
 #[cfg(test)]
 mod tests {
     use super::*;
@@ -260,7 +171,7 @@ mod tests {
         let finf_descriptor = EntryDescriptor {
             id: EntryId::FinderInfo.into(),
             offset: start,
-            length: FinderInfo::SIZE_BYTES.unwrap() as u32,
+            length: adfs::FinderInfo::SIZE_BYTES.unwrap() as u32,
         };
         let rsrc_descriptor = EntryDescriptor {
             id: EntryId::ResourceFork.into(),
@@ -270,14 +181,6 @@ mod tests {
         let entries = vec![finf_descriptor, rsrc_descriptor];
         let hdr = AppleSingleHeader::new_double(entries);
         eprintln!("{hdr:?}");
-
-        let _finf = FinderInfo {
-            file_type: FileType(FourCC(*b"APPL")),
-            creator: Creator(FourCC(*b"ttxt")),
-            flags: FinderFlags::default(),
-            location: Point::default(),
-            folder: Folder::default(),
-        };
 
         Ok(())
     }
