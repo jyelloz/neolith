@@ -667,12 +667,24 @@ impl From<adfs::FourCC> for FileType {
     }
 }
 
+impl From<FileType> for adfs::FourCC {
+    fn from(value: FileType) -> Self {
+        value.0.into()
+    }
+}
+
 #[derive(Debug, Clone, Copy, From, Into, DekuRead, DekuWrite, DekuSize)]
 pub struct Creator(pub [u8; 4]);
 
 impl From<adfs::FourCC> for Creator {
     fn from(value: adfs::FourCC) -> Self {
         Self(value.0)
+    }
+}
+
+impl From<Creator> for adfs::FourCC {
+    fn from(value: Creator) -> Self {
+        value.0.into()
     }
 }
 
