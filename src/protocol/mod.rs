@@ -2097,6 +2097,21 @@ pub struct InfoForkHeader {
     pub name_script: NameScript,
 }
 
+impl From<&InfoForkHeader> for adfs::FinderInfo {
+    fn from(value: &InfoForkHeader) -> Self {
+        Self {
+            info: adfs::entry::FInfo {
+                file_type: value.type_code.into(),
+                creator: value.creator_code.into(),
+                flags: adfs::entry::FinderFlags::default(),
+                location: adfs::entry::Point::default(),
+                folder: adfs::entry::Folder::default(),
+            },
+            extended: Default::default(),
+        }
+    }
+}
+
 #[derive(Debug, Default, Clone, DekuRead, DekuWrite)]
 pub struct PString {
     #[deku(endian = "big")]
