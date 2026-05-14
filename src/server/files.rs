@@ -431,9 +431,9 @@ impl OsFiles {
             info: adfs::entry::FInfo {
                 file_type: info.header.type_code.0.into(),
                 creator: info.header.creator_code.0.into(),
-                flags: 0,
-                location: [0u8; 4],
-                folder_id: 0,
+                flags: adfs::entry::FinderFlags::default(),
+                location: adfs::entry::Point::default(),
+                folder: adfs::entry::Folder::default(),
             },
             extended: Default::default(),
         };

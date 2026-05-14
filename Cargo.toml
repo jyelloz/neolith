@@ -42,7 +42,7 @@ tracing = "0.1"
 tracing-subscriber = { version = "0.3", features = ["env-filter"] }
 [dependencies.adfs]
 git = "https://iris.radicle.xyz/zGUcPta6ndSN6JjNfMpecKHrnLQk.git"
-rev = "205117a49f668e965ecc0c321c15adbec46fd27a"
+rev = "5ca92d59f54500691ad98acb4fe8945397612dc2"
 features = ["async"]
 
 [profile.release]
