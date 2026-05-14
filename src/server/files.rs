@@ -427,21 +427,10 @@ impl OsFiles {
         let mut data_file = file.write_data_async().await?;
         let mut rsrc_file = file.write_async().await?;
 
-        let finf = adfs::FinderInfo {
-            info: adfs::entry::FInfo {
-                file_type: info.header.type_code.0.into(),
-                creator: info.header.creator_code.0.into(),
-                flags: adfs::entry::FinderFlags::default(),
-                location: adfs::entry::Point::default(),
-                folder: adfs::entry::Folder::default(),
-            },
-            extended: Default::default(),
-        };
-
-        let finf_data = finf.to_bytes()?;
+        let finf = adfs::FinderInfo::from(&info.header).to_bytes()?;
 
         rsrc_file
-            .add_entry_buffer(adfs::EntryId::FinderInfo, &finf_data)
+            .add_entry_buffer(adfs::EntryId::FinderInfo, &finf)
             .await?;
         if info.comment.len > 0 {
             rsrc_file
