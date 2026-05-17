@@ -156,6 +156,10 @@ impl Password {
     pub fn from_cleartext(clear: &[u8]) -> Self {
         Self(invert_credential(clear))
     }
+    pub fn invert(mut self) -> Self {
+        self.0 = invert_credential(&self.0);
+        self
+    }
     pub fn raw_data(&self) -> &[u8] {
         &self.0
     }
@@ -181,6 +185,13 @@ impl From<Password> for Parameter {
 impl Credential for Password {
     fn deobfuscate(&self) -> Vec<u8> {
         invert_credential(&self.0)
+    }
+}
+
+impl std::fmt::Display for Password {
+    fn fmt(&self, f: &mut Formatter<'_>) -> fmt::Result {
+        let (text, _, _) = MACINTOSH.decode(&self.0);
+        f.write_str(&text)
     }
 }
 
