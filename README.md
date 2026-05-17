@@ -26,17 +26,19 @@ implementation along with a reference client and server.
 - A flat-file user account database
     - 1 TOML file per user in a single directory
     - Interactive terminal-interface [user data editor](src/bin/nlserver-edit-user.rs)
+- AppleDouble filesystem backend for Mac Resource Forks and Finder metadata
+    - Read-only file browsing backed by a UNIX filesystem subtree
+    - Single-file downloads/uploads with without resume support
 - A very simple, insecure, and incoherent [demo server](src/bin/nlserver.rs)
     - Logins are enforced
-    - Filesystem interface with AppleDouble support for resource forks and
-    most useful Finder metadata
-        - Read-only file browsing backed by a UNIX filesystem subtree
-        - Single-file downloads/uploads with Mac file support, without resume
-        support
     - Chat messaging
     - Broadcast messaging
     - Private chat rooms
     - Instant messaging
+    - Non-threaded news
+        - Currently stored in-memory only
+    - Online *User Account* administration
+        - Currently in-memory edits only, changes do not sync back to disk
 
 ### What is in progress?
 
@@ -45,15 +47,15 @@ implementation along with a reference client and server.
 
 ### What is not implemented?
 
+- System-wide
+    - Customizable text encoding
 - Server-side
     - Folder Transfer
     - Download/Upload resumption
-    - User Permission enforcement
-    - Online User administration
-    - File manipulation (move/delete/set info)
-    - Well-designed state machines for connections
-    - A good dispatch mechanism for transaction receipt
-    - A good model for request-reply sequences
+    - File Transfer queueing
+    - File Transfer throttling
+    - **User** Permission enforcement
+    - File ~manipulation~ (move/delete/set info)
     - Communication with Trackers
 - Client
     - Anything
