@@ -24,11 +24,11 @@ pub enum ServerResponse {
     SetUserReply,
     NewUserReply,
     DeleteUserReply,
-    Rejected(Option<String>),
+    Error(Option<String>),
 }
 
 impl ServerResponse {
-    fn reject(message: Option<String>) -> proto::TransactionFrame {
+    fn error(message: Option<String>) -> proto::TransactionFrame {
         let mut frame = proto::TransactionFrame::empty(proto::TransactionType::Error);
         frame.header.error_code = 1u32.into();
         if let Some(reason) = message {
@@ -58,7 +58,7 @@ impl From<ServerResponse> for proto::TransactionFrame {
             ServerResponse::MoveFileReply(reply) => reply.into(),
             ServerResponse::NewFolderReply => proto::GenericReply.into(),
             ServerResponse::GetUserReply(reply) => reply.into(),
-            ServerResponse::Rejected(message) => ServerResponse::reject(message),
+            ServerResponse::Error(message) => ServerResponse::error(message),
             ServerResponse::SetUserReply => proto::GenericReply.into(),
             ServerResponse::NewUserReply => proto::GenericReply.into(),
             ServerResponse::DeleteUserReply => proto::GenericReply.into(),
