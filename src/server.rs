@@ -288,17 +288,24 @@ impl<TS: transfers::TransferStream + 'static> NeolithServer<TS> {
                 .await
                 .map(Some),
             ClientRequest::GetUser(proto::GetUser(login)) => {
-                if let Some(account) = self.accounts.get(login).cloned() {
-                    Ok(Some(ServerResponse::GetUserReply(account.try_into()?)))
-                } else {
-                    Ok(Some(ServerResponse::Rejected(Some(
-                        "User account not found".to_string(),
-                    ))))
-                }
+                let account = self
+                    .accounts
+                    .get(&login)
+                    .ok_or(users::UsersError::NotFound)?;
+                Ok(Some(ServerResponse::GetUserReply(account.try_into()?)))
             }
-            ClientRequest::SetUser(..) => Ok(Some(ServerResponse::SetUserReply)),
-            ClientRequest::NewUser(..) => Ok(Some(ServerResponse::NewUserReply)),
-            ClientRequest::DeleteUser(..) => Ok(Some(ServerResponse::DeleteUserReply)),
+            ClientRequest::SetUser(req) => {
+                self.accounts.set(req).await?;
+                Ok(Some(ServerResponse::SetUserReply))
+            }
+            ClientRequest::NewUser(req) => {
+                self.accounts.new(req).await?;
+                Ok(Some(ServerResponse::NewUserReply))
+            }
+            ClientRequest::DeleteUser(proto::DeleteUser(login)) => {
+                self.accounts.delete(login).await?;
+                Ok(Some(ServerResponse::DeleteUserReply))
+            }
             ClientRequest::SendBroadcast(b) => {
                 self.send_broadcast(b.message).await?;
                 Ok(Some(ServerResponse::SendBroadcastReply))
@@ -330,7 +337,7 @@ impl<TS: transfers::TransferStream + 'static> NeolithServer<TS> {
             ClientRequest::JoinChat(req) => {
                 let chat_id = ChatId::from(req);
                 let Some(chat_room) = self.get_chat_room(chat_id) else {
-                    return Ok(Some(ServerResponse::Rejected(Some(
+                    return Ok(Some(ServerResponse::Error(Some(
                         "invalid chat".to_string(),
                     ))));
                 };
@@ -349,7 +356,7 @@ impl<TS: transfers::TransferStream + 'static> NeolithServer<TS> {
             ClientRequest::LeaveChat(req) => {
                 let chat_id = ChatId::from(req);
                 if self.get_chat_room(chat_id).is_none() {
-                    return Ok(Some(ServerResponse::Rejected(Some(
+                    return Ok(Some(ServerResponse::Error(Some(
                         "invalid chat".to_string(),
                     ))));
                 }
@@ -370,7 +377,7 @@ impl<TS: transfers::TransferStream + 'static> NeolithServer<TS> {
                 let proto::NewFolder { path, filename } = req;
                 Ok(Some(self.new_folder(&path, &filename).await))
             }
-            _ => Ok(Some(ServerResponse::Rejected(Some("todo".to_string())))),
+            _ => Ok(Some(ServerResponse::Error(Some("todo".to_string())))),
         }
     }
     fn get_users(&self) -> proto::GetUserNameListReply {
@@ -446,7 +453,7 @@ impl<TS: transfers::TransferStream + 'static> NeolithServer<TS> {
         let path = PathBuf::from(path.clone()).join(PathBuf::from(name));
         if let Err(e) = self.files.mkdir(&path).await {
             let msg = e.to_string();
-            return ServerResponse::Rejected(Some(msg));
+            return ServerResponse::Error(Some(msg));
         }
         ServerResponse::NewFolderReply
     }
