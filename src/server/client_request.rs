@@ -31,7 +31,6 @@ pub enum ClientRequest {
     DeleteUser(proto::DeleteUser),
     GetUser(proto::GetUser),
     SetUser(proto::SetUser),
-    UserAccess,
     SendBroadcast(proto::SendBroadcast),
 }
 
