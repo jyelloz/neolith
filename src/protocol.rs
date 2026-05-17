@@ -1641,7 +1641,7 @@ impl From<DeleteUser> for TransactionFrame {
 #[derive(Debug)]
 pub struct SetUser {
     pub login: UserLogin,
-    pub password: Password,
+    pub password: Option<Password>,
     pub name: Nickname,
     pub access: UserAccess,
 }
@@ -1656,8 +1656,10 @@ impl TryFrom<TransactionFrame> for SetUser {
             .require_field(TransactionField::UserLogin)
             .and_then(UserLogin::try_from)?;
         let password = body
-            .require_field(TransactionField::UserPassword)
-            .and_then(Password::try_from)?;
+            .borrow_field(TransactionField::UserPassword)
+            .map(Password::try_from)
+            .map(Result::ok)
+            .flatten();
         let name = body
             .require_field(TransactionField::UserName)
             .and_then(Nickname::try_from)?;
@@ -1683,8 +1685,14 @@ impl From<SetUser> for TransactionFrame {
             name,
             access,
         } = val;
-        let body = vec![login.into(), password.into(), name.into(), access.into()].into();
-        Self { header, body }
+        let mut body = vec![login.into(), name.into(), access.into()];
+        if let Some(password) = password {
+            body.push(password.into());
+        }
+        Self {
+            header,
+            body: body.into(),
+        }
     }
 }
 
