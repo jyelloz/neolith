@@ -249,7 +249,7 @@ async fn handle_request(
         ClientRequest::GetClientInfoText(req) => {
             info!("find user {:?}", req.user_id);
             let Some(peer) = peers.get(u16::from(req.user_id) as u32).await else {
-                return Ok(Some(ServerResponse::Rejected(None)));
+                return Ok(Some(ServerResponse::Error(None)));
             };
             let text = format!("{peer:#?}");
             info!("sending back {peer:?}");
@@ -284,7 +284,7 @@ async fn handle_request(
         // ClientRequest::DisconnectUser(disconnect_user) => todo!(),
         ClientRequest::SendChat(req) => {
             let Some(peer) = peers.get(id).await else {
-                return Ok(Some(ServerResponse::Rejected(None)));
+                return Ok(Some(ServerResponse::Error(None)));
             };
             let formatted_chat = chat::format_chat(&peer.nick, req.message.as_slice());
             let msg = proto::ChatMessage {
@@ -299,10 +299,10 @@ async fn handle_request(
         }
         ClientRequest::SendInstantMessage(req) => {
             let Some(peer) = peers.get(id).await else {
-                return Ok(Some(ServerResponse::Rejected(None)));
+                return Ok(Some(ServerResponse::Error(None)));
             };
             let Some(mut to) = peers.get(req.user_id.into()).await else {
-                return Ok(Some(ServerResponse::Rejected(None)));
+                return Ok(Some(ServerResponse::Error(None)));
             };
             let msg = proto::ServerMessage {
                 user_id: Some((&peer).into()),
@@ -341,7 +341,7 @@ async fn handle_request(
             }
             Some(ServerResponse::SendBroadcastReply)
         }
-        _ => Some(ServerResponse::Rejected(Some("TODO".to_string()))),
+        _ => Some(ServerResponse::Error(Some("TODO".to_string()))),
     };
     Ok(response)
 }
