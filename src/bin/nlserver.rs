@@ -25,7 +25,7 @@ use neolith::{
     },
     server::{
         ChatRoomInvite, ChatRoomLeave, ChatRoomPresence, ChatRoomSubject, ClientRequest,
-        InstantMessage, NeolithServer, User,
+        InstantMessage, NeolithServer, ServerResponse, User,
         bus::{Bus, Notification},
         chat::{Chats, ChatsService},
         files::OsFiles,
@@ -434,10 +434,11 @@ impl<R: StateRead, W: StateWrite> Established<R, W> {
         let TransactionFrame { header, body } = frame.clone();
         let reply = if let Ok(req) = ClientRequest::try_from(frame.clone()) {
             trace!("auto decode using tryfrom: {req:?}");
-            server
-                .handle_client(req)
-                .await?
-                .map(|r| r.reply_to(&header))
+            let response = match server.handle_client(req).await {
+                Ok(resp) => resp,
+                Err(e) => Some(ServerResponse::Error(Some(e.to_string()))),
+            };
+            response.map(|r| r.reply_to(&header))
         } else if ConnectionKeepAlive::try_from(frame.clone()).is_ok() {
             debug!("keep alive");
             Some(GenericReply.reply_to(&header))
