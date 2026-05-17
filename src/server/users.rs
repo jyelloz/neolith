@@ -9,6 +9,7 @@ use std::{
     collections::{HashMap, HashSet},
     fs::FileType,
     path::{Path, PathBuf},
+    sync::{Arc, Mutex},
 };
 
 use tokio::fs;
@@ -17,7 +18,7 @@ use tokio::sync::{mpsc, oneshot, watch};
 use tracing::{debug, error, warn};
 
 use super::{
-    application::UserAccount,
+    application::{UserAccount, UserAccountIdentity, UserAccountPermissions},
     bus::{Bus, Notification},
 };
 
@@ -27,6 +28,12 @@ pub enum UsersError {
     ExecutionError(#[from] oneshot::error::RecvError),
     #[error("service unavailable")]
     ServiceUnavailable,
+    #[error("specified user not found")]
+    NotFound,
+    #[error("specified user already exists")]
+    Duplicate,
+    #[error("password hash error")]
+    PasswordHash(#[from] pwhash::error::Error),
 }
 
 impl<T> From<mpsc::error::SendError<T>> for UsersError {
@@ -204,14 +211,16 @@ impl UserUpdateProcessor {
 
 #[derive(Default, Debug, Clone)]
 pub struct UserAccounts {
-    users: HashMap<String, UserAccount>,
+    users: Arc<Mutex<HashMap<String, UserAccount>>>,
 }
 
 impl UserAccounts {
     pub async fn with_root<P: Into<PathBuf>>(root: P) -> anyhow::Result<Self> {
         let root = root.into();
         let users = Self::load(&root).await?;
-        Ok(Self { users })
+        Ok(Self {
+            users: Arc::new(Mutex::new(users)),
+        })
     }
     async fn load(path: &Path) -> anyhow::Result<HashMap<String, UserAccount>> {
         let mut users: HashMap<String, UserAccount> = HashMap::default();
@@ -249,16 +258,57 @@ impl UserAccounts {
         }
         Ok(users)
     }
-    pub fn get(&self, login: proto::UserLogin) -> Option<&UserAccount> {
+    pub fn get(&self, login: &proto::UserLogin) -> Option<UserAccount> {
         let username = login.text();
-        self.users.get(&username)
+        let users = self.users.lock().unwrap();
+        users.get(&username).cloned()
+    }
+    pub async fn new(&mut self, new: proto::NewUser) -> UsersResult<()> {
+        let login = new.login.clone().invert();
+        if self.get(&login).is_some() {
+            return Err(UsersError::Duplicate);
+        }
+        let login = login.text();
+        let password = new.password.invert().to_string();
+        let user = UserAccount {
+            identity: UserAccountIdentity {
+                name: new.name.to_string(),
+                login: login.clone(),
+                password: password.try_into()?,
+            },
+            permissions: u64::from(new.access).into(),
+        };
+        let mut users = self.users.lock().unwrap();
+        users.insert(login, user);
+        Ok(())
+    }
+    pub async fn set(&mut self, set: proto::SetUser) -> UsersResult<()> {
+        let username = set.login.invert().text();
+        let mut users = self.users.lock().unwrap();
+        let Some(user) = users.get_mut(&username) else {
+            return Err(UsersError::NotFound);
+        };
+        user.permissions = UserAccountPermissions::from(u64::from(set.access));
+        user.identity.name = set.name.to_string();
+        if let Some(password) = set.password {
+            user.identity.password = password.invert().to_string().try_into()?;
+        }
+        Ok(())
+    }
+    pub async fn delete(&mut self, login: proto::UserLogin) -> UsersResult<()> {
+        let username = login.invert().text();
+        let mut users = self.users.lock().unwrap();
+        if users.remove(&username).is_none() {
+            return Err(UsersError::NotFound);
+        };
+        Ok(())
     }
     pub fn verify(
         &self,
         login: proto::UserLogin,
         password: proto::Password,
-    ) -> Option<&UserAccount> {
-        let account = self.get(login)?;
+    ) -> Option<UserAccount> {
+        let account = self.get(&login)?;
         let password = password.deobfuscate();
         let (password, _, decode_failed) = MACINTOSH.decode(&password);
         if decode_failed {
